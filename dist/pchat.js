@@ -80,7 +80,7 @@ _i18n.dict = {
     'pchat.status.groupMembers':         { zh: '{n} 成员', en: '{n} members' },
     'pchat.msg.self':                    { zh: '我', en: 'Me' },
     'pchat.msg.selfPrefix':              { zh: '我：', en: 'Me:' },
-    'pchat.file.unknown':                { zh: _i18n.t('pchat.file.unknown'), en: 'Unknown file' },
+    'pchat.file.unknown':                { zh: '未知文件', en: 'Unknown file' },
     'pchat.msg.deleteTitle':             { zh: '删除', en: 'Delete' },
     'pchat.call.incoming':               { zh: '来电中...', en: 'Incoming call...' },
     'pchat.call.waitingAnswer':          { zh: '等待接听...', en: 'Waiting for answer...' },
