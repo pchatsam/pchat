@@ -55,6 +55,7 @@ _i18n.dict = {
     'pchat.contact.confirmDelete':       { zh: '确认', en: 'Confirm', ja: '確認', de: 'Bestätigen', fr: 'Confirmer', es: 'Confirmar', pt: 'Confirmar', he: 'אשר', ko: '확인', it: 'Conferma' },
     'pchat.alert.idCopied':              { zh: 'ID 已复制: {id}', en: 'ID copied: {id}', ja: 'IDコピー済み: {id}', de: 'ID kopiert: {id}', fr: 'ID copié: {id}', es: 'ID copiado: {id}', pt: 'ID copiado: {id}', he: 'מזהה הועתק: {id}', ko: 'ID 복사됨: {id}', it: 'ID copiato: {id}' },
     'pchat.alert.copyFail':              { zh: '复制失败', en: 'Copy failed', ja: 'コピーに失敗しました', de: 'Kopieren fehlgeschlagen', fr: 'Copie échouée', es: 'Copia fallida', pt: 'Cópia falhou', he: 'העתקה נכשלה', ko: '복사 실패', it: 'Copia fallita' },
+    'pchat.alert.idCopyManual':          { zh: '你的ID: {id} （请手动复制）', en: 'Your ID: {id} (please copy manually)', ja: 'あなたのID: {id} （手動でコピー）', de: 'Deine ID: {id} (manuell kopieren)', fr: 'Votre ID: {id} (copiez manuellement)', es: 'Tu ID: {id} (copia manualmente)', pt: 'Seu ID: {id} (copie manualmente)', he: 'המזהה שלך: {id} (העתק ידנית)', ko: '내 ID: {id} (직접 복사하세요)', it: 'Il tuo ID: {id} (copia manualmente)' },
     'pchat.alert.inviteCopied':          { zh: '邀请链接已复制: {url}', en: 'Invite link copied: {url}', ja: '招待リンクをコピーしました: {url}', de: 'Einladungslink kopiert: {url}', fr: 'Lien d\'invitation copié: {url}', es: 'Enlace de invitación copiado: {url}', pt: 'Link de convite copiado: {url}', he: 'קישור הזמנה הועתק: {url}', ko: '초대 링크 복사됨: {url}', it: 'Link invito copiato: {url}' },
     'pchat.alert.inviteCopyManual':      { zh: '复制失败，请手动复制: {url}', en: 'Copy failed, copy manually: {url}', ja: 'コピー失敗、手動でコピー: {url}', de: 'Kopieren fehlgeschlagen, manuell kopieren: {url}', fr: 'Copie échouée, copiez manuellement: {url}', es: 'Copia fallida, copia manualmente: {url}', pt: 'Cópia falhou, copie manualmente: {url}', he: 'העתקה נכשלה, העתק ידנית: {url}', ko: '복사 실패, 수동 복사: {url}', it: 'Copia fallita, copia manualmente: {url}' },
     'pchat.alert.enterGroupName':        { zh: '请输入群组名称', en: 'Please enter group name', ja: 'グループ名を入力してください', de: 'Bitte Gruppenname eingeben', fr: 'Veuillez entrer le nom du groupe', es: 'Por favor ingresa nombre del grupo', pt: 'Por favor digite nome do grupo', he: 'אנא הזן שם קבוצה', ko: '그룹 이름을 입력하세요', it: 'Inserisci nome gruppo' },
@@ -101,7 +102,6 @@ _i18n.applyUI = function() {
     s('add-friend-input', 'placeholder', t('pchat.placeholder.addFriend'));
     s('message-input', 'placeholder', t('pchat.placeholder.message'));
     s('room-name-input', 'placeholder', t('pchat.placeholder.groupName'));
-    s('my-id-display', 'title', t('pchat.title.showQR'));
     s('call-back-btn', 'title', t('pchat.title.back'));
     s('call-btn', 'title', t('pchat.title.voiceCall'));
     s('call-status-hangup', 'title', t('pchat.title.hangup'));
@@ -1103,7 +1103,21 @@ const ChatApp = {
         return c?.nickname || peerId;
     },
 
-    // ---- Copy my ID to clipboard ----
+    // ---- Copy ID prompt ----
+    copyIdPrompt() {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(this.my.id).then(() => {
+                this.showAlert(_i18n.fmt('pchat.alert.idCopied', 'id', this.my.id));
+            }).catch(() => this._showIdFallback());
+        } else {
+            this._showIdFallback();
+        }
+    },
+
+    _showIdFallback() {
+        this.showAlert(_i18n.fmt('pchat.alert.idCopyManual', 'id', this.my.id));
+    },
+
     // ---- Show my ID QR code ----
     showMyQR() {
         const container = document.getElementById('qr-canvas');

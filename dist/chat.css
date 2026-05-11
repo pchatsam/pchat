@@ -1242,3 +1242,5 @@ body {
         height: 28px;
     }
 }
+.qr-icon { font-size: 20px; margin-right: 8px; cursor: pointer; opacity: 0.6; }
+.qr-icon:hover { opacity: 1; }
