@@ -7,6 +7,125 @@
    ============================================================
 */
 
+// ==================== i18n ====================
+var _i18n = _i18n || {};
+_i18n.lang = (navigator.language || navigator.userLanguage || 'zh').substring(0,2);
+if (!['zh','en'].includes(_i18n.lang)) _i18n.lang = 'en';
+_i18n.t = function(key) {
+    var d = _i18n.dict[key];
+    if (!d) return key;
+    return d[_i18n.lang] || d.en;
+};
+_i18n.dict = {
+    'pchat.placeholder.nickname':        { zh: '输入你的昵称', en: 'Enter your nickname' },
+    'pchat.placeholder.password':        { zh: '输入密码', en: 'Enter password' },
+    'pchat.placeholder.addFriend':       { zh: '输入对方ID添加好友', en: 'Enter ID to add friend' },
+    'pchat.placeholder.message':         { zh: '输入消息...', en: 'Type a message...' },
+    'pchat.placeholder.groupName':       { zh: '群组名称', en: 'Group name' },
+    'pchat.title.copyId':                { zh: '点击复制ID', en: 'Click to copy ID' },
+    'pchat.title.inviteLink':            { zh: '邀请链接', en: 'Invite link' },
+    'pchat.title.back':                  { zh: '返回', en: 'Back' },
+    'pchat.title.voiceCall':             { zh: '语音通话', en: 'Voice call' },
+    'pchat.title.hangup':                { zh: '挂断', en: 'Hang up' },
+    'pchat.title.voiceMsg':              { zh: '语音消息', en: 'Voice message' },
+    'pchat.title.image':                 { zh: '图片', en: 'Image' },
+    'pchat.title.file':                  { zh: '文件', en: 'File' },
+    'pchat.title.answerCall':            { zh: '接听', en: 'Answer' },
+    'pchat.title.hangupCall':            { zh: '挂断通话', en: 'Hang up call' },
+    'pchat.time.justNow':                { zh: '刚刚', en: 'just now' },
+    'pchat.time.minutesAgo':             { zh: '分钟前', en: 'min ago' },
+    'pchat.time.today':                  { zh: '今天', en: 'Today' },
+    'pchat.register.inviteFrom':         { zh: '通过邀请注册（ID: {id}）', en: 'Register via invite (ID: {id})' },
+    'pchat.loading.genKey':              { zh: '生成密钥...', en: 'Generating key...' },
+    'pchat.loading.deriveVerifyKey':     { zh: '派生验证密钥...', en: 'Deriving verify key...' },
+    'pchat.loading.deriveDataKey':       { zh: '派生数据密钥...', en: 'Deriving data key...' },
+    'pchat.loading.saveUser':            { zh: '保存用户信息...', en: 'Saving user info...' },
+    'pchat.loading.verify':              { zh: '验证中...', en: 'Verifying...' },
+    'pchat.loading.readUser':            { zh: '读取用户数据...', en: 'Reading user data...' },
+    'pchat.loading.useCachedKey':        { zh: '使用缓存密钥...', en: 'Using cached key...' },
+    'pchat.loading.loadContacts':        { zh: '加载联系人...', en: 'Loading contacts...' },
+    'pchat.loading.loadGroups':          { zh: '加载群组...', en: 'Loading groups...' },
+    'pchat.loading.done':                { zh: '完成!', en: 'Done!' },
+    'pchat.login.btn.loggingIn':         { zh: '正在登录...', en: 'Logging in...' },
+    'pchat.alert.enterNickname':         { zh: '请输入昵称', en: 'Please enter a nickname' },
+    'pchat.alert.enterPassword':         { zh: '请输入密码', en: 'Please enter password' },
+    'pchat.alert.passwordError':         { zh: '密码错误', en: 'Wrong password' },
+    'pchat.alert.deleteConfirm':         { zh: '是否删除所有数据？', en: 'Delete all data?' },
+    'pchat.alert.deleteFail':            { zh: '删除失败', en: 'Delete failed' },
+    'pchat.contact.confirmDelete':       { zh: '确认', en: 'Confirm' },
+    'pchat.alert.idCopied':              { zh: 'ID 已复制: {id}', en: 'ID copied: {id}' },
+    'pchat.alert.copyFail':              { zh: '复制失败', en: 'Copy failed' },
+    'pchat.alert.inviteCopied':          { zh: '邀请链接已复制: {url}', en: 'Invite link copied: {url}' },
+    'pchat.alert.inviteCopyManual':      { zh: '复制失败，请手动复制: {url}', en: 'Copy failed, copy manually: {url}' },
+    'pchat.alert.enterGroupName':        { zh: '请输入群组名称', en: 'Please enter group name' },
+    'pchat.alert.selectMember':          { zh: '请选择至少一个成员', en: 'Please select at least one member' },
+    'pchat.alert.friendRejected':        { zh: '{name} 拒绝了好友请求', en: '{name} rejected friend request' },
+    'pchat.alert.waitingReply':          { zh: '正在等待对方回复，请勿重复添加', en: 'Waiting for reply, please wait' },
+    'pchat.alert.peerOffline':           { zh: '对方不在线，请稍后再试', en: 'Peer is offline, try again later' },
+    'pchat.alert.enterPeerId':           { zh: '请输入对方ID', en: 'Please enter peer ID' },
+    'pchat.alert.cannotAddSelf':         { zh: '不能添加自己', en: 'Cannot add yourself' },
+    'pchat.msg.voice':                   { zh: '语音', en: 'Voice' },
+    'pchat.file.incomplete':             { zh: '文件传输不完整（大小不匹配）', en: 'File transfer incomplete (size mismatch)' },
+    'pchat.file.checksumFail':           { zh: '文件传输校验失败（内容损坏）', en: 'File checksum failed (data corrupted)' },
+    'pchat.file.prefixImage':            { zh: '[图片]', en: '[Image]' },
+    'pchat.file.prefixFile':             { zh: '[文件]', en: '[File]' },
+    'pchat.alert.friendNotReady':        { zh: '请先完成好友添加后再发送消息', en: 'Please accept friend request first' },
+    'pchat.alert.selectChat':            { zh: '请先选择一个聊天', en: 'Please select a chat' },
+    'pchat.alert.micError':              { zh: '无法访问麦克风', en: 'Cannot access microphone' },
+    'pchat.alert.peerOfflineSend':       { zh: '对方不在线，无法发送', en: 'Peer is offline, cannot send' },
+    'pchat.status.online':               { zh: '在线', en: 'Online' },
+    'pchat.status.peerJSOnline':         { zh: 'PeerJS 在线', en: 'PeerJS online' },
+    'pchat.status.offline':              { zh: '离线', en: 'Offline' },
+    'pchat.status.waitingKeyExchange':   { zh: '等待公钥交换', en: 'Waiting for key exchange' },
+    'pchat.status.groupMembers':         { zh: '{n} 成员', en: '{n} members' },
+    'pchat.msg.self':                    { zh: '我', en: 'Me' },
+    'pchat.msg.selfPrefix':              { zh: '我：', en: 'Me:' },
+    'pchat.file.unknown':                { zh: _i18n.t('pchat.file.unknown'), en: 'Unknown file' },
+    'pchat.msg.deleteTitle':             { zh: '删除', en: 'Delete' },
+    'pchat.call.incoming':               { zh: '来电中...', en: 'Incoming call...' },
+    'pchat.call.waitingAnswer':          { zh: '等待接听...', en: 'Waiting for answer...' },
+    'pchat.call.log':                    { zh: '📞 通话 {dur}', en: '📞 Call {dur}' },
+    'pchat.duration.seconds':            { zh: '{n}秒', en: '{n}s' },
+    'pchat.duration.minutes':            { zh: '{n}分钟', en: '{n}min' },
+    'pchat.duration.minSec':             { zh: '{min}分{sec}秒', en: '{min}m{sec}s' },
+    'pchat.alert.callError':             { zh: '无法发起通话', en: 'Cannot initiate call' },
+};
+
+// Set placeholders and titles based on language
+_i18n.applyUI = function() {
+    var t = _i18n.t;
+    var s = function(id, attr, val) { var el = document.getElementById(id); if (el) el[attr] = val; };
+    s('nickname-input', 'placeholder', t('pchat.placeholder.nickname'));
+    s('password-input', 'placeholder', t('pchat.placeholder.password'));
+    s('login-password-input', 'placeholder', t('pchat.placeholder.password'));
+    s('add-friend-input', 'placeholder', t('pchat.placeholder.addFriend'));
+    s('message-input', 'placeholder', t('pchat.placeholder.message'));
+    s('room-name-input', 'placeholder', t('pchat.placeholder.groupName'));
+    s('my-id-display', 'title', t('pchat.title.copyId'));
+    s('call-back-btn', 'title', t('pchat.title.back'));
+    s('call-btn', 'title', t('pchat.title.voiceCall'));
+    s('call-status-hangup', 'title', t('pchat.title.hangup'));
+    s('voice-btn', 'title', t('pchat.title.voiceMsg'));
+    s('call-reject-btn', 'title', t('pchat.title.hangup'));
+    s('call-answer-btn', 'title', t('pchat.title.answerCall'));
+    s('call-hangup-btn', 'title', t('pchat.title.hangupCall'));
+    // title for image/file buttons
+    var tools = document.querySelector('.input-tools');
+    if (tools && tools.children.length >= 3) {
+        tools.children[1].title = t('pchat.title.image');
+        tools.children[2].title = t('pchat.title.file');
+    }
+};
+
+// Replace placeholders in translation strings
+_i18n.fmt = function(key) {
+    var str = _i18n.t(key);
+    for (var i = 1; i < arguments.length; i += 2) {
+        str = str.replace('{' + arguments[i] + '}', arguments[i+1] || '');
+    }
+    return str;
+};
+
 // ==================== Crypto (crypto-js + jsrsasign) ====================
 const Crypto = {
     // 密钥指纹：公钥 PEM 的 MD5 前 8 位
@@ -469,7 +588,7 @@ const PeerConn = {
             return call;
         } catch (err) {
             console.error("[PeerConn] Call error:", err);
-            ChatApp.showAlert("无法发起通话");
+            ChatApp.showAlert(_i18n.t('pchat.alert.callError'));
             return null;
         }
     },
@@ -669,11 +788,11 @@ const ChatApp = {
         
         if (diff < hour) {
             const mins = Math.floor(diff / minute);
-            if (mins === 0) return '刚刚';
-            return mins + '分钟前';
+            if (mins === 0) return _i18n.t('pchat.time.justNow');
+            return mins + _i18n.t('pchat.time.minutesAgo');
         } else if (diff < day) {
             const h = new Date(ts).toLocaleTimeString("zh-CN", {hour:'2-digit', minute:'2-digit'});
-            return '今天' + h;
+            return _i18n.t('pchat.time.today') + h;
         } else if (diff < year) {
             const d = new Date(ts).toLocaleDateString("zh-CN", {month:'numeric', day:'numeric'});
             const t = new Date(ts).toLocaleTimeString("zh-CN", {hour:'2-digit', minute:'2-digit'});
@@ -686,6 +805,7 @@ const ChatApp = {
     },
 
     async init() {
+        _i18n.applyUI();
         await DB.open();
 
         // Parse invite link from URL hash — now just contains inviter ID
@@ -706,7 +826,7 @@ const ChatApp = {
                 this.pendingInviteId = pendingInviteId;
                 localStorage.removeItem("mr_invite");
                 const inviteEl = document.getElementById("invite-from");
-                inviteEl.textContent = "通过邀请注册（ID: " + pendingInviteId + "）";
+                inviteEl.textContent = _i18n.fmt('pchat.register.inviteFrom', 'id', pendingInviteId);
                 inviteEl.style.display = "block";
             }
             this._show("login-form");
@@ -717,7 +837,7 @@ const ChatApp = {
                 this.invite = { inviterId: pendingInviteId };
                 localStorage.setItem("mr_invite", JSON.stringify(this.invite));
                 this._show("invite-info");
-                document.getElementById("invite-from").textContent = "通过邀请注册（ID: " + pendingInviteId + "）";
+                document.getElementById("invite-from").textContent = _i18n.fmt('pchat.register.inviteFrom', 'id', pendingInviteId);
             } else {
                 this._show("invite-info");
             }
@@ -765,21 +885,21 @@ const ChatApp = {
     async registerUser() {
         const nick = document.getElementById("nickname-input").value.trim();
         const pw = document.getElementById("password-input").value;
-        if (!nick) { this.showAlert("请输入昵称"); return; }
-        if (!pw) { this.showAlert("请输入密码"); return; }
+        if (!nick) { this.showAlert(_i18n.t('pchat.alert.enterNickname')); return; }
+        if (!pw) { this.showAlert(_i18n.t('pchat.alert.enterPassword')); return; }
 
 
-        this._showLoading(10, "生成密钥...");
+        this._showLoading(10, _i18n.t('pchat.loading.genKey'));
 
         this.my.id = Crypto.generateId();
         this.my.nickname = nick;
-        this._showLoading(30, "派生验证密钥...");
+        this._showLoading(30, _i18n.t('pchat.loading.deriveVerifyKey'));
         const verifyKey = await Crypto.deriveAesKey(pw);
-        this._showLoading(60, "派生数据密钥...");
+        this._showLoading(60, _i18n.t('pchat.loading.deriveDataKey'));
         this.my.aesKey = await Crypto.deriveAesKey(pw, this.my.id);
         this.my.password = pw;
 
-        this._showLoading(80, "保存用户信息...");
+        this._showLoading(80, _i18n.t('pchat.loading.saveUser'));
         await DB.put("user", { id: "current", userId: this.my.id, nickname: nick, ts: Date.now(), cachedKey: this.my.aesKey }, verifyKey);
 
         // 保存邀请人 ID（PeerJS 初始化后发送好友请求）
@@ -806,21 +926,21 @@ const ChatApp = {
     // ---- Login (existing user) ----
     async loginUser() {
         const pw = document.getElementById("login-password-input").value;
-        if (!pw) { this.showAlert("请输入密码"); return; }
+        if (!pw) { this.showAlert(_i18n.t('pchat.alert.enterPassword')); return; }
 
         const btn = document.getElementById("login-btn");
-        const origText = btn ? btn.textContent : "登录";
-        if (btn) { btn.textContent = "正在登录..."; btn.disabled = true; }
-        this._showLoading(5, "验证中...");
+        const origText = btn ? btn.textContent : _i18n.t('pchat.login.btn.loggingIn');
+        if (btn) { btn.textContent = _i18n.t('pchat.login.btn.loggingIn'); btn.disabled = true; }
+        this._showLoading(5, _i18n.t('pchat.loading.verify'));
 
         try {
             // 先尝试解密验证密码（用通用盐）
-            this._showLoading(10, "派生验证密钥...");
+            this._showLoading(10, _i18n.t('pchat.loading.deriveVerifyKey'));
             const testKey = await Crypto.deriveAesKey(pw);
 
-            this._showLoading(30, "读取用户数据...");
+            this._showLoading(30, _i18n.t('pchat.loading.readUser'));
             const user = await DB.get("user", "current", testKey);
-            if (!user || !user.userId) { this._hideLoading(); if (btn) { btn.textContent = origText; btn.disabled = false; } this.showAlert("密码错误"); return; }
+            if (!user || !user.userId) { this._hideLoading(); if (btn) { btn.textContent = origText; btn.disabled = false; } this.showAlert(_i18n.t('pchat.alert.passwordError')); return; }
 
             // 用真实 userId 重新派生 AES 密钥
             this.my.id = user.userId;
@@ -828,24 +948,24 @@ const ChatApp = {
 
             // 优先使用缓存的 aesKey
             if (user.cachedKey) {
-                this._showLoading(70, "使用缓存密钥...");
+                this._showLoading(70, _i18n.t('pchat.loading.useCachedKey'));
                 this.my.aesKey = user.cachedKey;
             } else {
-                this._showLoading(50, "派生数据密钥...");
+                this._showLoading(50, _i18n.t('pchat.loading.deriveDataKey'));
                 this.my.aesKey = await Crypto.deriveAesKey(pw, this.my.id);
                 // 回写缓存
                 await DB.put("user", { id: "current", userId: this.my.id, nickname: this.my.nickname, ts: Date.now(), cachedKey: this.my.aesKey }, testKey);
             }
             this.my.password = pw;
 
-            this._showLoading(85, "加载联系人...");
+            this._showLoading(85, _i18n.t('pchat.loading.loadContacts'));
             this.contacts = await DB.list("contacts", this.my.aesKey);
             console.log(`[Login] Loaded ${this.contacts.length} contacts:`, this.contacts.map(c => ({ id: c.userId, nick: c.nickname, pk: !!c.publicKey })));
 
-            this._showLoading(95, "加载群组...");
+            this._showLoading(95, _i18n.t('pchat.loading.loadGroups'));
             this.groups = await DB.list("groups", this.my.aesKey);
 
-            this._showLoading(100, "完成!");
+            this._showLoading(100, _i18n.t('pchat.loading.done'));
 
             this._hideLoading();
             if (btn) { btn.textContent = origText; btn.disabled = false; }
@@ -864,13 +984,13 @@ const ChatApp = {
         } catch (e) {
             this._hideLoading();
             if (btn) { btn.textContent = origText; btn.disabled = false; }
-            this.showAlert("密码错误");
+            this.showAlert(_i18n.t('pchat.alert.passwordError'));
         }
     },
 
     // ---- Delete account (clear all data) ----
     async deleteAccount() {
-        if (!confirm("是否删除所有数据？")) return;
+        if (!confirm(_i18n.t('pchat.alert.deleteConfirm'))) return;
         try {
             // Close existing DB handle first
             if (DB.db) DB.db.close();
@@ -884,7 +1004,7 @@ const ChatApp = {
             location.hash = "";
             location.reload();
         } catch (e) {
-            this.showAlert("删除失败");
+            this.showAlert(_i18n.t('pchat.alert.deleteFail'));
         }
     },
 
@@ -892,7 +1012,7 @@ const ChatApp = {
     _deleteTimer: null,
     showConfirmDelete(userId, btn) {
         if (this._deleteTimer) { clearTimeout(this._deleteTimer); this._deleteTimer = null; }
-        btn.textContent = "确认";
+        btn.textContent = _i18n.t('pchat.contact.confirmDelete');
         btn.classList.add("confirm");
         const origBtn = btn;
         this._deleteTimer = setTimeout(() => {
@@ -986,8 +1106,8 @@ const ChatApp = {
     // ---- Copy my ID to clipboard ----
     copyMyId() {
         navigator.clipboard.writeText(this.my.id).then(() => {
-            ChatApp.showAlert("ID 已复制: " + this.my.id);
-        }).catch(() => ChatApp.showAlert("复制失败"));
+            ChatApp.showAlert(_i18n.fmt('pchat.alert.idCopied', 'id', this.my.id));
+        }).catch(() => ChatApp.showAlert(_i18n.t('pchat.alert.copyFail')));
     },
 
     // ---- Generate invite link ----
@@ -996,7 +1116,7 @@ const ChatApp = {
         // 尝试 navigator.clipboard（需要安全上下文），失败则用 fallback
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(url).then(() => {
-                ChatApp.showAlert("邀请链接已复制: " + url);
+                ChatApp.showAlert(_i18n.fmt('pchat.alert.inviteCopied', 'url', url));
             }).catch(() => this._copyFallback(url));
         } else {
             this._copyFallback(url);
@@ -1013,9 +1133,9 @@ const ChatApp = {
         ta.select();
         try {
             document.execCommand('copy');
-            ChatApp.showAlert("邀请链接已复制: " + url);
+            ChatApp.showAlert(_i18n.fmt('pchat.alert.inviteCopied', 'url', url));
         } catch {
-            ChatApp.showAlert("复制失败，请手动复制: " + url);
+            ChatApp.showAlert(_i18n.fmt('pchat.alert.inviteCopyManual', 'url', url));
         }
         document.body.removeChild(ta);
     },
@@ -1058,11 +1178,11 @@ const ChatApp = {
 
     async createGroup() {
         const name = document.getElementById("room-name-input").value.trim();
-        if (!name) { this.showAlert("请输入群组名称"); return; }
+        if (!name) { this.showAlert(_i18n.t('pchat.alert.enterGroupName')); return; }
 
         const checkboxes = document.querySelectorAll("#member-checklist input:checked");
         const memberIds = Array.from(checkboxes).map(cb => cb.value);
-        if (memberIds.length === 0) { this.showAlert("请选择至少一个成员"); return; }
+        if (memberIds.length === 0) { this.showAlert(_i18n.t('pchat.alert.selectMember')); return; }
 
         const group = {
             id: "group_" + Date.now(),
@@ -1113,7 +1233,7 @@ const ChatApp = {
 
     // ---- Peer rejected friend request ----
     _onPeerReject(peerId) {
-        this.showAlert(`${this._getPeerNickname(peerId)} 拒绝了好友请求`);
+        this.showAlert(_i18n.fmt('pchat.alert.friendRejected', 'name', this._getPeerNickname(peerId)));
         // Remove the temporary contact if it exists and has no publicKey
         const idx = this.contacts.findIndex(c => c.userId === peerId);
         if (idx >= 0 && !this.contacts[idx].publicKey) {
@@ -1128,7 +1248,7 @@ const ChatApp = {
         // Check if already a contact with completed handshake
         const existing = this.contacts.find(c => c.userId === id);
         if (existing && existing.publicKey) { return; }
-        if (existing && !existing.publicKey) { this.showAlert("正在等待对方回复，请勿重复添加"); return; }
+        if (existing && !existing.publicKey) { this.showAlert(_i18n.t('pchat.alert.waitingReply')); return; }
 
         // Generate keypair for this peer
         const myKey = await Crypto.generateKeypair();
@@ -1160,7 +1280,7 @@ const ChatApp = {
         });
 
         if (!connected) {
-            this.showAlert("对方不在线，请稍后再试");
+            this.showAlert(_i18n.t('pchat.alert.peerOffline'));
             const idx = this.contacts.findIndex(c => c.userId === id);
             if (idx >= 0) this.contacts.splice(idx, 1);
             DB.db.transaction("contacts", "readwrite").objectStore("contacts").delete("contact_" + id);
@@ -1182,8 +1302,8 @@ const ChatApp = {
     // ---- Add friend by ID ----
     async addFriendById() {
         const id = document.getElementById("add-friend-input").value.trim();
-        if (!id) { this.showAlert("请输入对方ID"); return; }
-        if (id === this.my.id) { this.showAlert("不能添加自己"); return; }
+        if (!id) { this.showAlert(_i18n.t('pchat.alert.enterPeerId')); return; }
+        if (id === this.my.id) { this.showAlert(_i18n.t('pchat.alert.cannotAddSelf')); return; }
 
         if (this.contacts.find(c => c.userId === id && c.publicKey)) {
             return;
@@ -1273,7 +1393,7 @@ const ChatApp = {
         });
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact) {
-            contact.lastMessage = { content: "语音", ts: now, fromId: peerId };
+            contact.lastMessage = { content: _i18n.t('pchat.msg.voice'), ts: now, fromId: peerId };
             this.saveContact(contact);
         }
         if (!(this.activeConv && this.activeConv.id === peerId)) {
@@ -1329,7 +1449,7 @@ const ChatApp = {
         if (info.expectedBase64Len && fullBase64.length !== info.expectedBase64Len) {
             console.error(`[File] Length mismatch: expected ${info.expectedBase64Len}, got ${fullBase64.length}`);
             delete ft.pending[d.fileId];
-            ChatApp.showAlert(`文件传输不完整（大小不匹配）`);
+            ChatApp.showAlert(_i18n.t('pchat.file.incomplete'));
             return;
         }
 
@@ -1340,7 +1460,7 @@ const ChatApp = {
                 if (computedHash !== info.expectedHash) {
                     console.error(`[File] Hash mismatch`);
                     delete ft.pending[d.fileId];
-                    ChatApp.showAlert(`文件传输校验失败（内容损坏）`);
+                    ChatApp.showAlert(_i18n.t('pchat.file.checksumFail'));
                     return;
                 }
             } catch (e) {
@@ -1375,7 +1495,7 @@ const ChatApp = {
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact) {
             contact.lastMessage = {
-                content: info.isImage ? `[图片] ${info.name}` : `[文件] ${info.name}`,
+                content: info.isImage ? (_i18n.t('pchat.file.prefixImage') + ' ' + info.name) : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name),
                 ts: now,
                 fromId: peerId,
             };
@@ -1424,7 +1544,7 @@ const ChatApp = {
             // 单聊：检查握手是否完成
             const contact = this.contacts.find(c => c.userId === convId);
             if (!contact || !contact.publicKey) {
-                this.showAlert("请先完成好友添加后再发送消息");
+                this.showAlert(_i18n.t('pchat.alert.friendNotReady'));
                 return;
             }
             const id = `msg_${convId}_${now}`;
@@ -1466,7 +1586,7 @@ const ChatApp = {
         if (v.recording) return this.stopRecording();
         
         if (!this.activeConv || !this.activeConv.id) {
-            this.showAlert('请先选择一个聊天');
+            this.showAlert(_i18n.t('pchat.alert.selectChat'));
             return;
         }
         
@@ -1502,7 +1622,7 @@ const ChatApp = {
             }
         }).catch(err => {
             console.error("[Voice] Mic error:", err);
-            this.showAlert('无法访问麦克风');
+            this.showAlert(_i18n.t('pchat.alert.micError'));
         });
     },
 
@@ -1532,7 +1652,7 @@ const ChatApp = {
         
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact) {
-            contact.lastMessage = { content: "语音", ts: now, fromId: this.my.id };
+            contact.lastMessage = { content: _i18n.t('pchat.msg.voice'), ts: now, fromId: this.my.id };
             this.saveContact(contact);
         }
         
@@ -1593,7 +1713,7 @@ const ChatApp = {
         const peerId = this.activeConv.id;
         const state = PeerConn.peers[peerId];
         if (!state || !state.conn || !state.conn.open) {
-            this.showAlert("对方不在线，无法发送");
+            this.showAlert(_i18n.t('pchat.alert.peerOfflineSend'));
             return;
         }
 
@@ -1635,7 +1755,7 @@ const ChatApp = {
                 const contact = this.contacts.find(c => c.userId === peerId);
                 if (contact) {
                     contact.lastMessage = {
-                        content: isImage ? `[图片] ${file.name}` : `[文件] ${file.name}`,
+                        content: isImage ? (_i18n.t('pchat.file.prefixImage') + ' ' + file.name) : (_i18n.t('pchat.file.prefixFile') + ' ' + file.name),
                         ts: now,
                         fromId: this.my.id,
                     };
@@ -1708,13 +1828,13 @@ const ChatApp = {
                 title.textContent = c.nickname || c.userId;
                 const peer = PeerConn.peers[id];
                 const connOpen = peer && peer.conn && peer.conn.open;
-                status.textContent = connOpen ? "PeerJS 在线" : "离线";
+                status.textContent = connOpen ? _i18n.t('pchat.status.peerJSOnline') : _i18n.t('pchat.status.offline');
             }
         } else if (type === "group") {
             const g = this.groups.find(x => x.id === id);
             if (g) {
                 title.textContent = g.name;
-                status.textContent = `${g.memberIds.length} 成员`;
+                status.textContent = _i18n.fmt('pchat.status.groupMembers', 'n', g.memberIds.length);
             }
         }
         this._loadMessages(id).catch(err => console.error(`[Chat] _loadMessages error:`, err));
@@ -1778,7 +1898,7 @@ const ChatApp = {
         wrapper.dataset.msgId = msg.id;
         const sent = msg.fromId === this.my.id;
         const contact = this.contacts.find(c => c.userId === msg.peerId);
-        const senderName = sent ? "我" : (contact ? (contact.nickname || msg.fromId) : msg.fromId);
+        const senderName = sent ? _i18n.t('pchat.msg.self') : (contact ? (contact.nickname || msg.fromId) : msg.fromId);
         const senderClass = sent ? "sender-avatar self" : "sender-avatar";
         let bubbleClass = sent ? "sent" : "received";
         const time = this._formatTime(msg.ts);
@@ -1789,16 +1909,16 @@ const ChatApp = {
         } else if (msg.type === "file" && msg.fileData) {
             const icon = this._getFileIcon(msg.fileName);
             const sizeStr = this._formatFileSize(msg.fileSize);
-            innerContent = `<div class="file-attachment" onclick="ChatApp.downloadAttachment('${msg.id}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || '未知文件').replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr}</div></div></div>`;
+            innerContent = `<div class="file-attachment" onclick="ChatApp.downloadAttachment('${msg.id}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || _i18n.t('pchat.file.unknown')).replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr}</div></div></div>`;
         } else if (msg.type === "voice" && msg.content) {
             const dur = msg.duration || 0;
-            const durStr = dur > 0 ? `${Math.floor(dur)}s` : "语音";
+            const durStr = dur > 0 ? `${Math.floor(dur)}s` : _i18n.t('pchat.msg.voice');
             innerContent = `<div class="voice-msg" onclick="ChatApp.playVoice('${msg.id}', this)"><span class="voice-icon">🔊</span><span class="voice-duration">${durStr}</span></div>`;
         } else {
             const text = (msg.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
             innerContent = `<div class="content">${text}</div>`;
         }
-        const deleteBtn = `<button class="msg-delete-btn" onclick="ChatApp.deleteMessage('${msg.id}', event)" title="删除">✕</button>`;
+        const deleteBtn = `<button class="msg-delete-btn" onclick="ChatApp.deleteMessage('${msg.id}', event)" title="_i18n.t('pchat.msg.deleteTitle')>✕</button>`;
         
         // Receipt status for sent messages
         let receiptHtml = "";
@@ -1939,7 +2059,7 @@ const ChatApp = {
         const modal = document.getElementById("call-modal");
         if (!modal) return;
         document.getElementById("call-name").textContent = name;
-        document.getElementById("call-status").textContent = "来电中...";
+        document.getElementById('call-status').textContent = _i18n.t('pchat.call.incoming');
         document.getElementById("call-timer").textContent = "";
         modal.style.display = "flex";
         
@@ -1957,7 +2077,7 @@ const ChatApp = {
         const hangupBtnEl = document.getElementById("call-hangup-btn");
         
         if (state === "waiting") {
-            if (statusEl) statusEl.textContent = "等待接听...";
+            if (statusEl) statusEl.textContent = _i18n.t('pchat.call.waitingAnswer');
             if (actionsEl) actionsEl.style.display = "none";
             if (hangupBtnEl) hangupBtnEl.style.display = "block";
         }
@@ -2034,7 +2154,7 @@ const ChatApp = {
             }, 1000);
         }).catch((err) => {
             console.error("[Call] Mic error:", err);
-            this.showAlert("无法访问麦克风"); call.close();
+            this.showAlert(_i18n.t('pchat.alert.micError')); call.close();
         });
     },
 
@@ -2073,7 +2193,7 @@ const ChatApp = {
     _recordCallMessage(peerId, durationSeconds) {
         const now = Date.now();
         const durStr = this._formatDuration(durationSeconds);
-        const content = `📞 通话 ${durStr}`;
+        const content = _i18n.fmt('pchat.call.log', 'dur', durStr);
         const id = `call_${peerId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const msg = {
             id,
@@ -2100,11 +2220,11 @@ const ChatApp = {
     
     // 格式化时长
     _formatDuration(seconds) {
-        if (seconds < 60) return `${seconds}秒`;
+        if (seconds < 60) return _i18n.fmt('pchat.duration.seconds', 'n', seconds);
         const min = Math.floor(seconds / 60);
         const sec = seconds % 60;
-        if (sec === 0) return `${min}分钟`;
-        return `${min}分${sec}秒`;
+        if (sec === 0) return _i18n.fmt('pchat.duration.minutes', 'n', min);
+        return _i18n.fmt('pchat.duration.minSec', 'min', min, 'sec', sec);
     },
 
     _stopCallMedia() {
@@ -2131,7 +2251,7 @@ const ChatApp = {
     },
 
     initiateCall() {
-        if (!this.activeConv || !this.activeConv.id) { this.showAlert('请先选择一个聊天'); return; }
+        if (!this.activeConv || !this.activeConv.id) { this.showAlert(_i18n.t('pchat.alert.selectChat')); return; }
         if (this.call.active) this.hangupCall(); else this.startCall(this.activeConv.id);
     },
 
@@ -2250,13 +2370,13 @@ const ChatApp = {
             const connOpen = peer && peer.connected;
             const hasPeerKey = peer && peer.peerKey;
             let icon, st;
-            if (connOpen) { icon = "🟢"; st = "在线"; }
-            else if (c.publicKey || hasPeerKey) { icon = "⚪"; st = "离线"; }
-            else { icon = "⏳"; st = "等待公钥交换"; }
+            if (connOpen) { icon = "🟢"; st = _i18n.t('pchat.status.online'); }
+            else if (c.publicKey || hasPeerKey) { icon = "⚪"; st = _i18n.t('pchat.status.offline'); }
+            else { icon = "⏳"; st = _i18n.t('pchat.status.waitingKeyExchange'); }
             let lastMsgHtml = "";
             if (c.lastMessage) {
                 const lm = c.lastMessage;
-                const sender = lm.fromId === this.my.id ? "我：" : (c.nickname + "：");
+                const sender = lm.fromId === this.my.id ? _i18n.t('pchat.msg.selfPrefix') : (c.nickname + ':');
                 const time = this._formatTime(lm.ts);
                 lastMsgHtml = `<div class="last-msg">${sender}${lm.content ? lm.content.substring(0, 20) + (lm.content.length > 20 ? '...' : '') : ''} <span class="time">${time}</span></div>`;
             }
@@ -2272,7 +2392,7 @@ const ChatApp = {
             const div = document.createElement("div");
             div.className = "list-item";
             div.dataset.id = g.id;
-            div.innerHTML = `<div class="avatar">👥</div><div class="info" onclick="ChatApp.openConversation('group','${g.id}')"><div class="name">${g.name}</div><div class="status">${g.memberIds.length} 成员</div></div>`;
+            div.innerHTML = `<div class="avatar">👥</div><div class="info" onclick="ChatApp.openConversation('group','${g.id}')"><div class="name">${g.name}</div><div class='status'>` + _i18n.fmt('pchat.status.groupMembers', 'n', g.memberIds.length) + `<div class='status'></div>`;
             list.appendChild(div);
         }
     },

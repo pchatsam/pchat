@@ -4,11 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>PChat - MindRender</title>
-    <link rel="stylesheet" href="./dist/chat.css">
+    <link rel="stylesheet" href="/book/public/chat/chat.css">
+    <!-- i18n: detect browser language and show/hide language spans -->
+    <script>
+    (function(){
+        var lang = (navigator.language || navigator.userLanguage || 'zh').substring(0,2);
+        if (!['zh','en'].includes(lang)) lang = 'en';
+        document.write('<style>');
+        document.write('.zh,.en{display:none}');
+        document.write('.lang-' + lang + ' .zh,.lang-' + lang + ' .en{display:none}');
+        document.write('.lang-' + lang + ' .' + lang + '{display:inline}');
+        document.write('</style>');
+        document.documentElement.className = 'lang-' + lang;
+    })();
+    </script>
     <!-- Local dependencies (no CDN needed) -->
-    <script src="./dist/peerjs.min.js"></script>
-    <script src="./dist/crypto-js.js"></script>
-    <script src="./dist/forge.min.js"></script>
+    <script src="/book/public/chat/peerjs.min.js"></script>
+    <script src="/book/public/chat/crypto-js.js"></script>
+    <script src="/book/public/chat/forge.min.js"></script>
 </head>
 <body>
     <!-- 注册/登录面板 -->
@@ -17,13 +30,17 @@
             <h2 style="text-align:center;">🍃 P.Chat</h2>
             <p id="invite-from" style="display:none;color:#888;font-size:12px;margin-bottom:8px;text-align:center;"></p>
             <div id="invite-info" style="display:none;text-align:center;">
-                <input type="text" id="nickname-input" placeholder="输入你的昵称" maxlength="20" style="margin:0 auto;">
-                <input type="password" id="password-input" placeholder="输入密码" style="margin-top: 8px;display:block;margin-left:auto;margin-right:auto;">
-                <button id="register-btn" onclick="ChatApp.registerUser()" style="margin-top: 8px;">注册并登录</button>
+                <input type="text" id="nickname-input" placeholder="" maxlength="20" style="margin:0 auto;">
+                <input type="password" id="password-input" placeholder="" style="margin-top: 8px;display:block;margin-left:auto;margin-right:auto;">
+                <button id="register-btn" onclick="ChatApp.registerUser()" style="margin-top: 8px;">
+                    <span class="zh">注册并登录</span><span class="en">Register</span>
+                </button>
             </div>
             <div id="login-form" style="display:none;text-align:center;">
-                <input type="password" id="login-password-input" placeholder="输入密码" style="display:block;margin-left:auto;margin-right:auto;">
-                <button id="login-btn" onclick="ChatApp.loginUser()" style="margin-top: 8px;">登录</button>
+                <input type="password" id="login-password-input" placeholder="" style="display:block;margin-left:auto;margin-right:auto;">
+                <button id="login-btn" onclick="ChatApp.loginUser()" style="margin-top: 8px;">
+                    <span class="zh">登录</span><span class="en">Login</span>
+                </button>
             </div>
 
             <!-- Loading 进度条 -->
@@ -31,11 +48,13 @@
                 <div style="width:220px;height:4px;background:#e0e0e0;border-radius:2px;overflow:hidden;margin:0 auto;">
                     <div id="login-loading-bar" style="width:0%;height:100%;background:#4caf50;border-radius:2px;transition:width 0.3s;"></div>
                 </div>
-                <p id="login-loading-text" style="color:#888;font-size:12px;margin-top:8px;">验证中...</p>
+                <p id="login-loading-text" style="color:#888;font-size:12px;margin-top:8px;"></p>
             </div>
 
             <!-- 删除账号按钮 -->
-            <button id="delete-account-btn" onclick="ChatApp.deleteAccount()" style="display:none;position:fixed;top:16px;left:16px;padding:6px 12px;font-size:13px;background:transparent;color:#f44336;border:1px solid #f44336;border-radius:8px;cursor:pointer;min-height:44px;z-index:100;">删除账号</button>
+            <button id="delete-account-btn" onclick="ChatApp.deleteAccount()" style="display:none;position:fixed;top:16px;left:16px;padding:6px 12px;font-size:13px;background:transparent;color:#f44336;border:1px solid #f44336;border-radius:8px;cursor:pointer;min-height:44px;z-index:100;">
+                <span class="zh">删除账号</span><span class="en">Delete Account</span>
+            </button>
         </div>
     </div>
 
@@ -46,41 +65,54 @@
             <div class="sidebar-header">
                 <div class="user-info">
                     <span id="my-nickname"></span>
-                    <span class="my-id" title="点击复制ID" onclick="ChatApp.copyMyId()" id="my-id-display"></span>
+                    <span class="my-id" title="" onclick="ChatApp.copyMyId()" id="my-id-display"></span>
                 </div>
                 <div class="sidebar-actions">
-                    <button title="邀请链接" onclick="ChatApp.generateInviteLink()">🔗</button>
-
+                    <button title="" onclick="ChatApp.generateInviteLink()">🔗</button>
                 </div>
             </div>
 
             <!-- Tab 切换 -->
             <div style="display:flex;border-bottom:1px solid #e0e0e0;">
-                <div id="tab-contacts" class="tab-btn active" onclick="ChatApp.switchTab('contacts')" style="flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid #4caf50;">联系人</div>
-                <div id="tab-groups" class="tab-btn" onclick="ChatApp.switchTab('groups')" style="flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;">群组</div>
+                <div id="tab-contacts" class="tab-btn active" onclick="ChatApp.switchTab('contacts')" style="flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid #4caf50;">
+                    <span class="zh">联系人</span><span class="en">Contacts</span>
+                </div>
+                <div id="tab-groups" class="tab-btn" onclick="ChatApp.switchTab('groups')" style="flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;">
+                    <span class="zh">群组</span><span class="en">Groups</span>
+                </div>
             </div>
 
             <!-- 好友请求卡片 (内联) -->
             <div id="friend-request-card" style="display:none;padding:10px 12px;border-bottom:1px solid #eee;background:#f0f8ff;">
-                <div style="font-size:13px;color:#333;margin-bottom:6px;">🔔 <span id="friend-request-nick"></span> (<span id="friend-request-id"></span>) 请求添加好友</div>
+                <div style="font-size:13px;color:#333;margin-bottom:6px;">🔔 <span id="friend-request-nick"></span> (<span id="friend-request-id"></span>)
+                    <span class="zh">请求添加好友</span><span class="en">wants to add you</span>
+                </div>
                 <div style="display:flex;gap:6px;">
-                    <button onclick="ChatApp._acceptFriendRequest()" style="flex:1;padding:4px 0;background:#4caf50;color:#fff;border:none;border-radius:4px;cursor:pointer;">接受</button>
-                    <button onclick="ChatApp._rejectFriendRequest()" style="flex:1;padding:4px 0;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;">拒绝</button>
+                    <button onclick="ChatApp._acceptFriendRequest()" style="flex:1;padding:4px 0;background:#4caf50;color:#fff;border:none;border-radius:4px;cursor:pointer;">
+                        <span class="zh">接受</span><span class="en">Accept</span>
+                    </button>
+                    <button onclick="ChatApp._rejectFriendRequest()" style="flex:1;padding:4px 0;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;">
+                        <span class="zh">拒绝</span><span class="en">Reject</span>
+                    </button>
                 </div>
             </div>
 
             <div id="contact-tab" class="tab-content active">
                 <div id="add-friend-box" style="padding:8px 12px;border-bottom:1px solid #222;">
                     <div style="display:flex;gap:4px;">
-                        <input id="add-friend-input" type="text" placeholder="输入对方ID添加好友" maxlength="20" style="flex:1;">
-                        <button onclick="ChatApp.addFriendById()" style="padding:4px 8px;">添加</button>
+                        <input id="add-friend-input" type="text" placeholder="" maxlength="20" style="flex:1;">
+                        <button onclick="ChatApp.addFriendById()" style="padding:4px 8px;">
+                            <span class="zh">添加</span><span class="en">Add</span>
+                        </button>
                     </div>
                 </div>
                 <div id="contact-list"></div>
             </div>
 
             <div id="group-tab" class="tab-content">
-                                <button onclick="ChatApp.showCreateGroupModal()" style="display:block;width:100%;padding:8px;margin:8px;background:#4caf50;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">+ 新建群</button>
+                                <button onclick="ChatApp.showCreateGroupModal()" style="display:block;width:100%;padding:8px;margin:8px;background:#4caf50;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">
+                                    <span class="zh">+ 新建群</span><span class="en">+ New Group</span>
+                                </button>
                 <div id="room-list"></div>
             </div>
         </div>
@@ -92,32 +124,38 @@
         <div id="chat-area">
             <div id="chat-placeholder">
                 <div class="icon">💬</div>
-                <div>选择一个联系人开始聊天</div>
+                <div>
+                    <span class="zh">选择一个联系人开始聊天</span><span class="en">Select a contact to start chatting</span>
+                </div>
             </div>
             <div id="chat-active" style="display:none; flex:1; flex-direction:column;">
                 <div id="chat-header">
-                    <button id="chat-back-btn" title="返回" onclick="ChatApp.closeChatView()">←</button>
+                    <button id="chat-back-btn" title="" onclick="ChatApp.closeChatView()">←</button>
                     <span id="chat-title"></span>
                     <span id="chat-type"></span>
-                    <button id="call-btn" title="语音通话" onclick="ChatApp.initiateCall()">📞</button>
+                    <button id="call-btn" title="" onclick="ChatApp.initiateCall()">📞</button>
                 </div>
                 <!-- 通话状态栏 -->
                 <div id="call-status-bar" style="display:none; align-items:center; justify-content:space-between; padding:8px 16px; background:#e8f5e9; border-bottom:1px solid #c8e6c9;">
-                    <span id="call-status-text" style="font-size:13px; color:#2e7d32;">通话中</span>
+                    <span id="call-status-text" style="font-size:13px; color:#2e7d32;">
+                        <span class="zh">通话中</span><span class="en">In call</span>
+                    </span>
                     <div style="display:flex; align-items:center; gap:12px;">
                         <span id="call-status-timer" style="font-size:14px; font-weight:500; color:#1b5e20;"></span>
-                        <button id="call-status-hangup" title="挂断" onclick="ChatApp.hangupCall()" style="background:#ff4b4b; color:#fff; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center;">📞</button>
+                        <button id="call-status-hangup" title="" onclick="ChatApp.hangupCall()" style="background:#ff4b4b; color:#fff; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center;">📞</button>
                     </div>
                 </div>
                 <div id="message-list"></div>
                 <div id="input-area">
                     <div class="input-tools">
-                        <button id="voice-btn" title="语音消息" onclick="ChatApp.startRecording()">🎙️</button>
-                        <button title="图片" onclick="document.getElementById('image-upload').click()">🖼️</button>
-                        <button title="文件" onclick="document.getElementById('file-upload').click()">📎</button>
+                        <button id="voice-btn" title="" onclick="ChatApp.startRecording()">🎙️</button>
+                        <button title="" onclick="document.getElementById('image-upload').click()">🖼️</button>
+                        <button title="" onclick="document.getElementById('file-upload').click()">📎</button>
                     </div>
-                    <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
-                    <button id="send-btn" onclick="ChatApp.sendMessage()">发送</button>
+                    <textarea id="message-input" placeholder="" rows="1"></textarea>
+                    <button id="send-btn" onclick="ChatApp.sendMessage()">
+                        <span class="zh">发送</span><span class="en">Send</span>
+                    </button>
                     <input type="file" id="image-upload" accept="image/*" style="display:none" onchange="ChatApp.sendImage(event)">
                     <input type="file" id="file-upload" style="display:none" onchange="ChatApp.sendFile(event)">
                 </div>
@@ -133,25 +171,33 @@
             <div id="call-status" class="call-status"></div>
             <div id="call-timer" class="call-timer"></div>
             <div class="call-actions" id="call-actions">
-                <button id="call-reject-btn" class="call-btn reject" onclick="ChatApp.rejectCall()" title="挂断">📵</button>
-                <button id="call-answer-btn" class="call-btn answer" onclick="ChatApp.answerCall()" title="接听">📞</button>
+                <button id="call-reject-btn" class="call-btn reject" onclick="ChatApp.rejectCall()" title="" >📵</button>
+                <button id="call-answer-btn" class="call-btn answer" onclick="ChatApp.answerCall()" title="">📞</button>
             </div>
-            <button id="call-hangup-btn" class="call-btn hangup" onclick="ChatApp.hangupCall()" title="挂断通话" style="display:none;">📞</button>
+            <button id="call-hangup-btn" class="call-btn hangup" onclick="ChatApp.hangupCall()" title="" style="display:none;">📞</button>
         </div>
     </div>
 
     <!-- 创建群组 -->
     <div id="create-room-modal" class="modal">
         <div class="modal-content create-group-modal">
-            <h3>创建群组</h3>
-            <input type="text" id="room-name-input" placeholder="群组名称">
+            <h3>
+                <span class="zh">创建群组</span><span class="en">Create Group</span>
+            </h3>
+            <input type="text" id="room-name-input" placeholder="">
             <div id="room-member-select">
-                <p>选择成员：</p>
+                <p>
+                    <span class="zh">选择成员：</span><span class="en">Select members:</span>
+                </p>
                 <div id="member-checklist"></div>
             </div>
             <div class="modal-actions">
-                <button class="cancel-btn" onclick="ChatApp.closeModals()">取消</button>
-                <button class="accept-btn" onclick="ChatApp.createGroup()">创建</button>
+                <button class="cancel-btn" onclick="ChatApp.closeModals()">
+                    <span class="zh">取消</span><span class="en">Cancel</span>
+                </button>
+                <button class="accept-btn" onclick="ChatApp.createGroup()">
+                    <span class="zh">创建</span><span class="en">Create</span>
+                </button>
             </div>
         </div>
     </div>
@@ -161,7 +207,9 @@
         <div class="modal-content alert-content">
             <p id="alert-text"></p>
             <div class="modal-actions">
-                <button class="accept-btn" onclick="ChatApp._closeAlert()">确定</button>
+                <button class="accept-btn" onclick="ChatApp._closeAlert()">
+                    <span class="zh">确定</span><span class="en">OK</span>
+                </button>
             </div>
         </div>
     </div>
@@ -170,11 +218,11 @@
     <!-- 图片查看器 -->
     <div id="image-viewer" onclick="ChatApp.closeImageViewer(event)">
         <div id="image-viewer-toolbar">
-            <button onclick="ChatApp.zoomOut(event)" title="缩小">➖</button>
-            <button onclick="ChatApp.zoomIn(event)" title="放大">➕</button>
-            <button onclick="ChatApp.resetZoom(event)" title="重置">↺</button>
-            <button onclick="ChatApp.downloadImage(event)" title="下载">⬇️</button>
-            <button onclick="ChatApp.closeImageViewer()" title="关闭" style="margin-left:auto;">✕</button>
+            <button onclick="ChatApp.zoomOut(event)" title="➖">➖</button>
+            <button onclick="ChatApp.zoomIn(event)" title="➕">➕</button>
+            <button onclick="ChatApp.resetZoom(event)" title="↺">↺</button>
+            <button onclick="ChatApp.downloadImage(event)" title="⬇️">⬇️</button>
+            <button onclick="ChatApp.closeImageViewer()" title="✕" style="margin-left:auto;">✕</button>
         </div>
         <div id="image-viewer-container">
             <img id="image-viewer-img" src="" alt="">
@@ -182,6 +230,6 @@
         </div>
     </div>
 
-    <script src="./dist/pchat.js?v=20260510f"></script>
+    <script src="/book/public/chat/pchat.js?v=20260511i18n"></script>
 </body>
 </html>
