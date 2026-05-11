@@ -39,7 +39,7 @@
             <div id="login-form" style="display:none;text-align:center;">
                 <input type="password" id="login-password-input" placeholder="" style="display:block;margin-left:auto;margin-right:auto;">
                 <button id="login-btn" onclick="ChatApp.loginUser()" style="margin-top: 8px;">
-                    <span class="zh">登录</span><span class="en">Login</span>
+                    <span class="zh">登录</span> <span class="en">Login</span><span class="ja">ログイン</span><span class="de">Anmelden</span><span class="fr">Connexion</span><span class="es">Iniciar sesión</span><span class="pt">Entrar</span><span class="he">התחברות</span><span class="ko">로그인</span><span class="it">Accedi</span>
                 </button>
             </div>
 
@@ -53,7 +53,7 @@
 
             <!-- 删除账号按钮 -->
             <button id="delete-account-btn" onclick="ChatApp.deleteAccount()" style="display:none;position:fixed;top:16px;left:16px;padding:6px 12px;font-size:13px;background:transparent;color:#f44336;border:1px solid #f44336;border-radius:8px;cursor:pointer;min-height:44px;z-index:100;">
-                <span class="zh">删除账号</span><span class="en">Delete Account</span>
+                <span class="zh">删除账号</span> <span class="en">Delete Account</span><span class="ja">アカウント削除</span><span class="de">Konto löschen</span><span class="fr">Supprimer le compte</span><span class="es">Eliminar cuenta</span><span class="pt">Excluir conta</span><span class="he">מחק חשבון</span><span class="ko">계정 삭제</span><span class="it">Elimina account</span>
             </button>
         </div>
     </div>
@@ -75,24 +75,24 @@
             <!-- Tab 切换 -->
             <div style="display:flex;border-bottom:1px solid #e0e0e0;">
                 <div id="tab-contacts" class="tab-btn active" onclick="ChatApp.switchTab('contacts')" style="flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid #4caf50;">
-                    <span class="zh">联系人</span><span class="en">Contacts</span>
+                    <span class="zh">联系人</span> <span class="en">Contacts</span><span class="ja">連絡先</span><span class="de">Kontakte</span><span class="fr">Contacts</span><span class="es">Contactos</span><span class="pt">Contatos</span><span class="he">איש קשר</span><span class="ko">연락처</span><span class="it">Contatti</span>
                 </div>
                 <div id="tab-groups" class="tab-btn" onclick="ChatApp.switchTab('groups')" style="flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;">
-                    <span class="zh">群组</span><span class="en">Groups</span>
+                    <span class="zh">群组</span> <span class="en">Groups</span><span class="ja">グループ</span><span class="de">Gruppen</span><span class="fr">Groupes</span><span class="es">Grupos</span><span class="pt">Grupos</span><span class="he">קבוצות</span><span class="ko">그룹</span><span class="it">Gruppi</span>
                 </div>
             </div>
 
             <!-- 好友请求卡片 (内联) -->
             <div id="friend-request-card" style="display:none;padding:10px 12px;border-bottom:1px solid #eee;background:#f0f8ff;">
                 <div style="font-size:13px;color:#333;margin-bottom:6px;">🔔 <span id="friend-request-nick"></span> (<span id="friend-request-id"></span>)
-                    <span class="zh">请求添加好友</span><span class="en">wants to add you</span>
+                    <span class="zh">请求添加好友</span> <span class="en">wants to add you</span><span class="ja">あなたを追加します</span><span class="de">möchte dich hinzufügen</span><span class="fr">veut vous ajouter</span><span class="es">quiere agregarte</span><span class="pt">quer te adicionar</span><span class="he">רוצה להוסיף אתך</span><span class="ko">친구 추가 필수</span><span class="it">vuole aggiungerti</span>
                 </div>
                 <div style="display:flex;gap:6px;">
                     <button onclick="ChatApp._acceptFriendRequest()" style="flex:1;padding:4px 0;background:#4caf50;color:#fff;border:none;border-radius:4px;cursor:pointer;">
-                        <span class="zh">接受</span><span class="en">Accept</span>
+                        <span class="zh">接受</span> <span class="en">Accept</span><span class="ja">承諾</span><span class="de">Annehmen</span><span class="fr">Accepter</span><span class="es">Aceptar</span><span class="pt">Aceitar</span><span class="he">קבל</span><span class="ko">수락</span><span class="it">Accetta</span>
                     </button>
                     <button onclick="ChatApp._rejectFriendRequest()" style="flex:1;padding:4px 0;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;">
-                        <span class="zh">拒绝</span><span class="en">Reject</span>
+                        <span class="zh">拒绝</span> <span class="en">Reject</span><span class="ja">拒否</span><span class="de">Ablehnen</span><span class="fr">Rejeter</span><span class="es">Rechazar</span><span class="pt">Rejeitar</span><span class="he">דחה</span><span class="ko">거절</span><span class="it">Rifiuta</span>
                     </button>
                 </div>
             </div>
@@ -102,7 +102,7 @@
                     <div style="display:flex;gap:4px;">
                         <input id="add-friend-input" type="text" placeholder="" maxlength="20" style="flex:1;">
                         <button onclick="ChatApp.addFriendById()" style="padding:4px 8px;">
-                            <span class="zh">添加</span><span class="en">Add</span>
+                            <span class="zh">添加</span> <span class="en">Add</span><span class="ja">追加</span><span class="de">Hinzufügen</span><span class="fr">Ajouter</span><span class="es">Agregar</span><span class="pt">Adicionar</span><span class="he">הוסף</span><span class="ko">추가</span><span class="it">Aggiungi</span>
                         </button>
                     </div>
                 </div>
@@ -111,7 +111,7 @@
 
             <div id="group-tab" class="tab-content">
                                 <button onclick="ChatApp.showCreateGroupModal()" style="display:block;width:100%;padding:8px;margin:8px;background:#4caf50;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">
-                                    <span class="zh">+ 新建群</span><span class="en">+ New Group</span>
+                                    <span class="zh">+ 新建群</span> <span class="en">+ New Group</span><span class="ja">+ グループ作成</span><span class="de">+ Neue Gruppe</span><span class="fr">+ Nouveau groupe</span><span class="es">+ Nuevo grupo</span><span class="pt">+ Novo grupo</span><span class="he">+ קבוצה חדשה</span><span class="ko">+ 새 그룹</span><span class="it">+ Nuovo gruppo</span>
                                 </button>
                 <div id="room-list"></div>
             </div>
@@ -125,7 +125,7 @@
             <div id="chat-placeholder">
                 <div class="icon">💬</div>
                 <div>
-                    <span class="zh">选择一个联系人开始聊天</span><span class="en">Select a contact to start chatting</span>
+                    <span class="zh">选择一个联系人开始聊天</span> <span class="en">Select a contact to start chatting</span><span class="ja">連絡先を選択してチャットを開始</span><span class="de">Kontakt auswählen zum Chatten</span><span class="fr">Sélectionnez un contact pour discuter</span><span class="es">Selecciona un contacto para chatear</span><span class="pt">Selecione um contato para conversar</span><span class="he">בחר איש קשר להתחיל צ'אט</span><span class="ko">연락처를 선택하고 채팅을 시작하세요</span><span class="it">Seleziona un contatto per chattare</span>
                 </div>
             </div>
             <div id="chat-active" style="display:none; flex:1; flex-direction:column;">
@@ -138,7 +138,7 @@
                 <!-- 通话状态栏 -->
                 <div id="call-status-bar" style="display:none; align-items:center; justify-content:space-between; padding:8px 16px; background:#e8f5e9; border-bottom:1px solid #c8e6c9;">
                     <span id="call-status-text" style="font-size:13px; color:#2e7d32;">
-                        <span class="zh">通话中</span><span class="en">In call</span>
+                        <span class="zh">通话中</span> <span class="en">In call</span><span class="ja">通話中</span><span class="de">Im Gespräch</span><span class="fr">En appel</span><span class="es">En llamada</span><span class="pt">Em chamada</span><span class="he">בשיחה</span><span class="ko">통화 중</span><span class="it">In chiamata</span>
                     </span>
                     <div style="display:flex; align-items:center; gap:12px;">
                         <span id="call-status-timer" style="font-size:14px; font-weight:500; color:#1b5e20;"></span>
@@ -154,7 +154,7 @@
                     </div>
                     <textarea id="message-input" placeholder="" rows="1"></textarea>
                     <button id="send-btn" onclick="ChatApp.sendMessage()">
-                        <span class="zh">发送</span><span class="en">Send</span>
+                        <span class="zh">发送</span> <span class="en">Send</span><span class="ja">送信</span><span class="de">Senden</span><span class="fr">Envoyer</span><span class="es">Enviar</span><span class="pt">Enviar</span><span class="he">שלח</span><span class="ko">전송</span><span class="it">Invia</span>
                     </button>
                     <input type="file" id="image-upload" accept="image/*" style="display:none" onchange="ChatApp.sendImage(event)">
                     <input type="file" id="file-upload" style="display:none" onchange="ChatApp.sendFile(event)">
@@ -182,21 +182,21 @@
     <div id="create-room-modal" class="modal">
         <div class="modal-content create-group-modal">
             <h3>
-                <span class="zh">创建群组</span><span class="en">Create Group</span>
+                <span class="zh">创建群组</span> <span class="en">Create Group</span><span class="ja">グループ作成</span><span class="de">Gruppe erstellen</span><span class="fr">Créer un groupe</span><span class="es">Crear grupo</span><span class="pt">Criar grupo</span><span class="he">צור קבוצה</span><span class="ko">그룹 만들기</span><span class="it">Crea gruppo</span>
             </h3>
             <input type="text" id="room-name-input" placeholder="">
             <div id="room-member-select">
                 <p>
-                    <span class="zh">选择成员：</span><span class="en">Select members:</span>
+                    <span class="zh">选择成员：</span> <span class="en">Select members:</span><span class="ja">メンバー選択：</span><span class="de">Mitglieder auswählen:</span><span class="fr">Sélectionner membres :</span><span class="es">Seleccionar miembros:</span><span class="pt">Selecionar membros:</span><span class="he">בחר חברים:</span><span class="ko">멤버 선택:</span><span class="it">Seleziona membri:</span>
                 </p>
                 <div id="member-checklist"></div>
             </div>
             <div class="modal-actions">
                 <button class="cancel-btn" onclick="ChatApp.closeModals()">
-                    <span class="zh">取消</span><span class="en">Cancel</span>
+                    <span class="zh">取消</span> <span class="en">Cancel</span><span class="ja">キャンセル</span><span class="de">Abbrechen</span><span class="fr">Annuler</span><span class="es">Cancelar</span><span class="pt">Cancelar</span><span class="he">ביטול</span><span class="ko">취소</span><span class="it">Annulla</span>
                 </button>
                 <button class="accept-btn" onclick="ChatApp.createGroup()">
-                    <span class="zh">创建</span><span class="en">Create</span>
+                    <span class="zh">创建</span> <span class="en">Create</span><span class="ja">作成</span><span class="de">Erstellen</span><span class="fr">Créer</span><span class="es">Crear</span><span class="pt">Criar</span><span class="he">צור</span><span class="ko">만들기</span><span class="it">Crea</span>
                 </button>
             </div>
         </div>
@@ -208,7 +208,7 @@
             <p id="alert-text"></p>
             <div class="modal-actions">
                 <button class="accept-btn" onclick="ChatApp._closeAlert()">
-                    <span class="zh">确定</span><span class="en">OK</span>
+                    <span class="zh">确定</span> <span class="en">OK</span><span class="ja">OK</span><span class="de">OK</span><span class="fr">OK</span><span class="es">Aceptar</span><span class="pt">OK</span><span class="he">אוקיי</span><span class="ko">확인</span><span class="it">OK</span>
                 </button>
             </div>
         </div>
