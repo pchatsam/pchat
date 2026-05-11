@@ -8,14 +8,17 @@
     <!-- i18n: detect browser language and show/hide language spans -->
     <script>
     (function(){
+        var langs = ['zh','en','ja','de','fr','es','pt','he','ko','it'];
         var lang = (navigator.language || navigator.userLanguage || 'zh').substring(0,2);
-        if (!['zh','en'].includes(lang)) lang = 'en';
+        if (!langs.includes(lang)) lang = 'en';
         document.write('<style>');
-        document.write('.zh,.en{display:none}');
-        document.write('.lang-' + lang + ' .zh,.lang-' + lang + ' .en{display:none}');
+        for (var i = 0; i < langs.length; i++) {
+            document.write('.' + langs[i] + '{display:none}');
+        }
         document.write('.lang-' + lang + ' .' + lang + '{display:inline}');
         document.write('</style>');
         document.documentElement.className = 'lang-' + lang;
+        document.documentElement.lang = lang;
     })();
     </script>
     <!-- Local dependencies (no CDN needed) -->
