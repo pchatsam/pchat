@@ -860,11 +860,18 @@ const ChatApp = {
         const el = document.getElementById(id);
         if (id === "main-panel" || id === "create-room-modal") {
             el.style.display = "flex";
+        } else if (el.classList.contains('modal')) {
+            el.classList.add('show');
+            el.style.display = 'flex';
         } else {
             el.style.display = "block";
         }
     },
-    _hide(id) { document.getElementById(id).style.display = "none"; },
+    _hide(id) {
+        const el = document.getElementById(id);
+        el.style.display = "none";
+        el.classList.remove('show');
+    },
 
     // Loading 进度条
     _showLoading(progress, text) {

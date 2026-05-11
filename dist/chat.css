@@ -99,6 +99,10 @@ body {
     display: flex;
     flex-direction: column;
 }
+.user-info > .qr-icon {
+    align-self: flex-end;
+    margin-top: 4px;
+}
 
 #my-nickname {
     font-weight: 600;
