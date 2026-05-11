@@ -22,7 +22,7 @@ _i18n.dict = {
     'pchat.placeholder.addFriend':       { zh: '输入对方ID添加好友', en: 'Enter ID to add friend', ja: 'IDを入力して友達を追加', de: 'ID eingeben um Freund hinzuzufügen', fr: 'Entrez l\'ID pour ajouter un ami', es: 'Ingresa ID para agregar amigo', pt: 'Digite ID para adicionar amigo', he: 'הזן מזהה להוספת חבר', ko: 'ID 입력하여 친구 추가', it: 'Inserisci ID per aggiungere amico' },
     'pchat.placeholder.message':         { zh: '输入消息...', en: 'Type a message...', ja: 'メッセージを入力...', de: 'Nachricht eingeben...', fr: 'Tapez un message...', es: 'Escribe un mensaje...', pt: 'Digite uma mensagem...', he: 'הקלד הודעה...', ko: '메시지 입력...', it: 'Scrivi un messaggio...' },
     'pchat.placeholder.groupName':       { zh: '群组名称', en: 'Group name', ja: 'グループ名', de: 'Gruppenname', fr: 'Nom du groupe', es: 'Nombre del grupo', pt: 'Nome do grupo', he: 'שם קבוצה', ko: '그룹 이름', it: 'Nome gruppo' },
-    'pchat.title.copyId':                { zh: '点击复制ID', en: 'Click to copy ID', ja: 'クリックしてIDをコピー', de: 'Klicken zum ID kopieren', fr: 'Cliquez pour copier l\'ID', es: 'Click para copiar ID', pt: 'Clique para copiar ID', he: 'לחץ להעתקת מזהה', ko: 'ID 복사하려면 클릭', it: 'Clicca per copiare ID' },
+    'pchat.title.showQR':              { zh: '点击显示二维码', en: 'Click to show QR code', ja: 'クリックしてQRコードを表示', de: 'Klicken um QR-Code anzuzeigen', fr: 'Cliquez pour afficher le QR Code', es: 'Click para mostrar código QR', pt: 'Clique para mostrar código QR', he: 'לחץ להצגת קוד QR', ko: 'QR 코드를 보려면 클릭', it: 'Clicca per mostrare codice QR' },
     'pchat.title.inviteLink':            { zh: '邀请链接', en: 'Invite link', ja: '招待リンク', de: 'Einladungslink', fr: 'Lien d\'invitation', es: 'Enlace de invitación', pt: 'Link de convite', he: 'קישור הזמנה', ko: '초대 링크', it: 'Link invito' },
     'pchat.title.back':                  { zh: '返回', en: 'Back', ja: '戻る', de: 'Zurück', fr: 'Retour', es: 'Volver', pt: 'Voltar', he: 'חזור', ko: '돌아가기', it: 'Indietro' },
     'pchat.title.voiceCall':             { zh: '语音通话', en: 'Voice call', ja: 'ボイス通話', de: 'Sprachanruf', fr: 'Appel vocal', es: 'Llamada de voz', pt: 'Chamada de voz', he: 'שיחת קול', ko: '음성통화', it: 'Chiamata vocale' },
@@ -101,7 +101,7 @@ _i18n.applyUI = function() {
     s('add-friend-input', 'placeholder', t('pchat.placeholder.addFriend'));
     s('message-input', 'placeholder', t('pchat.placeholder.message'));
     s('room-name-input', 'placeholder', t('pchat.placeholder.groupName'));
-    s('my-id-display', 'title', t('pchat.title.copyId'));
+    s('my-id-display', 'title', t('pchat.title.showQR'));
     s('call-back-btn', 'title', t('pchat.title.back'));
     s('call-btn', 'title', t('pchat.title.voiceCall'));
     s('call-status-hangup', 'title', t('pchat.title.hangup'));
@@ -1104,40 +1104,83 @@ const ChatApp = {
     },
 
     // ---- Copy my ID to clipboard ----
-    copyMyId() {
-        navigator.clipboard.writeText(this.my.id).then(() => {
-            ChatApp.showAlert(_i18n.fmt('pchat.alert.idCopied', 'id', this.my.id));
-        }).catch(() => ChatApp.showAlert(_i18n.t('pchat.alert.copyFail')));
-    },
-
-    // ---- Generate invite link ----
-    generateInviteLink() {
-        const url = location.origin + location.pathname + "#invite-" + this.my.id;
-        // 尝试 navigator.clipboard（需要安全上下文），失败则用 fallback
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(url).then(() => {
-                ChatApp.showAlert(_i18n.fmt('pchat.alert.inviteCopied', 'url', url));
-            }).catch(() => this._copyFallback(url));
-        } else {
-            this._copyFallback(url);
+    // ---- Show my ID QR code ----
+    showMyQR() {
+        const container = document.getElementById('qr-canvas');
+        if (!container) return;
+        container.innerHTML = '';
+        if (typeof QRCode !== 'undefined') {
+            new QRCode(container, {
+                text: this.my.id,
+                width: 240,
+                height: 240,
+                colorDark: '#000000',
+                colorLight: '#ffffff'
+            });
         }
+        this._show('qr-modal');
     },
 
-    _copyFallback(url) {
-        // 非安全上下文下的复制 fallback
-        const ta = document.createElement('textarea');
-        ta.value = url;
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
+    closeQRModal() {
+        this._hide('qr-modal');
+    },
+
+    // ---- Scan QR code to add friend ----
+    scanStream: null,
+    scanAnimFrame: null,
+
+    async showScanModal() {
+        this._show('scan-modal');
+        const video = document.getElementById('scan-video');
+        const canvas = document.getElementById('scan-canvas');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('scan-status');
+        if (status) status.textContent = '';
+
         try {
-            document.execCommand('copy');
-            ChatApp.showAlert(_i18n.fmt('pchat.alert.inviteCopied', 'url', url));
-        } catch {
-            ChatApp.showAlert(_i18n.fmt('pchat.alert.inviteCopyManual', 'url', url));
+            this.scanStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment' }
+            });
+            video.srcObject = this.scanStream;
+            await video.play();
+
+            const scan = () => {
+                if (!video.srcObject) return;
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height);
+                if (code) {
+                    const id = code.data.trim();
+                    if (id && id !== this.my.id) {
+                        const input = document.getElementById('add-friend-input');
+                        if (input) input.value = id;
+                        this.closeScanModal();
+                        this.addContact();
+                    }
+                    return;
+                }
+                this.scanAnimFrame = requestAnimationFrame(scan);
+            };
+            this.scanAnimFrame = requestAnimationFrame(scan);
+        } catch (e) {
+            if (status) status.textContent = '无法访问相机';
         }
-        document.body.removeChild(ta);
+    },
+
+    closeScanModal() {
+        this._hide('scan-modal');
+        if (this.scanStream) {
+            this.scanStream.getTracks().forEach(t => t.stop());
+            this.scanStream = null;
+        }
+        if (this.scanAnimFrame) {
+            cancelAnimationFrame(this.scanAnimFrame);
+            this.scanAnimFrame = null;
+        }
+        const video = document.getElementById('scan-video');
+        if (video) video.srcObject = null;
     },
 
     // ---- Create group modal ----

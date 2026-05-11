@@ -68,10 +68,14 @@
             <div class="sidebar-header">
                 <div class="user-info">
                     <span id="my-nickname"></span>
-                    <span class="my-id" title="" onclick="ChatApp.copyMyId()" id="my-id-display"></span>
+                    <span class="my-id" title="" id="my-id-display" onclick="ChatApp.showMyQR()"></span>
+                    <span class="scan-btn" title="" onclick="ChatApp.showScanModal()">📷</span>
                 </div>
                 <div class="sidebar-actions">
-                    <button title="" onclick="ChatApp.generateInviteLink()">🔗</button>
+                    <button title="" onclick="ChatApp.showScanModal()">📷</button>
+                </div>
+            </div>
+
                 </div>
             </div>
 
@@ -218,6 +222,38 @@
     </div>
 
 
+    <!-- 二维码弹窗 -->
+    <div id="qr-modal" class="modal" onclick="ChatApp.closeQRModal()">
+        <div class="modal-content qr-content" onclick="event.stopPropagation()">
+            <h3 style="text-align:center;margin:0 0 12px 0;">
+                <span class="zh">我的 ID 二维码</span><span class="en">My ID QR Code</span><span class="ja">IDのQRコード</span><span class="de">Mein ID QR-Code</span><span class="fr">QR Code de mon ID</span><span class="es">Código QR de mi ID</span><span class="pt">Código QR do meu ID</span><span class="he">קוד QR שלי</span><span class="ko">내 ID QR 코드</span><span class="it">Il mio codice QR</span>
+            </h3>
+            <div id="qr-canvas" style="text-align:center;padding:16px;"></div>
+            <div class="modal-actions">
+                <button class="accept-btn" onclick="ChatApp.closeQRModal()">
+                    <span class="zh">关闭</span><span class="en">Close</span><span class="ja">閉じる</span><span class="de">Schließen</span><span class="fr">Fermer</span><span class="es">Cerrar</span><span class="pt">Fechar</span><span class="he">סגור</span><span class="ko">닫기</span><span class="it">Chiudi</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 扫码弹窗 -->
+    <div id="scan-modal" class="modal" onclick="ChatApp.closeScanModal()">
+        <div class="modal-content qr-content" onclick="event.stopPropagation()">
+            <h3 style="text-align:center;margin:0 0 12px 0;">
+                <span class="zh">扫描二维码</span><span class="en">Scan QR Code</span><span class="ja">QRコードを読み取る</span><span class="de">QR-Code scannen</span><span class="fr">Scanner le QR Code</span><span class="es">Escanear código QR</span><span class="pt">Escanear código QR</span><span class="he">סרוק קוד QR</span><span class="ko">QR 코드 스캔</span><span class="it">Scansiona codice QR</span>
+            </h3>
+            <video id="scan-video" autoplay playsinline style="width:100%;max-width:300px;display:block;margin:0 auto;border-radius:8px;"></video>
+            <canvas id="scan-canvas" hidden></canvas>
+            <p id="scan-status" style="text-align:center;margin-top:8px;color:#888;font-size:12px;"></p>
+            <div class="modal-actions">
+                <button class="accept-btn" onclick="ChatApp.closeScanModal()">
+                    <span class="zh">关闭</span><span class="en">Close</span><span class="ja">閉じる</span><span class="de">Schließen</span><span class="fr">Fermer</span><span class="es">Cerrar</span><span class="pt">Fechar</span><span class="he">סגור</span><span class="ko">닫기</span><span class="it">Chiudi</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 图片查看器 -->
     <div id="image-viewer" onclick="ChatApp.closeImageViewer(event)">
         <div id="image-viewer-toolbar">
@@ -233,6 +269,8 @@
         </div>
     </div>
 
+    <script src="./dist/qrcode.min.js"></script>
+    <script src="./dist/jsqr.min.js"></script>
     <script src="./dist/pchat.js?v=20260511i18n"></script>
 </body>
 </html>
