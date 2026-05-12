@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>查看 ICE Candidates</title>
+<style>
+body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; }
+h2 { color: #4ecca3; }
+pre { background: #16213e; padding: 15px; border-radius: 8px; white-space: pre-wrap; max-width: 700px; }
+.ok { color: #4ecca3; }
+.warn { color: #f0a500; }
+.btn { background: #4ecca3; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; margin: 10px 0; }
+</style>
+</head>
+<body>
+<h2>🔍 ICE Candidate 检测工具</h2>
+<p>点击按钮，等 3 秒后查看结果：</p>
+<button class="btn" onclick="test()">开始检测</button>
+<pre id="result">等待检测...</pre>
+
+<script>
+async function test() {
+  const result = document.getElementById('result');
+  
+  // 先请求麦克风权限（Chrome 需要这个才会查询所有网络接口）
+  try {
+    result.textContent = '正在请求麦克风权限...\n\n';
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop()); // 获取权限后立即释放
+    result.textContent = '麦克风权限已获取，正在检测 candidates...\n\n';
+  } catch (e) {
+    result.textContent = '⚠️ 未授予麦克风权限，Chrome 可能只返回部分 candidate\n\n';
+  }
+
+  const pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun.baidu.com:3478' }
+    ]
+  });
+
+  const candidates = [];
+  pc.onicecandidate = (e) => {
+    if (!e.candidate) {
+      // 收集完成
+      setTimeout(() => {
+        let txt = `共收集到 ${candidates.length} 个 candidate:\n`;
+        txt += `=".repeat(60)\n\n`;
+
+        const host = candidates.filter(c => c.type === 'host');
+        const srflx = candidates.filter(c => c.type === 'srflx');
+        const prflx = candidates.filter(c => c.type === 'prflx');
+
+        if (host.length) {
+          txt += `🏠 HOST (${host.length}个):\n`;
+          host.forEach(c => {
+            txt += `  IP: ${c.address}  端口: ${c.port}  协议: ${c.protocol}\n`;
+          });
+          txt += '\n';
+        }
+
+        if (srflx.length) {
+          txt += `✅ SRFLX/公网 (${srflx.length}个):\n`;
+          srflx.forEach(c => {
+            txt += `  IP: ${c.address}  端口: ${c.port}  协议: ${c.protocol}\n`;
+          });
+          txt += '\n';
+        }
+
+        if (host.length && !srflx.length) {
+          txt += `⚠️  警告：只有 HOST candidate，没有 SRFLX（公网）candidate\n`;
+          txt += `    这是导致 Chrome ↔ Chrome 无法连接的原因\n`;
+        }
+
+        if (host.length > 0) {
+          const mdns = host.filter(c => c.address.toLowerCase().endsWith('.local'));
+          if (mdns.length > 0) {
+            txt += `\n⚠️  发现 mDNS 地址（.local）：共 ${mdns.length} 个\n`;
+            txt += `    这是 Chrome 的隐私保护功能，混淆了真实 IP\n`;
+          }
+        }
+
+        result.textContent = txt;
+        pc.close();
+      }, 500);
+      return;
+    }
+    candidates.push(e.candidate);
+  };
+
+  pc.createDataChannel('test');
+  pc.createOffer().then(o => pc.setLocalDescription(o));
+}
+</script>
+</body>
+</html>
