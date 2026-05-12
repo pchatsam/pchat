@@ -396,7 +396,7 @@ body {
     flex-direction: row-reverse;
 }
 
-.message-row .sender-label {
+.message-row .sender-avatar {
     font-size: 12px;
     font-weight: 600;
     color: #4caf50;
@@ -406,7 +406,7 @@ body {
     padding-top: 4px;
 }
 
-.message-row.sent .sender-label {
+.message-row.sent .sender-avatar {
     color: #666;
 }
 

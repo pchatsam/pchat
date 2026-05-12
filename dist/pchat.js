@@ -2017,7 +2017,7 @@ const ChatApp = {
             const text = (msg.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
             innerContent = `<div class="content">${text}</div>`;
         }
-        const deleteBtn = `<button class="msg-delete-btn" onclick="ChatApp.deleteMessage('${msg.id}', event)" title="_i18n.t('pchat.msg.deleteTitle')>✕</button>`;
+        const deleteBtn = `<button class="msg-delete-btn" onclick="ChatApp.deleteMessage('${msg.id}', event)" title="${_i18n.t('pchat.msg.deleteTitle')}">✕</button>`;
         
         // Receipt status for sent messages
         let receiptHtml = "";
