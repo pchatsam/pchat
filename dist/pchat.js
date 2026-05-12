@@ -385,7 +385,11 @@ const PeerConn = {
         });
 
         this.peer.on("error", (err) => {
-            console.error("[PeerConn] Error:", err.type, err.message);
+            if (err.type === "peer-unavailable") {
+                console.log(`[PeerConn] ${err.message}`);
+            } else {
+                console.error(`[PeerConn] Error: ${err.type} ${err.message}`);
+            }
         });
 
         this.peer.on("disconnected", () => {
