@@ -341,13 +341,13 @@ const PeerConn = {
         const peerConfig = {
             config: {
                 iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun.baidu.com:3478' },
+                    { urls: 'stun:stun.126.com:3478' },
+                    { urls: 'stun:stun.aliyuncs.com:3478' },
+                    { urls: 'stun:stun.tencentcloudapi.com:3478' },
                     { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' },
-                    { urls: 'stun:stun3.l.google.com:19302' },
-                    { urls: 'stun:stun4.l.google.com:19302' },
                     { urls: 'stun:stun.cloudflare.com:3478' },
-                    { urls: 'stun:stun.att.net:3478' },
+                    { urls: 'stun:stun.syncthing.net:3478' },
                 ]
             }
         };
