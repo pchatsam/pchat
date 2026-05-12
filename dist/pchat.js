@@ -1990,8 +1990,16 @@ const ChatApp = {
         this._scroll();
     },
 
-    _appendMsg(msg) {
-        const list = document.getElementById("message-list");
+            // System messages (call logs, etc.) — no bubble, no delete
+        if (msg.type === "call-log") {
+            const sysDiv = document.createElement("div");
+            sysDiv.className = "system-msg";
+            sysDiv.textContent = msg.content || "";
+            list.appendChild(sysDiv);
+            this._scroll();
+            return;
+        }
+        
         const wrapper = document.createElement("div");
         wrapper.className = "message-row";
         wrapper.dataset.msgId = msg.id;
