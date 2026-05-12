@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC 网络诊断</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { font-size: 22px; margin-bottom: 16px; }
+        .section { margin-bottom: 20px; }
+        .section h2 { font-size: 16px; margin-bottom: 8px; color: #666; }
+        .result {
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .success { background: #e8f5e9; border: 1px solid #a5d6a7; color: #2e7d32; }
+        .warning { background: #fff3e0; border: 1px solid #ffcc80; color: #e65100; }
+        .error { background: #ffebee; border: 1px solid #ef9a9a; color: #c62828; }
+        .info { background: #e3f2fd; border: 1px solid #90caf9; color: #1565c0; }
+        .candidate-item {
+            padding: 6px 10px;
+            margin: 4px 0;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .host { background: #f3e5f5; border: 1px solid #ce93d8; color: #6a1b9a; }
+        .srflx { background: #e8f5e9; border: 1px solid #a5d6a7; color: #2e7d32; }
+        .relay { background: #e3f2fd; border: 1px solid #90caf9; color: #1565c0; }
+        .status {
+            font-size: 14px;
+            padding: 8px 0;
+            color: #666;
+        }
+        .tip {
+            margin-top: 16px;
+            padding: 12px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #888;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 WebRTC 网络诊断</h1>
+        <p class="status">正在测试 WebRTC 连接能力...</p>
+
+        <div class="section">
+            <h2>📋 基础信息</h2>
+            <div id="info" class="result info">检测中...</div>
+        </div>
+
+        <div class="section">
+            <h2>📡 STUN 服务器测试</h2>
+            <div id="stun-status" class="status">测试中...</div>
+            <div id="stun-result"></div>
+        </div>
+
+        <div class="section">
+            <h2>🔧 ICE Candidate 详情</h2>
+            <div id="candidates" class="status">等待结果...</div>
+        </div>
+
+        <div class="section">
+            <h2>📊 诊断结论</h2>
+            <div id="diagnosis" class="result info">等待测试结果...</div>
+        </div>
+
+        <div class="tip">
+            💡 <strong>使用说明：</strong>将本页面的截图或诊断结论发送给开发者，即可判断 WebRTC 网络连通性问题。
+        </div>
+    </div>
+
+    <script>
+        // 基础信息
+        (function() {
+            const info = document.getElementById('info');
+            const ua = navigator.userAgent;
+            let browser = '未知浏览器';
+            if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome';
+            else if (ua.includes('Edg')) browser = 'Edge';
+            else if (ua.includes('Firefox')) browser = 'Firefox';
+            else if (ua.includes('Safari')) browser = 'Safari';
+
+            const os = ua.includes('Windows') ? 'Windows' :
+                       ua.includes('Mac') ? 'macOS' :
+                       ua.includes('Android') ? 'Android' :
+                       ua.includes('iPhone') ? 'iOS' : '其他';
+
+            info.textContent = `浏览器: ${browser}\n操作系统: ${os}\n语言: ${navigator.language}\nWebRTC 支持: ${typeof RTCPeerConnection !== 'undefined' ? '✅ 支持' : '❌ 不支持'}`;
+
+            if (typeof RTCPeerConnection === 'undefined') {
+                document.getElementById('diagnosis').className = 'result error';
+                document.getElementById('diagnosis').textContent = '❌ 浏览器不支持 WebRTC';
+                document.querySelector('.status').textContent = '测试终止';
+                return;
+            }
+        })();
+
+        // STUN 测试
+        (function() {
+            const stunStatus = document.getElementById('stun-status');
+            const stunResult = document.getElementById('stun-result');
+            const candidatesDiv = document.getElementById('candidates');
+            const diagnosis = document.getElementById('diagnosis');
+
+            const stunServers = [
+                { name: '百度', url: 'stun:stun.baidu.com:3478' },
+                { name: '网易', url: 'stun:stun.126.com:3478' },
+                { name: '阿里云', url: 'stun:stun.aliyuncs.com:3478' },
+                { name: '腾讯云', url: 'stun:stun.tencentcloudapi.com:3478' },
+                { name: 'Google', url: 'stun:stun1.l.google.com:19302' },
+                { name: 'Cloudflare', url: 'stun:stun.cloudflare.com:3478' },
+                { name: 'Syncthing', url: 'stun:stun.syncthing.net:3478' },
+            ];
+
+            let allCandidates = [];
+            let srflxCount = 0;
+            let hostCount = 0;
+            let stunResults = [];
+
+            // 测试每个 STUN 服务器
+            let completed = 0;
+            const total = stunServers.length;
+
+            stunServers.forEach((server, idx) => {
+                setTimeout(() => {
+                    try {
+                        const pc = new RTCPeerConnection({
+                            iceServers: [{ urls: server.url }]
+                        });
+
+                        pc.createDataChannel('test');
+
+                        const offerTimeout = setTimeout(() => {
+                            try { pc.close(); } catch(e) {}
+                            stunResults.push({ name: server.name, result: '❌ 超时', type: 'timeout' });
+                            updateStunResults();
+                        }, 5000);
+
+                        pc.onicecandidate = (e) => {
+                            if (!e.candidate) {
+                                // ICE gathering complete for this server
+                                clearTimeout(offerTimeout);
+                                try { pc.close(); } catch(e) {}
+                                if (stunResults[idx] && stunResults[idx].type !== 'timeout') {
+                                    stunResults[idx].result = '✅ 成功';
+                                }
+                                updateStunResults();
+                            } else {
+                                if (stunResults[idx] && stunResults[idx].type === 'timeout') return;
+                                if (!stunResults[idx]) stunResults[idx] = { name: server.name, type: 'testing' };
+
+                                const c = e.candidate.candidate;
+                                const type = c.match(/typ (\w+)/)?.[1] || 'unknown';
+
+                                allCandidates.push({ server: server.name, type, candidate: c });
+
+                                if (type === 'srflx') {
+                                    srflxCount++;
+                                    stunResults[idx] = { name: server.name, result: '✅ 成功', type: 'srflx' };
+                                } else if (type === 'host') {
+                                    hostCount++;
+                                }
+
+                                updateStunResults();
+                                updateCandidates();
+                            }
+                        };
+
+                        pc.oniceconnectionstatechange = () => {
+                            if (pc.iceConnectionState === 'failed') {
+                                clearTimeout(offerTimeout);
+                                try { pc.close(); } catch(e) {}
+                                if (stunResults[idx] && stunResults[idx].type !== 'timeout') {
+                                    stunResults[idx] = { name: server.name, result: '❌ 失败', type: 'failed' };
+                                }
+                                updateStunResults();
+                            }
+                        };
+
+                        pc.createOffer().then(offer => pc.setLocalDescription(offer));
+                    } catch(err) {
+                        stunResults[idx] = { name: server.name, result: `❌ 错误: ${err.message}`, type: 'error' };
+                        updateStunResults();
+                    }
+
+                    completed++;
+                    if (completed === total) {
+                        setTimeout(() => showDiagnosis(), 1000);
+                    }
+                }, idx * 300);
+            });
+
+            function updateStunResults() {
+                stunResult.innerHTML = stunResults.map((r, i) => {
+                    if (!r) return '';
+                    if (r.type === 'timeout' || r.type === 'error' || r.type === 'failed') {
+                        return `<div class="candidate-item host">${r.name}: ${r.result}</div>`;
+                    } else if (r.result) {
+                        return `<div class="candidate-item srflx">${r.name}: ${r.result}</div>`;
+                    }
+                    return `<div class="candidate-item host">${r.name}: 测试中...</div>`;
+                }).join('');
+
+                const success = stunResults.filter(r => r && r.result && r.result.includes('✅')).length;
+                const fail = stunResults.filter(r => r && r.result && r.result.includes('❌')).length;
+                stunStatus.textContent = `已测试 ${success + fail}/${total} 个 STUN 服务器`;
+            }
+
+            function updateCandidates() {
+                const container = document.getElementById('candidates');
+                const unique = [];
+                const seen = new Set();
+                for (const c of allCandidates) {
+                    const key = `${c.server}-${c.type}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        unique.push(c);
+                    }
+                }
+
+                container.innerHTML = unique.map(c => {
+                    const cls = c.type === 'srflx' ? 'srflx' : c.type === 'relay' ? 'relay' : 'host';
+                    const label = c.type === 'srflx' ? '🌐 STUN反射' : c.type === 'relay' ? '🔄 中继' : '🖥️ 本地';
+                    return `<div class="candidate-item ${cls}">${c.server} - ${label}\n${c.candidate}</div>`;
+                }).join('') || '<div class="status">等待结果...</div>';
+            }
+
+            function showDiagnosis() {
+                const diag = document.getElementById('diagnosis');
+                const mainStatus = document.querySelector('.status');
+
+                if (srflxCount > 0) {
+                    diag.className = 'result success';
+                    diag.textContent = `✅ WebRTC 网络正常\n\n检测到 ${srflxCount} 个 STUN 反射地址\nP2P 连接应该可以正常建立`;
+                    mainStatus.textContent = '✅ 测试完成';
+                } else if (hostCount > 0) {
+                    diag.className = 'result error';
+                    diag.textContent = `❌ STUN 无法访问\n\n只检测到 ${hostCount} 个本地地址，无法获取公网映射\n\n可能原因：\n1. 防火墙阻止了 UDP 出站流量\n2. 网络环境封锁了 STUN 协议\n3. 企业/学校网络限制\n\n解决方案：\n1. 临时关闭防火墙后重试\n2. 切换到移动网络（4G/5G）\n3. 需要部署 TURN 服务器作为中继`;
+                    mainStatus.textContent = '❌ 测试完成';
+                } else {
+                    diag.className = 'result error';
+                    diag.textContent = `❌ 无法获取任何网络地址\n\n浏览器可能不支持 WebRTC 或网络异常`;
+                    mainStatus.textContent = '❌ 测试完成';
+                }
+            }
+        })();
+    </script>
+</body>
+</html>
