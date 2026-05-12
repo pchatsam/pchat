@@ -449,6 +449,16 @@ const PeerConn = {
             this.flushPending(peerId);
         });
 
+        conn.on("close", () => {
+            console.log(`[PeerConn] ${peerId} connection closed`);
+            const state = this.peers[peerId];
+            if (state) state.connected = false;
+        });
+
+        conn.on("error", (err) => {
+            console.log(`[PeerConn] ${peerId} connection error:`, err);
+        });
+
         conn.on("data", async (data) => {
             try {
                 if (!data || !data.type) { console.log(`[PeerConn] ${peerId} data ignored (no type)`, data); return; }
