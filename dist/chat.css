@@ -97,11 +97,15 @@ body {
 
 .user-info {
     display: flex;
+    align-items: center;
+}
+.user-text {
+    display: flex;
     flex-direction: column;
 }
-.user-info > .qr-icon {
-    align-self: flex-end;
-    margin-top: 4px;
+.user-id-row {
+    display: flex;
+    align-items: center;
 }
 
 #my-nickname {
@@ -118,7 +122,7 @@ body {
 .sidebar-actions button {
     background: none;
     border: none;
-    font-size: 18px;
+    font-size: 30px;
     cursor: pointer;
     margin-left: 2px;
     padding: 6px;
@@ -1246,5 +1250,5 @@ body {
         height: 28px;
     }
 }
-.qr-icon { font-size: 20px; margin-right: 8px; cursor: pointer; opacity: 0.6; }
+.qr-icon { font-size: 30px; margin-right: 8px; cursor: pointer; opacity: 0.6; }
 .qr-icon:hover { opacity: 1; }
