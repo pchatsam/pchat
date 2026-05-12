@@ -451,10 +451,11 @@ const PeerConn = {
 
         conn.on("data", async (data) => {
             try {
-                if (!data || !data.type) return;
-                console.log(`[PeerConn] ${peerId} data type=${data.type}`);
+                if (!data || !data.type) { console.log(`[PeerConn] ${peerId} data ignored (no type)`, data); return; }
+                console.log(`[PeerConn] ${peerId} data type=${data.type}`, data);
                 const state = this.peers[peerId];
                 if (data.type === "add") {
+                    console.log(`[PeerConn] ${peerId} received add request`, data);
                     ChatApp._onAddRequest(peerId, data);
                 } else if (data.type === "accept") {
                     // Peer accepted our friend request
@@ -767,11 +768,16 @@ const ChatApp = {
         this._pendingFriendRequest = { peerId, nickname, data: { publicKey: data.publicKey } };
 
         // 显示内联卡片
+        console.log(`[PeerConn] Showing friend request card for ${nickname}`);
         const card = document.getElementById('friend-request-card');
+        console.log(`[PeerConn] friend-request-card element:`, card);
         if (card) {
             document.getElementById('friend-request-nick').textContent = nickname;
             document.getElementById('friend-request-id').textContent = peerId;
             card.style.display = 'block';
+            console.log(`[PeerConn] Card display set to:`, card.style.display);
+        } else {
+            console.warn(`[PeerConn] friend-request-card not found in DOM!`);
         }
     },
 
