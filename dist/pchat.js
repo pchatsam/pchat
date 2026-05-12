@@ -338,7 +338,20 @@ const PeerConn = {
     // Initialize PeerJS instance
     init(myId, callback) {
         console.log("[PeerConn] Connecting with user ID:", myId);
-        this.peer = new Peer(myId);
+        const peerConfig = {
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' },
+                    { urls: 'stun:stun.cloudflare.com:3478' },
+                    { urls: 'stun:stun.att.net:3478' },
+                ]
+            }
+        };
+        this.peer = new Peer(myId, peerConfig);
         this.peer.on("open", (id) => {
             console.log("[PeerConn] Peer ID assigned:", id);
             if (id !== myId) {
@@ -357,6 +370,12 @@ const PeerConn = {
             }
             const state = { conn, myKey, peerKey: null, connected: false };
             this.peers[conn.peer] = state;
+            
+            // 注册 open 回调（PeerJS 要求在 connection 回调中立即注册）
+            conn.on("open", () => {
+                console.log(`[PeerConn] Connection opened from ${conn.peer}`);
+            });
+            
             this._bind(conn, conn.peer, false);
         });
 
