@@ -753,6 +753,7 @@ const ChatApp = {
     imageViewer: {
         url: null,
         zoom: 1,
+        minZoom: 1,
         rotation: 0,
         panX: 0,
         panY: 0,
@@ -761,6 +762,8 @@ const ChatApp = {
         lastY: 0,
         zoomTimer: null,
         toolbarTimer: null,
+        swipeIndex: -1,
+        swipeImages: [],
     },
 
     // ---- Popup helpers ----
@@ -2294,7 +2297,8 @@ const ChatApp = {
         }
         if (!fullData) return;
         const src = `data:${mime || 'image/jpeg'};base64,${fullData}`;
-        this.openImageViewer(src);
+        this._currentImageMsgId = msgId;
+        this.openImageViewer(src, this.activeConv ? this.activeConv.id : null);
     },
 
     async downloadAttachment(msgId) {
@@ -2611,7 +2615,7 @@ const ChatApp = {
     },
 
     // ---- Image viewer ----
-    openImageViewer(src) {
+    openImageViewer(src, convId) {
         const iv = this.imageViewer;
         iv.url = src; iv.zoom = 1; iv.rotation = 0; iv.panX = 0; iv.panY = 0; iv.dragging = false;
         const img = document.getElementById("image-viewer-img");
@@ -2623,25 +2627,85 @@ const ChatApp = {
         this._showToolbar();
         this._resetToolbarTimer();
 
+        // Collect swipeable images if convId provided
+        iv.swipeImages = [];
+        iv.swipeIndex = -1;
+        if (convId) {
+            const msgs = this.currentMessages || [];
+            const images = msgs.filter(m => m.type === 'image');
+            if (images.length > 1) {
+                iv.swipeImages = images.map(m => ({ msgId: m.id, fileId: m.fileId, mime: m.mimeType, fileData: m.fileData }));
+                // Find current image index
+                for (let i = 0; i < images.length; i++) {
+                    if (images[i].msgId === this._currentImageMsgId) {
+                        iv.swipeIndex = i;
+                        break;
+                    }
+                }
+                if (iv.swipeIndex < 0) iv.swipeIndex = 0;
+            }
+        }
+
+        // Wait for image to load so we can compute fit-to-screen zoom
+        img.onload = () => {
+            const sw = window.innerWidth;
+            const sh = window.innerHeight;
+            const iw = img.naturalWidth || sw;
+            const ih = img.naturalHeight || sh;
+            iv.minZoom = Math.min(sw / iw, sh / ih);
+            if (iv.minZoom > 0) {
+                iv.zoom = iv.minZoom;
+                img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
+                this._updateZoomDisplay();
+            }
+        };
+
         const viewer = document.getElementById("image-viewer");
         viewer.onwheel = (e) => { e.preventDefault(); const delta = e.deltaY > 0 ? -0.1 : 0.1; this._applyZoom(iv.zoom + delta, e, img); this._resetToolbarTimer(); };
 
-        // Single pointer: drag to pan
+        // Single pointer: drag to pan / swipe
+        let swipeStartX = 0, swipeStartY = 0, isSwiping = false;
         img.onpointerdown = (e) => {
             if (e.pointerType === 'touch' && e.isPrimary === false) return;
             if (e.button !== 0) return;
-            e.preventDefault(); // prevent browser scroll/zoom on touch
+            e.preventDefault();
             iv.dragging = true; iv.lastX = e.clientX; iv.lastY = e.clientY;
+            swipeStartX = e.clientX; swipeStartY = e.clientY; isSwiping = false;
             img.setPointerCapture(e.pointerId); img.style.cursor = 'grabbing';
             this._resetToolbarTimer();
         };
         img.onpointermove = (e) => {
             if (!iv.dragging) return;
-            iv.panX += e.clientX - iv.lastX; iv.panY += e.clientY - iv.lastY;
+            const dx = e.clientX - iv.lastX;
+            const dy = e.clientY - iv.lastY;
+            iv.panX += dx; iv.panY += dy;
             iv.lastX = e.clientX; iv.lastY = e.clientY;
             img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
+            // Detect swipe gesture (horizontal drag when zoom is at minimum)
+            if (Math.abs(e.clientX - swipeStartX) > Math.abs(e.clientY - swipeStartY)) isSwiping = true;
         };
-        img.onpointerup = (e) => { iv.dragging = false; img.style.cursor = 'grab'; this._resetToolbarTimer(); };
+        img.onpointerup = async (e) => {
+            iv.dragging = false; img.style.cursor = 'grab'; this._resetToolbarTimer();
+            // Check if swipe threshold met
+            const dx = e.clientX - swipeStartX;
+            const dy = e.clientY - swipeStartY;
+            if (isSwiping && Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) && iv.zoom <= iv.minZoom + 0.05 && iv.swipeImages.length > 1) {
+                // Swipe detected
+                if (dx > 0) {
+                    // Swipe right → prev image
+                    if (iv.swipeIndex > 0) {
+                        iv.swipeIndex--;
+                        await this._swipeToImage(iv.swipeImages[iv.swipeIndex]);
+                    }
+                } else {
+                    // Swipe left → next image
+                    if (iv.swipeIndex < iv.swipeImages.length - 1) {
+                        iv.swipeIndex++;
+                        await this._swipeToImage(iv.swipeImages[iv.swipeIndex]);
+                    }
+                }
+            }
+        };
         img.ondragstart = (e) => e.preventDefault();
 
         // Pinch-to-zoom for touch devices
@@ -2664,7 +2728,7 @@ const ChatApp = {
                 const center = this._touchCenter(e.touches);
                 if (lastPinchDist > 0) {
                     const scale = dist / lastPinchDist;
-                    const newZoom = Math.max(0.1, Math.min(10, iv.zoom * scale));
+                    const newZoom = Math.max(iv.minZoom, Math.min(10, iv.zoom * scale));
                     // Pan to follow center movement
                     if (lastPinchCenter && center) {
                         iv.panX += (center.x - lastPinchCenter.x);
@@ -2685,7 +2749,18 @@ const ChatApp = {
             }
         };
 
-        document.onkeydown = (e) => { if (e.key === "Escape") this.closeImageViewer(); };
+        document.onkeydown = (e) => {
+            if (e.key === "Escape") this.closeImageViewer();
+            // Arrow keys for swipe navigation
+            if (e.key === "ArrowLeft" && iv.swipeIndex > 0) {
+                iv.swipeIndex--;
+                this._swipeToImage(iv.swipeImages[iv.swipeIndex]);
+            }
+            if (e.key === "ArrowRight" && iv.swipeIndex < iv.swipeImages.length - 1) {
+                iv.swipeIndex++;
+                this._swipeToImage(iv.swipeImages[iv.swipeIndex]);
+            }
+        };
 
         // Toolbar hover: pause hide timer on mouseenter, resume on mouseleave
         const toolbar = document.getElementById("image-viewer-toolbar");
@@ -2703,6 +2778,41 @@ const ChatApp = {
     },
     _touchCenter(touches) {
         return { x: (touches[0].clientX + touches[1].clientX) / 2, y: (touches[0].clientY + touches[1].clientY) / 2 };
+    },
+    async _swipeToImage(image) {
+        const iv = this.imageViewer;
+        iv.panX = 0; iv.panY = 0; iv.rotation = 0;
+        this._currentImageMsgId = image.msgId;
+        // Load full image
+        let fullData = null;
+        if (image.fileId) {
+            const fileRecord = await DB.getFile(image.fileId);
+            if (fileRecord && fileRecord.data) {
+                fullData = fileRecord.data;
+                image.mime = fileRecord.mime || image.mime;
+            }
+        }
+        if (!fullData && image.fileData) {
+            fullData = image.fileData;
+        }
+        if (!fullData) return;
+        const src = `data:${image.mime || 'image/jpeg'};base64,${fullData}`;
+        iv.url = src;
+        iv.zoom = iv.minZoom;
+        const img = document.getElementById("image-viewer-img");
+        img.src = src;
+        img.onload = () => {
+            const sw = window.innerWidth;
+            const sh = window.innerHeight;
+            const iw = img.naturalWidth || sw;
+            const ih = img.naturalHeight || sh;
+            iv.minZoom = Math.min(sw / iw, sh / ih);
+            if (iv.minZoom > 0) {
+                iv.zoom = iv.minZoom;
+            }
+            img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
+            this._updateZoomDisplay();
+        };
     },
     _resetToolbarTimer() {
         const iv = this.imageViewer;
@@ -2726,7 +2836,7 @@ const ChatApp = {
 
     _applyZoom(newZoom, event, img) {
         const iv = this.imageViewer;
-        newZoom = Math.max(0.1, Math.min(10, newZoom));
+        newZoom = Math.max(iv.minZoom, Math.min(10, newZoom));
         if (event) {
             const oldZoom = iv.zoom;
             const imgRect = img.getBoundingClientRect();
