@@ -1847,8 +1847,10 @@ const ChatApp = {
             return;
         }
         console.log('[sendImage] OK, sending %d files', files.length);
+        // Convert FileList to array to avoid mutation during iteration
+        const fileArray = Array.from(files);
         event.target.value = "";
-        for (const file of files) {
+        for (const file of fileArray) {
             console.log('[sendImage] sending:', file.name);
             try {
                 await this._sendFileInternal(file);
