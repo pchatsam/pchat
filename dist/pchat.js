@@ -2628,8 +2628,9 @@ const ChatApp = {
 
         // Single pointer: drag to pan
         img.onpointerdown = (e) => {
-            if (e.pointerType === 'touch' && e.isPrimary === false) return; // skip second touch
+            if (e.pointerType === 'touch' && e.isPrimary === false) return;
             if (e.button !== 0) return;
+            e.preventDefault(); // prevent browser scroll/zoom on touch
             iv.dragging = true; iv.lastX = e.clientX; iv.lastY = e.clientY;
             img.setPointerCapture(e.pointerId); img.style.cursor = 'grabbing';
             this._resetToolbarTimer();
@@ -2656,8 +2657,9 @@ const ChatApp = {
             }
         };
         container.ontouchmove = (e) => {
+            // Prevent browser scroll/zoom on all touch moves in image viewer
+            e.preventDefault();
             if (e.touches.length === 2) {
-                e.preventDefault();
                 const dist = this._touchDist(e.touches);
                 const center = this._touchCenter(e.touches);
                 if (lastPinchDist > 0) {
@@ -2674,7 +2676,6 @@ const ChatApp = {
                 }
                 lastPinchDist = dist;
                 lastPinchCenter = center;
-                this._resetToolbarTimer();
             }
         };
         container.ontouchend = (e) => {
