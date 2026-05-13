@@ -753,12 +753,14 @@ const ChatApp = {
     imageViewer: {
         url: null,
         zoom: 1,
+        rotation: 0,
         panX: 0,
         panY: 0,
         dragging: false,
         lastX: 0,
         lastY: 0,
         zoomTimer: null,
+        toolbarTimer: null,
     },
 
     // ---- Popup helpers ----
@@ -2611,27 +2613,102 @@ const ChatApp = {
     // ---- Image viewer ----
     openImageViewer(src) {
         const iv = this.imageViewer;
-        iv.url = src; iv.zoom = 1; iv.panX = 0; iv.panY = 0; iv.dragging = false;
+        iv.url = src; iv.zoom = 1; iv.rotation = 0; iv.panX = 0; iv.panY = 0; iv.dragging = false;
         const img = document.getElementById("image-viewer-img");
-        img.src = src; img.style.transform = 'none'; img.style.transformOrigin = 'center center';
+        img.src = src;
+        img.style.transform = 'none';
+        img.style.transformOrigin = 'center center';
         document.getElementById("image-viewer").classList.add("show");
         this._updateZoomDisplay();
+        this._showToolbar();
+        this._resetToolbarTimer();
+
         const viewer = document.getElementById("image-viewer");
-        viewer.onwheel = (e) => { e.preventDefault(); const delta = e.deltaY > 0 ? -0.1 : 0.1; this._applyZoom(iv.zoom + delta, e, img); };
+        viewer.onwheel = (e) => { e.preventDefault(); const delta = e.deltaY > 0 ? -0.1 : 0.1; this._applyZoom(iv.zoom + delta, e, img); this._resetToolbarTimer(); };
+
+        // Single pointer: drag to pan
         img.onpointerdown = (e) => {
+            if (e.pointerType === 'touch' && e.isPrimary === false) return; // skip second touch
             if (e.button !== 0) return;
             iv.dragging = true; iv.lastX = e.clientX; iv.lastY = e.clientY;
             img.setPointerCapture(e.pointerId); img.style.cursor = 'grabbing';
+            this._resetToolbarTimer();
         };
         img.onpointermove = (e) => {
             if (!iv.dragging) return;
             iv.panX += e.clientX - iv.lastX; iv.panY += e.clientY - iv.lastY;
             iv.lastX = e.clientX; iv.lastY = e.clientY;
-            img.style.transform = `scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
+            img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
+            this._resetToolbarTimer();
         };
         img.onpointerup = (e) => { iv.dragging = false; img.style.cursor = 'grab'; };
         img.ondragstart = (e) => e.preventDefault();
+
+        // Pinch-to-zoom for touch devices
+        let lastPinchDist = 0;
+        let lastPinchCenter = null;
+        const container = document.getElementById("image-viewer-container");
+        container.ontouchstart = (e) => {
+            if (e.touches.length === 2) {
+                iv.dragging = false;
+                lastPinchDist = this._touchDist(e.touches);
+                lastPinchCenter = this._touchCenter(e.touches);
+                this._resetToolbarTimer();
+            }
+        };
+        container.ontouchmove = (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                const dist = this._touchDist(e.touches);
+                const center = this._touchCenter(e.touches);
+                if (lastPinchDist > 0) {
+                    const scale = dist / lastPinchDist;
+                    const newZoom = Math.max(0.1, Math.min(10, iv.zoom * scale));
+                    // Pan to follow center movement
+                    if (lastPinchCenter && center) {
+                        iv.panX += (center.x - lastPinchCenter.x);
+                        iv.panY += (center.y - lastPinchCenter.y);
+                    }
+                    iv.zoom = newZoom;
+                    img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
+                    this._updateZoomDisplay();
+                }
+                lastPinchDist = dist;
+                lastPinchCenter = center;
+                this._resetToolbarTimer();
+            }
+        };
+        container.ontouchend = (e) => {
+            if (e.touches.length < 2) {
+                lastPinchDist = 0;
+                lastPinchCenter = null;
+            }
+        };
+
         document.onkeydown = (e) => { if (e.key === "Escape") this.closeImageViewer(); };
+    },
+
+    _touchDist(touches) {
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    },
+    _touchCenter(touches) {
+        return { x: (touches[0].clientX + touches[1].clientX) / 2, y: (touches[0].clientY + touches[1].clientY) / 2 };
+    },
+    _resetToolbarTimer() {
+        const iv = this.imageViewer;
+        clearTimeout(iv.toolbarTimer);
+        const toolbar = document.getElementById("image-viewer-toolbar");
+        if (toolbar) toolbar.style.opacity = '1';
+        iv.toolbarTimer = setTimeout(() => {
+            if (toolbar) toolbar.style.opacity = '0';
+        }, 5000);
+    },
+    _showToolbar() {
+        const toolbar = document.getElementById("image-viewer-toolbar");
+        if (toolbar) toolbar.style.opacity = '1';
+        this._resetToolbarTimer();
     },
 
     _applyZoom(newZoom, event, img) {
@@ -2646,8 +2723,9 @@ const ChatApp = {
             iv.panY += dy * (1 / newZoom - 1 / oldZoom);
         }
         iv.zoom = newZoom;
-        img.style.transform = `scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
+        img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
         this._updateZoomDisplay();
+        this._resetToolbarTimer();
     },
 
     _updateZoomDisplay() {
@@ -2661,11 +2739,13 @@ const ChatApp = {
 
     zoomIn(event) { if (event) event.stopPropagation(); this._applyZoom(this.imageViewer.zoom + 0.2, null, document.getElementById("image-viewer-img")); },
     zoomOut(event) { if (event) event.stopPropagation(); this._applyZoom(this.imageViewer.zoom - 0.2, null, document.getElementById("image-viewer-img")); },
-    resetZoom(event) {
+    rotateImage(event) {
         if (event) event.stopPropagation();
-        const iv = this.imageViewer; iv.zoom = 1; iv.panX = 0; iv.panY = 0;
-        const img = document.getElementById("image-viewer-img"); img.style.transform = 'none';
-        this._updateZoomDisplay();
+        const iv = this.imageViewer;
+        iv.rotation = (iv.rotation + 270) % 360; // +270 mod 360 = -90 mod 360 = rotate counter-clockwise 90°
+        const img = document.getElementById("image-viewer-img");
+        img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
+        this._resetToolbarTimer();
     },
 
     closeImageViewer(event) {
@@ -2677,7 +2757,9 @@ const ChatApp = {
         viewer.classList.remove("show"); viewer.onwheel = null;
         const img = document.getElementById("image-viewer-img");
         img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null;
-        document.onkeydown = null; clearTimeout(this.imageViewer.zoomTimer);
+        const container = document.getElementById("image-viewer-container");
+        container.ontouchstart = null; container.ontouchmove = null; container.ontouchend = null;
+        document.onkeydown = null; clearTimeout(this.imageViewer.zoomTimer); clearTimeout(this.imageViewer.toolbarTimer);
     },
 
     downloadImage(event) {
