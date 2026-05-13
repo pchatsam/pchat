@@ -572,6 +572,8 @@ const PeerConn = {
                 const state = this.peers[peerId];
                 if (data.type === "add") {
                     console.log(`[PeerConn] ${peerId} received add request`, data);
+                    // Auto-close QR modal when someone scans it
+                    ChatApp.closeQRModal();
                     ChatApp._onAddRequest(peerId, data);
                 } else if (data.type === "accept") {
                     // Peer accepted our friend request
