@@ -1838,19 +1838,25 @@ const ChatApp = {
 
     // ---- Send image file (supports multiple) ----
     async sendImage(event) {
-        console.log('[sendImage] called, event:', event);
         const files = event.target.files;
-        console.log('[sendImage] files:', files, 'length:', files?.length);
-        console.log('[sendImage] activeConv:', this.activeConv);
-        if (!files || files.length === 0 || !this.activeConv) {
-            console.log('[sendImage] early return');
+        const hasFiles = files && files.length > 0;
+        const hasConv = !!this.activeConv;
+        console.log('[sendImage] files=%o files.length=%d activeConv=%o', files, files?.length, this.activeConv);
+        if (!hasFiles || !hasConv) {
+            console.log('[sendImage] ABORT: hasFiles=%s hasConv=%s', hasFiles, hasConv);
             return;
         }
+        console.log('[sendImage] OK, sending %d files', files.length);
         event.target.value = "";
         for (const file of files) {
-            console.log('[sendImage] processing file:', file.name);
-            await this._sendFileInternal(file);
+            console.log('[sendImage] sending:', file.name);
+            try {
+                await this._sendFileInternal(file);
+            } catch(err) {
+                console.error('[sendImage] error:', err);
+            }
         }
+        console.log('[sendImage] all done');
     },
 
     // ---- Send file ----
@@ -1991,9 +1997,12 @@ const ChatApp = {
         return CryptoJS.SHA256(wordArray).toString(CryptoJS.enc.Hex);
     },
     async _sendFileInternal(file) {
+        console.log('[sendFile] start, file:', file.name, 'type:', file.type);
         const peerId = this.activeConv.id;
         const state = PeerConn.peers[peerId];
+        console.log('[sendFile] state:', state, 'conn open:', state?.conn?.open);
         if (!state || !state.conn || !state.conn.open) {
+            console.log('[sendFile] peer offline, showing alert');
             this.showAlert(_i18n.t('pchat.alert.peerOfflineSend'));
             return;
         }
