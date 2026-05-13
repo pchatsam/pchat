@@ -1341,7 +1341,7 @@ const ChatApp = {
             video.srcObject = this.scanStream;
             await video.play();
 
-            const scan = () => {
+            const scan = (resolveScan) => {
                 if (!video.srcObject) return;
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
@@ -1351,14 +1351,36 @@ const ChatApp = {
                 if (code) {
                     const id = code.data.trim();
                     if (id && id !== this.my.id) {
-                        const input = document.getElementById('add-friend-input');
-                        if (input) input.value = id;
-                        this.closeScanModal();
-                        this.addContact();
+                        this.scanAnimFrame = null; // prevent further scans
+                        // Immediately add contact
+                        this._requestFriend(id);
+                        // Stop camera
+                        if (this.scanStream) {
+                            this.scanStream.getTracks().forEach(t => t.stop());
+                            this.scanStream = null;
+                        }
+                        if (video) video.srcObject = null;
+                        // Show success icon
+                        if (status) {
+                            status.textContent = '';
+                            status.style.fontSize = '64px';
+                            status.style.color = '#4caf50';
+                            status.style.marginTop = '0';
+                            status.innerHTML = '\u2713';
+                        }
+                        // After 2s, close modal
+                        setTimeout(() => {
+                            this.closeScanModal();
+                            if (status) {
+                                status.style.fontSize = '12px';
+                                status.style.color = '#888';
+                                status.style.marginTop = '8px';
+                            }
+                        }, 2000);
+                        return;
                     }
-                    return;
                 }
-                this.scanAnimFrame = requestAnimationFrame(scan);
+                this.scanAnimFrame = requestAnimationFrame(scan.bind(null, resolveScan));
             };
             this.scanAnimFrame = requestAnimationFrame(scan);
         } catch (e) {
