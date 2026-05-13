@@ -1362,21 +1362,24 @@ const ChatApp = {
                             this.scanStream = null;
                         }
                         if (video) video.srcObject = null;
-                        // Show success icon
+                        // Show success icon (green ✓), hide video
+                        if (video) {
+                            video.style.display = 'none';
+                            video.srcObject = null;
+                        }
                         if (status) {
-                            status.textContent = '';
-                            status.style.fontSize = '64px';
+                            status.textContent = '✓';
+                            status.style.fontSize = '80px';
                             status.style.color = '#4caf50';
-                            status.style.marginTop = '0';
-                            status.innerHTML = '\u2713';
                         }
                         // After 2s, close modal
                         setTimeout(() => {
                             this.closeScanModal();
+                            if (video) video.style.display = '';
                             if (status) {
+                                status.textContent = '';
                                 status.style.fontSize = '12px';
                                 status.style.color = '#888';
-                                status.style.marginTop = '8px';
                             }
                         }, 2000);
                         return;
