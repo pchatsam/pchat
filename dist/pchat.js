@@ -2195,6 +2195,11 @@ const ChatApp = {
     },
 
     _appendMsg(msg) {
+        // Push to currentMessages so image viewer can find swipeable images
+        if (this.activeConv && msg.peerId === this.activeConv.id) {
+            if (!this.currentMessages) this.currentMessages = [];
+            this.currentMessages.push(msg);
+        }
         const list = document.getElementById("message-list");
         // System messages (call logs, etc.) — no bubble, no delete
         if (msg.type === "call-log") {
@@ -2221,6 +2226,9 @@ const ChatApp = {
             const mime = (msg.fileId && msg.mimeType) ? 'image/jpeg' : (msg.mimeType || 'image/png');
             const src = `data:${mime};base64,${msg.fileData}`;
             innerContent = `<img class="img-thumb" src="${src}" data-msg-id="${msg.id}" data-file-id="${msg.fileId || ''}" data-mime="${msg.mimeType || 'image/png'}">`;
+        } else if (msg.type === "image") {
+            // Image message without fileData (migration/partial state) - show placeholder
+            innerContent = `<div class="content" style="opacity:0.5;">🖼️ ${msg.fileName || '图片'}</div>`;
         } else if (msg.type === "file" && msg.fileData) {
             const icon = this._getFileIcon(msg.fileName);
             const sizeStr = this._formatFileSize(msg.fileSize);
