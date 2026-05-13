@@ -2195,10 +2195,11 @@ const ChatApp = {
     },
 
     _appendMsg(msg) {
-        // Push to currentMessages so image viewer can find swipeable images
-        if (this.activeConv && msg.peerId === this.activeConv.id) {
-            if (!this.currentMessages) this.currentMessages = [];
-            this.currentMessages.push(msg);
+        // Push to currentMessages ONLY for new real-time messages (not during _loadMessages which already sets currentMessages)
+        if (this.activeConv && msg.peerId === this.activeConv.id && this.currentMessages) {
+            if (!this.currentMessages.find(m => m.id === msg.id)) {
+                this.currentMessages.push(msg);
+            }
         }
         const list = document.getElementById("message-list");
         // System messages (call logs, etc.) — no bubble, no delete
