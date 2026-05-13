@@ -1838,10 +1838,17 @@ const ChatApp = {
 
     // ---- Send image file (supports multiple) ----
     async sendImage(event) {
+        console.log('[sendImage] called, event:', event);
         const files = event.target.files;
-        if (!files || files.length === 0 || !this.activeConv) return;
+        console.log('[sendImage] files:', files, 'length:', files?.length);
+        console.log('[sendImage] activeConv:', this.activeConv);
+        if (!files || files.length === 0 || !this.activeConv) {
+            console.log('[sendImage] early return');
+            return;
+        }
         event.target.value = "";
         for (const file of files) {
+            console.log('[sendImage] processing file:', file.name);
             await this._sendFileInternal(file);
         }
     },
