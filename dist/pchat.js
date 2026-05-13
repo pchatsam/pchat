@@ -2639,9 +2639,8 @@ const ChatApp = {
             iv.panX += e.clientX - iv.lastX; iv.panY += e.clientY - iv.lastY;
             iv.lastX = e.clientX; iv.lastY = e.clientY;
             img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
-            this._resetToolbarTimer();
         };
-        img.onpointerup = (e) => { iv.dragging = false; img.style.cursor = 'grab'; };
+        img.onpointerup = (e) => { iv.dragging = false; img.style.cursor = 'grab'; this._resetToolbarTimer(); };
         img.ondragstart = (e) => e.preventDefault();
 
         // Pinch-to-zoom for touch devices
@@ -2706,12 +2705,17 @@ const ChatApp = {
     },
     _resetToolbarTimer() {
         const iv = this.imageViewer;
-        clearTimeout(iv.toolbarTimer);
-        const toolbar = document.getElementById("image-viewer-toolbar");
-        if (toolbar) toolbar.style.opacity = '1';
-        iv.toolbarTimer = setTimeout(() => {
-            if (toolbar) toolbar.style.opacity = '0';
-        }, 5000);
+        if (iv._toolbarPending) return; // already scheduled
+        iv._toolbarPending = true;
+        requestAnimationFrame(() => {
+            clearTimeout(iv.toolbarTimer);
+            const toolbar = document.getElementById("image-viewer-toolbar");
+            if (toolbar) toolbar.style.opacity = '1';
+            iv.toolbarTimer = setTimeout(() => {
+                if (toolbar) toolbar.style.opacity = '0';
+            }, 5000);
+            iv._toolbarPending = false;
+        });
     },
     _showToolbar() {
         const toolbar = document.getElementById("image-viewer-toolbar");
