@@ -1096,6 +1096,10 @@ const ChatApp = {
             this._showLoading(95, _i18n.t('pchat.loading.loadGroups'));
             this.groups = await DB.list("groups", this.my.aesKey);
 
+            // Migrate old image messages: store full image in files store, keep only thumbnail in message
+            this._showLoading(97, 'Migrating images...');
+            await this._migrateImageMessages();
+
             this._showLoading(100, _i18n.t('pchat.loading.done'));
 
             this._hideLoading();
@@ -1117,6 +1121,49 @@ const ChatApp = {
             if (btn) { btn.textContent = origText; btn.disabled = false; }
             this.showAlert(_i18n.t('pchat.alert.passwordError'));
         }
+    },
+
+    // ---- Migrate old image messages to new thumbnail + files store structure ----
+    async _migrateImageMessages() {
+        const messages = await DB.list("messages", this.my.aesKey);
+        const imageMsgs = messages.filter(m => m.type === "image" && m.fileData && !m.fileId);
+        if (imageMsgs.length === 0) return;
+        console.log(`[Migrate] Found ${imageMsgs.length} image messages without fileId, migrating...`);
+
+        // Use requestAnimationFrame to avoid blocking UI
+        await new Promise((resolve) => {
+            let i = 0;
+            const processNext = async () => {
+                if (i >= imageMsgs.length) {
+                    console.log(`[Migrate] Done migrating ${imageMsgs.length} image messages`);
+                    resolve();
+                    return;
+                }
+                try {
+                    const msg = imageMsgs[i];
+                    const fileId = `file_migrated_${msg.id}`;
+                    const thumb = await DB.generateThumbnail(msg.fileData, msg.mimeType || "image/png", 200);
+
+                    // Store full image in files store
+                    await DB.putFile(fileId, msg.fileData, msg.mimeType || "image/png");
+
+                    // Update message: keep only thumbnail, add fileId reference
+                    if (thumb) {
+                        msg.fileData = thumb;
+                    }
+                    msg.fileId = fileId;
+                    msg.mimeType = msg.mimeType || "image/png";
+                    await DB.put("messages", msg, this.my.aesKey);
+                    console.log(`[Migrate] Migrated msg ${msg.id} (${i + 1}/${imageMsgs.length})`);
+                } catch (e) {
+                    console.warn(`[Migrate] Failed to migrate msg ${imageMsgs[i]?.id}:`, e);
+                }
+                i++;
+                // Yield to UI thread between each migration
+                requestAnimationFrame(processNext);
+            };
+            processNext();
+        });
     },
 
     // ---- Delete account (clear all data) ----
