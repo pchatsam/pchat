@@ -2618,106 +2618,166 @@ const ChatApp = {
     openImageViewer(src, convId) {
         const iv = this.imageViewer;
         iv.url = src; iv.zoom = 1; iv.rotation = 0; iv.panX = 0; iv.panY = 0; iv.dragging = false;
+        iv.swipeImages = []; iv.swipeIndex = -1;
         const img = document.getElementById("image-viewer-img");
         img.src = src;
         img.style.transform = 'none';
         img.style.transformOrigin = 'center center';
+        img.style.transition = 'none';
         document.getElementById("image-viewer").classList.add("show");
-        this._updateZoomDisplay();
         this._showToolbar();
         this._resetToolbarTimer();
 
-        // Collect swipeable images if convId provided
-        iv.swipeImages = [];
-        iv.swipeIndex = -1;
+        // Collect swipeable images
         if (convId) {
             const msgs = this.currentMessages || [];
             const images = msgs.filter(m => m.type === 'image');
             if (images.length > 1) {
                 iv.swipeImages = images.map(m => ({ msgId: m.id, fileId: m.fileId, mime: m.mimeType, fileData: m.fileData }));
-                // Find current image index
                 for (let i = 0; i < images.length; i++) {
                     if (images[i].msgId === this._currentImageMsgId) {
-                        iv.swipeIndex = i;
-                        break;
+                        iv.swipeIndex = i; break;
                     }
                 }
                 if (iv.swipeIndex < 0) iv.swipeIndex = 0;
             }
         }
 
-        // Wait for image to load, set initial zoom to fit-to-screen
+        // Wait for image to load, then init
         img.onload = () => {
-            // CSS max-width/max-height already constrains image to fit screen.
-            // transform scale(1) = CSS rendered size = already fit-to-screen.
             iv.minZoom = 1;
             iv.zoom = 1;
-            img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
-            this._updateZoomDisplay();
+            this._initImageViewerGesture();
+        };
+    },
+
+    _initImageViewerGesture() {
+        const iv = this.imageViewer;
+        const img = document.getElementById("image-viewer-img");
+        const viewer = document.getElementById("image-viewer");
+        const container = document.getElementById("image-viewer-container");
+
+        let lastPinchDist = 0;
+        let lastPinchCenter = null;
+
+        // ---- Wheel zoom ----
+        viewer.onwheel = (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            this._applyZoom(iv.zoom + delta, e, img);
+            this._resetToolbarTimer();
         };
 
-        const viewer = document.getElementById("image-viewer");
-        viewer.onwheel = (e) => { e.preventDefault(); const delta = e.deltaY > 0 ? -0.1 : 0.1; this._applyZoom(iv.zoom + delta, e, img); this._resetToolbarTimer(); };
+        // ---- Pointer drag: pan or swipe ----
+        let dragStartX = 0, dragStartPanX = 0;
+        let isDragging = false;
 
-        // Single pointer: drag to pan / swipe
-        let swipeStartX = 0, swipeStartY = 0, isSwiping = false;
         img.onpointerdown = (e) => {
             if (e.pointerType === 'touch' && e.isPrimary === false) return;
             if (e.button !== 0) return;
             e.preventDefault();
-            iv.dragging = true; iv.lastX = e.clientX; iv.lastY = e.clientY;
-            swipeStartX = e.clientX; swipeStartY = e.clientY; isSwiping = false;
-            img.setPointerCapture(e.pointerId); img.style.cursor = 'grabbing';
+            isDragging = true;
+            dragStartX = e.clientX;
+            dragStartPanX = iv.panX;
+            iv.lastX = e.clientX; iv.lastY = e.clientY;
+            img.setPointerCapture(e.pointerId);
+            img.style.cursor = 'grabbing';
+            img.style.transition = 'none';
             this._resetToolbarTimer();
         };
+
         img.onpointermove = (e) => {
-            if (!iv.dragging) return;
-            const dx = e.clientX - iv.lastX;
-            const dy = e.clientY - iv.lastY;
-            iv.panX += dx; iv.panY += dy;
+            if (!isDragging) return;
+            const totalDx = e.clientX - dragStartX;
+            const totalDy = e.clientY - iv.lastY;
+
+            // If zoomed in: free pan
+            if (iv.zoom > iv.minZoom + 0.01) {
+                iv.panX += e.clientX - iv.lastX;
+                iv.panY += e.clientY - iv.lastY;
+                iv.lastX = e.clientX; iv.lastY = e.clientY;
+                this._updateImageTransform();
+                return;
+            }
+
+            // At minZoom: horizontal swipe with peek
+            // Allow some diagonal movement but clamp vertical
+            const clampY = 0; // no vertical movement at minZoom
+            iv.panY = clampY;
+            // Horizontal drag with resistance
+            const resistance = iv.swipeImages.length > 1 ? 0.8 : 0.3;
+            iv.panX = dragStartPanX + totalDx * resistance;
             iv.lastX = e.clientX; iv.lastY = e.clientY;
-            img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
-            // Detect swipe gesture (horizontal drag when zoom is at minimum)
-            if (Math.abs(e.clientX - swipeStartX) > Math.abs(e.clientY - swipeStartY)) isSwiping = true;
+            this._updateImageTransform();
         };
+
         img.onpointerup = async (e) => {
-            iv.dragging = false; img.style.cursor = 'grab'; this._resetToolbarTimer();
-            // Check if swipe threshold met
-            const dx = e.clientX - swipeStartX;
-            const dy = e.clientY - swipeStartY;
-            if (isSwiping && Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) && iv.zoom <= iv.minZoom + 0.05 && iv.swipeImages.length > 1) {
-                // Swipe detected
-                if (dx > 0) {
-                    // Swipe right → prev image
-                    if (iv.swipeIndex > 0) {
-                        iv.swipeIndex--;
-                        await this._swipeToImage(iv.swipeImages[iv.swipeIndex]);
-                    }
-                } else {
-                    // Swipe left → next image
+            isDragging = false;
+            img.style.cursor = 'grab';
+            img.style.transition = 'none';
+            this._resetToolbarTimer();
+
+            const totalDx = e.clientX - dragStartX;
+
+            // Zoomed in: just stop panning
+            if (iv.zoom > iv.minZoom + 0.01) {
+                return;
+            }
+
+            // At minZoom: decide swipe or bounce back
+            const hasSwipe = iv.swipeImages.length > 1;
+
+            if (hasSwipe && Math.abs(totalDx) > 80) {
+                // Swipe: animate to next/prev
+                const goingLeft = totalDx < 0;
+                img.style.transition = 'transform 0.3s ease';
+                iv.panX = goingLeft ? -window.innerWidth : window.innerWidth;
+                this._updateImageTransform();
+                await new Promise(r => setTimeout(r, 300));
+                // Load next/prev image
+                if (goingLeft) {
                     if (iv.swipeIndex < iv.swipeImages.length - 1) {
                         iv.swipeIndex++;
-                        await this._swipeToImage(iv.swipeImages[iv.swipeIndex]);
+                        await this._swipeToImage(iv.swipeImages[iv.swipeIndex], window.innerWidth);
+                    } else {
+                        // At end, bounce back
+                        iv.panX = 0;
+                        img.style.transition = 'transform 0.3s ease';
+                        this._updateImageTransform();
+                    }
+                } else {
+                    if (iv.swipeIndex > 0) {
+                        iv.swipeIndex--;
+                        await this._swipeToImage(iv.swipeImages[iv.swipeIndex], -window.innerWidth);
+                    } else {
+                        // At start, bounce back
+                        iv.panX = 0;
+                        img.style.transition = 'transform 0.3s ease';
+                        this._updateImageTransform();
                     }
                 }
+            } else {
+                // Not enough drag: spring back
+                iv.panX = 0;
+                iv.panY = 0;
+                img.style.transition = 'transform 0.3s ease';
+                this._updateImageTransform();
             }
         };
+
         img.ondragstart = (e) => e.preventDefault();
 
-        // Pinch-to-zoom for touch devices
-        let lastPinchDist = 0;
-        let lastPinchCenter = null;
-        const container = document.getElementById("image-viewer-container");
+        // ---- Pinch-to-zoom ----
         container.ontouchstart = (e) => {
             if (e.touches.length === 2) {
-                iv.dragging = false;
+                isDragging = false;
                 lastPinchDist = this._touchDist(e.touches);
                 lastPinchCenter = this._touchCenter(e.touches);
+                img.style.transition = 'none';
                 this._resetToolbarTimer();
             }
         };
         container.ontouchmove = (e) => {
-            // Prevent browser scroll/zoom on all touch moves in image viewer
             e.preventDefault();
             if (e.touches.length === 2) {
                 const dist = this._touchDist(e.touches);
@@ -2725,13 +2785,12 @@ const ChatApp = {
                 if (lastPinchDist > 0) {
                     const scale = dist / lastPinchDist;
                     const newZoom = Math.max(iv.minZoom, Math.min(10, iv.zoom * scale));
-                    // Pan to follow center movement
                     if (lastPinchCenter && center) {
                         iv.panX += (center.x - lastPinchCenter.x);
                         iv.panY += (center.y - lastPinchCenter.y);
                     }
                     iv.zoom = newZoom;
-                    img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
+                    this._updateImageTransform();
                     this._updateZoomDisplay();
                 }
                 lastPinchDist = dist;
@@ -2745,26 +2804,32 @@ const ChatApp = {
             }
         };
 
+        // ---- Keyboard ----
         document.onkeydown = (e) => {
             if (e.key === "Escape") this.closeImageViewer();
-            // Arrow keys for swipe navigation
             if (e.key === "ArrowLeft" && iv.swipeIndex > 0) {
                 iv.swipeIndex--;
-                this._swipeToImage(iv.swipeImages[iv.swipeIndex]);
+                this._swipeToImage(iv.swipeImages[iv.swipeIndex], -window.innerWidth);
             }
             if (e.key === "ArrowRight" && iv.swipeIndex < iv.swipeImages.length - 1) {
                 iv.swipeIndex++;
-                this._swipeToImage(iv.swipeImages[iv.swipeIndex]);
+                this._swipeToImage(iv.swipeImages[iv.swipeIndex], window.innerWidth);
             }
         };
 
-        // Toolbar hover: pause hide timer on mouseenter, resume on mouseleave
+        // ---- Toolbar hover pause ----
         const toolbar = document.getElementById("image-viewer-toolbar");
         toolbar.onmouseenter = () => { clearTimeout(iv.toolbarTimer); };
         toolbar.onmouseleave = () => { this._resetToolbarTimer(); };
 
-        // Mouse move on viewer resets toolbar timer
+        // ---- Mouse move resets toolbar timer ----
         viewer.onmousemove = () => { this._resetToolbarTimer(); };
+    },
+
+    _updateImageTransform() {
+        const iv = this.imageViewer;
+        const img = document.getElementById("image-viewer-img");
+        img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
     },
 
     _touchDist(touches) {
@@ -2775,9 +2840,9 @@ const ChatApp = {
     _touchCenter(touches) {
         return { x: (touches[0].clientX + touches[1].clientX) / 2, y: (touches[0].clientY + touches[1].clientY) / 2 };
     },
-    async _swipeToImage(image) {
+    async _swipeToImage(image, entryX) {
         const iv = this.imageViewer;
-        iv.panX = 0; iv.panY = 0; iv.rotation = 0;
+        iv.panX = entryX || 0; iv.panY = 0; iv.rotation = 0; iv.zoom = iv.minZoom;
         this._currentImageMsgId = image.msgId;
         // Load full image
         let fullData = null;
@@ -2796,12 +2861,14 @@ const ChatApp = {
         iv.url = src;
         const img = document.getElementById("image-viewer-img");
         img.src = src;
-        img.onload = () => {
-            iv.minZoom = 1;
-            iv.zoom = 1;
-            img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
-            this._updateZoomDisplay();
-        };
+        // Set initial position (off-screen entry)
+        this._updateImageTransform();
+        // Animate to center
+        img.style.transition = 'transform 0.3s ease';
+        // Force reflow
+        void img.offsetWidth;
+        iv.panX = 0;
+        this._updateImageTransform();
     },
     _resetToolbarTimer() {
         const iv = this.imageViewer;
