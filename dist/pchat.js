@@ -2639,7 +2639,7 @@ const ChatApp = {
             if (!iv.dragging) return;
             iv.panX += e.clientX - iv.lastX; iv.panY += e.clientY - iv.lastY;
             iv.lastX = e.clientX; iv.lastY = e.clientY;
-            img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
+            img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
         };
         img.onpointerup = (e) => { iv.dragging = false; img.style.cursor = 'grab'; this._resetToolbarTimer(); };
         img.ondragstart = (e) => e.preventDefault();
@@ -2671,7 +2671,7 @@ const ChatApp = {
                         iv.panY += (center.y - lastPinchCenter.y);
                     }
                     iv.zoom = newZoom;
-                    img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
+                    img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
                     this._updateZoomDisplay();
                 }
                 lastPinchDist = dist;
@@ -2736,7 +2736,7 @@ const ChatApp = {
             iv.panY += dy * (1 / newZoom - 1 / oldZoom);
         }
         iv.zoom = newZoom;
-        img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
+        img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
         this._updateZoomDisplay();
         this._resetToolbarTimer();
     },
@@ -2757,7 +2757,7 @@ const ChatApp = {
         const iv = this.imageViewer;
         iv.rotation = (iv.rotation + 90) % 360;
         const img = document.getElementById("image-viewer-img");
-        img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
+        img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
         this._resetToolbarTimer();
     },
 
