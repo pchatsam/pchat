@@ -155,9 +155,41 @@ const Crypto = {
         return kp;
     },
 
+    async encryptChunks(pubKeyPem, plaintext) {
+        // RSA-OAEP 2048 max ~190 bytes, use 180 byte chunks for safety
+        const pub = forge.pki.publicKeyFromPem(pubKeyPem);
+        const byteString = forge.util.encodeUtf8(plaintext);
+        const CHUNK_SIZE = 180;
+        const chunks = [];
+        for (let i = 0; i < byteString.length; i += CHUNK_SIZE) {
+            const chunk = byteString.substring(i, i + CHUNK_SIZE);
+            const enc = pub.encrypt(chunk, 'RSA-OAEP', { md: forge.md.sha256.create() });
+            chunks.push(forge.util.encode64(enc));
+        }
+        return chunks.join('|');
+    },
+
+    async decryptChunks(privKeyPem, ciphertext) {
+        const priv = forge.pki.privateKeyFromPem(privKeyPem);
+        const parts = ciphertext.split('|');
+        let result = '';
+        for (const part of parts) {
+            const enc = forge.util.decode64(part);
+            const dec = priv.decrypt(enc, 'RSA-OAEP', { md: forge.md.sha256.create() });
+            result += forge.util.decodeUtf8(dec);
+        }
+        return result;
+    },
+
     async encryptWithPubkey(pubKeyPem, plaintext) {
         const fp = Crypto.keyFingerprint(pubKeyPem);
         console.log(`[Crypto] Encrypt with pubkey fp=${fp} pemPrefix=${pubKeyPem.substring(0, 26)}...`);
+        // Use chunked encryption for long messages
+        const byteLen = forge.util.encodeUtf8(plaintext).length;
+        if (byteLen > 150) {
+            console.log(`[Crypto] Using chunked encryption (${byteLen} bytes)`);
+            return this.encryptChunks(pubKeyPem, plaintext);
+        }
         const pub = forge.pki.publicKeyFromPem(pubKeyPem);
         // 将 UTF-16 字符串转为 byte string（支持中文）
         const byteString = forge.util.encodeUtf8(plaintext);
@@ -170,6 +202,12 @@ const Crypto = {
     async decryptWithPrivkey(privKeyPem, ciphertextB64) {
         const fp = Crypto.keyFingerprint(privKeyPem);
         console.log(`[Crypto] Decrypt with privkey fp=${fp} pemPrefix=${privKeyPem.substring(0, 30)}...`);
+        // If ciphertext contains '|', it's chunked
+        if (ciphertextB64.includes('|')) {
+            console.log(`[Crypto] Using chunked decryption`);
+            return this.decryptChunks(privKeyPem, ciphertextB64);
+        }
+        // Original single-chunk decryption
         const priv = forge.pki.privateKeyFromPem(privKeyPem);
         // 从私钥派生公钥，确认公私钥是否匹配
         const pubFromPriv = forge.pki.setRsaPublicKey(priv.n, priv.e);
@@ -244,7 +282,7 @@ function base64ToUint8(b64) {
 // ==================== IndexedDB ====================
 const DB = {
     NAME: "MindRenderPChat",
-    VER: 1,
+    VER: 2,
     db: null,
 
     async open() {
@@ -267,6 +305,10 @@ const DB = {
                     ms.createIndex("timestamp", "timestamp", { unique: false });
                 }
                 if (!db.objectStoreNames.contains("groups")) db.createObjectStore("groups", { keyPath: "id" });
+                // New: files store for full-size images (not encrypted, keyPath = id)
+                if (!db.objectStoreNames.contains("files")) {
+                    db.createObjectStore("files", { keyPath: "id" });
+                }
             };
             req.onsuccess = (e) => { this.db = e.target.result; resolve(this.db); };
             req.onerror = () => reject(req.error);
@@ -323,6 +365,47 @@ const DB = {
                 resolve(results);
             };
             req.onerror = () => reject(req.error);
+        });
+    },
+
+    // ---- Store raw file data (not encrypted, separate store) ----
+    async putFile(fileId, base64Data, mime) {
+        const tx = this.db.transaction("files", "readwrite");
+        const store = tx.objectStore("files");
+        store.put({ id: fileId, data: base64Data, mime: mime || "image/png", ts: Date.now() });
+        return new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
+    },
+
+    async getFile(fileId) {
+        const req = this._store("files").get(fileId);
+        return new Promise((resolve) => {
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+        });
+    },
+
+    async deleteFile(fileId) {
+        this.db.transaction("files", "readwrite").objectStore("files").delete(fileId);
+    },
+
+    // ---- Generate thumbnail from base64 image ----
+    async generateThumbnail(base64Data, mime, maxDim) {
+        maxDim = maxDim || 200;
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement("canvas");
+                let w = img.width, h = img.height;
+                if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+                else { w = Math.round(w * maxDim / h); h = maxDim; }
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL("image/jpeg", 0.7).split(",")[1]);
+            };
+            img.onerror = () => resolve(null);
+            img.src = `data:${mime || "image/png"};base64,${base64Data}`;
         });
     },
 };
@@ -510,12 +593,14 @@ const PeerConn = {
                         console.log(`[PeerConn] Decrypting from ${peerId}, myKey privFp=${Crypto.keyFingerprint(state.myKey.privateKey)}`);
 
 
-                        try { content = await Crypto.decryptWithPrivkey(state.myKey.privateKey, data.content); }
+                        try { content = await Crypto.decryptChunks(state.myKey.privateKey, data.content); }
                         catch(e) { console.warn(`[PeerConn] RSA decrypt failed for ${peerId}, falling back to plaintext:`, e.message, '| privKeyLen:', state.myKey.privateKey.length, '| dataLen:', data.content.length); }
                     } else {
                         console.log(`[PeerConn] Not decrypting from ${peerId}, encrypted=${data.encrypted}, hasMyKey=${!!(state && state.myKey)}`);
                     }
                     ChatApp.onChatMsg(peerId, content, data.ts);
+                    // Dispatch custom event for extensions
+                    window.dispatchEvent(new CustomEvent('pchat-message', { detail: { peerId, content, ts: data.ts } }));
                     // Auto-send read receipt
                     if (state && state.conn && state.conn.open && data.id) {
                         state.conn.send({ type: "receipt", msgId: data.id });
@@ -563,7 +648,7 @@ const PeerConn = {
         let sendContent = content;
         if (s.peerKey) {
             console.log(`[PeerConn] Encrypting for ${peerId}, peerKey fp=${Crypto.keyFingerprint(s.peerKey)}`);
-            try { sendContent = await Crypto.encryptWithPubkey(s.peerKey, content); }
+            try { sendContent = await Crypto.encryptChunks(s.peerKey, content); }
             catch(e) { console.warn('[PeerConn] Encrypt failed:', e.message); }
         } else {
             console.log(`[PeerConn] No peerKey for ${peerId}, sending plaintext`);
@@ -581,7 +666,7 @@ const PeerConn = {
         for (const m of pending) {
             let sendContent = m.content;
             if (state.peerKey) {
-                try { sendContent = await Crypto.encryptWithPubkey(state.peerKey, m.content); }
+                try { sendContent = await Crypto.encryptChunks(state.peerKey, m.content); }
                 catch(e) { console.warn('[PeerConn] Flush encrypt failed:', e.message); }
             }
             state.conn.send({ type: "chat", id: m.id, content: sendContent, ts: m.ts, encrypted: sendContent !== m.content });
@@ -1427,7 +1512,12 @@ const ChatApp = {
         if (!content || typeof content === 'string' && !content.trim()) return;
         const now = ts || Date.now();
         const id = `msg_${peerId}_${now}_${Date.now()}`;
-        const msg = { id, peerId, content, ts: now, direction: "received", fromId: peerId };
+        
+        // Check for HTML marker
+        const isHtml = content.startsWith('[HTML]');
+        const rawContent = isHtml ? content.substring(6) : content;
+        
+        const msg = { id, peerId, content: rawContent, ts: now, direction: "received", fromId: peerId, isHtml };
         DB.put("messages", msg, this.my.aesKey).then(() => {
             if (this.activeConv && this.activeConv.id === peerId) {
                 this._appendMsg(msg);
@@ -1435,7 +1525,7 @@ const ChatApp = {
         });
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact) {
-            contact.lastMessage = { content, ts: now, fromId: peerId };
+            contact.lastMessage = { content: rawContent, ts: now, fromId: peerId, isHtml };
             this.saveContact(contact);
         }
         if (!(this.activeConv && this.activeConv.id === peerId)) {
@@ -1480,6 +1570,16 @@ const ChatApp = {
         const conv = msgs.filter(m => m.peerId === convId).sort((a, b) => a.ts - b.ts);
         const container = document.getElementById("message-list");
         container.innerHTML = "";
+        container.onclick = (e) => {
+            const img = e.target.closest('.img-thumb');
+            if (img) {
+                const msgEl = img.closest('.message-row');
+                const msgId = msgEl?.dataset?.msgId || img.dataset.msgId;
+                const fileId = img.dataset.fileId;
+                this._openImageFromDb(msgId, fileId, img.dataset.mime);
+                return;
+            }
+        };
         for (const m of conv) this._appendMsg(m);
         this._scroll();
     },
@@ -1575,6 +1675,18 @@ const ChatApp = {
 
         const now = Date.now();
         const id = `msg_${peerId}_${now}_${Date.now()}`;
+
+        // For images: generate thumbnail, store full in files store
+        let storedData = fullBase64;
+        let storedFileId = null;
+        if (info.isImage) {
+            storedFileId = d.fileId;
+            const thumb = await DB.generateThumbnail(fullBase64, info.mime, 200);
+            storedData = thumb || fullBase64;
+            // Store full image in unencrypted files store
+            await DB.putFile(d.fileId, fullBase64, info.mime);
+        }
+
         const msg = {
             id,
             peerId,
@@ -1585,7 +1697,8 @@ const ChatApp = {
             fileName: info.name,
             mimeType: info.mime,
             fileSize: info.size,
-            fileData: fullBase64,
+            fileId: storedFileId,
+            fileData: storedData,
         };
 
         // Store in DB
@@ -1616,6 +1729,10 @@ const ChatApp = {
         const content = input.value.trim();
         if (!content || !this.activeConv) return;
 
+        // Check for HTML content marker
+        const isHtml = content.startsWith('[HTML]');
+        const rawContent = isHtml ? content.substring(6) : content;
+
         const now = Date.now();
         const { type, id: convId } = this.activeConv;
 
@@ -1633,12 +1750,12 @@ const ChatApp = {
                     const sent = await PeerConn.send(memberId, content, msgId);
                     receipts[memberId] = null;
                     // 更新每个联系人的最后消息
-                    contact.lastMessage = { content, ts: now, fromId: this.my.id };
+                    contact.lastMessage = { content: rawContent, ts: now, fromId: this.my.id, isHtml };
                     this.saveContact(contact);
                 }
             }
             // 存一条汇总消息
-            const msg = { id: msgId, peerId: convId, content, ts: now, direction: "sent", fromId: this.my.id, receipts };
+            const msg = { id: msgId, peerId: convId, content: rawContent, ts: now, direction: "sent", fromId: this.my.id, receipts, isHtml };
             await DB.put("messages", msg, this.my.aesKey);
             this._appendMsg(msg);
             this._renderContacts();
@@ -1652,13 +1769,13 @@ const ChatApp = {
             }
             const id = `msg_${convId}_${now}`;
             const sent = await PeerConn.send(convId, content, id);
-            const msg = { id, peerId: convId, content, ts: now, direction: "sent", fromId: this.my.id, sent: sent };
+            const msg = { id, peerId: convId, content: rawContent, ts: now, direction: "sent", fromId: this.my.id, sent: sent, isHtml: isHtml };
             DB.put("messages", msg, this.my.aesKey).then(() => {
                 this._appendMsg(msg);
             });
 
             if (contact) {
-                contact.lastMessage = { content, ts: now, fromId: this.my.id };
+                contact.lastMessage = { content: rawContent, ts: now, fromId: this.my.id, isHtml };
                 this.saveContact(contact);
             }
             this._renderContacts();
@@ -1667,12 +1784,14 @@ const ChatApp = {
         }
     },
 
-    // ---- Send image file ----
+    // ---- Send image file (supports multiple) ----
     async sendImage(event) {
-        const file = event.target.files[0];
-        if (!file || !this.activeConv) return;
+        const files = event.target.files;
+        if (!files || files.length === 0 || !this.activeConv) return;
         event.target.value = "";
-        await this._sendFileInternal(file);
+        for (const file of files) {
+            await this._sendFileInternal(file);
+        }
     },
 
     // ---- Send file ----
@@ -1834,9 +1953,17 @@ const ChatApp = {
 
                 console.log(`[File] Sending ${file.name} (${file.size}B base64=${base64.length}, ${totalChunks} chunks)`);
 
+                // For images: generate thumbnail, store full image in files store
+                let thumbData = null;
+                if (isImage) {
+                    thumbData = await DB.generateThumbnail(base64, file.type, 200);
+                    // Store full image in unencrypted files store
+                    await DB.putFile(fileId, base64, file.type);
+                }
+
                 // Also display in sender's chat window immediately
                 const now = Date.now();
-                const id = `msg_${peerId}_${now}`;
+                const id = `msg_${peerId}_${now}_${Math.random().toString(36).slice(2,6)}`;
                 const sentMsg = {
                     id,
                     peerId,
@@ -1847,7 +1974,9 @@ const ChatApp = {
                     fileName: file.name,
                     mimeType: file.type,
                     fileSize: file.size,
-                    fileData: base64,
+                    fileId: isImage ? fileId : null,
+                    // For images: store only thumbnail in message (not full base64)
+                    fileData: isImage ? (thumbData || base64) : base64,
                 };
 
                 // Save to DB and display
@@ -1980,7 +2109,8 @@ const ChatApp = {
             if (img) {
                 const msgEl = img.closest('.message-row');
                 const msgId = msgEl?.dataset?.msgId || img.dataset.msgId;
-                this._openImageFromDb(msgId, img.dataset.mime);
+                const fileId = img.dataset.fileId;
+                this._openImageFromDb(msgId, fileId, img.dataset.mime);
                 return;
             }
             const fileAtt = e.target.closest('.file-attachment');
@@ -2017,8 +2147,10 @@ const ChatApp = {
         const time = this._formatTime(msg.ts);
         let innerContent = "";
         if (msg.type === "image" && msg.fileData) {
-            const src = `data:${msg.mimeType || 'image/png'};base64,${msg.fileData}`;
-            innerContent = `<img class="img-thumb" src="${src}" data-msg-id="${msg.id}" data-mime="${msg.mimeType || 'image/png'}">`;
+            // New messages: fileData is JPEG thumbnail; old messages: full original image
+            const mime = (msg.fileId && msg.mimeType) ? 'image/jpeg' : (msg.mimeType || 'image/png');
+            const src = `data:${mime};base64,${msg.fileData}`;
+            innerContent = `<img class="img-thumb" src="${src}" data-msg-id="${msg.id}" data-file-id="${msg.fileId || ''}" data-mime="${msg.mimeType || 'image/png'}">`;
         } else if (msg.type === "file" && msg.fileData) {
             const icon = this._getFileIcon(msg.fileName);
             const sizeStr = this._formatFileSize(msg.fileSize);
@@ -2028,7 +2160,7 @@ const ChatApp = {
             const durStr = dur > 0 ? `${Math.floor(dur)}s` : _i18n.t('pchat.msg.voice');
             innerContent = `<div class="voice-msg" onclick="ChatApp.playVoice('${msg.id}', this)"><span class="voice-icon">🔊</span><span class="voice-duration">${durStr}</span></div>`;
         } else {
-            const text = (msg.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const text = msg.isHtml ? (msg.content || "") : (msg.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
             innerContent = `<div class="content">${text}</div>`;
         }
         const deleteBtn = `<button class="msg-delete-btn" onclick="ChatApp.deleteMessage('${msg.id}', event)" title="${_i18n.t('pchat.msg.deleteTitle')}">✕</button>`;
@@ -2084,17 +2216,54 @@ const ChatApp = {
         return size.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
     },
 
-    async _openImageFromDb(msgId, mime) {
-        const msg = await DB.get("messages", msgId, this.my.aesKey);
-        if (!msg || !msg.fileData) return;
-        const src = `data:${mime || msg.mimeType || 'image/png'};base64,${msg.fileData}`;
+    async _openImageFromDb(msgId, fileId, mime) {
+        // Try to load full image from files store directly
+        let fullData = null;
+        if (fileId) {
+            const fileRecord = await DB.getFile(fileId);
+            if (fileRecord && fileRecord.data) {
+                fullData = fileRecord.data;
+                mime = fileRecord.mime || mime;
+            }
+        }
+        // Fallback: decrypt message and use fileData (old messages may have full image)
+        if (!fullData) {
+            const msg = await DB.get("messages", msgId, this.my.aesKey);
+            if (msg) {
+                if (msg.fileId && !fileId) {
+                    const fileRecord2 = await DB.getFile(msg.fileId);
+                    if (fileRecord2 && fileRecord2.data) {
+                        fullData = fileRecord2.data;
+                        mime = fileRecord2.mime || mime;
+                    }
+                }
+                if (!fullData && msg.fileData) {
+                    fullData = msg.fileData;
+                    mime = mime || msg.mimeType;
+                }
+            }
+        }
+        if (!fullData) return;
+        const src = `data:${mime || 'image/jpeg'};base64,${fullData}`;
         this.openImageViewer(src);
     },
 
     async downloadAttachment(msgId) {
         const msg = await DB.get("messages", msgId, this.my.aesKey);
-        if (!msg || !msg.fileData) return;
-        const blob = await this._base64ToBlob(msg.fileData, msg.mimeType || 'application/octet-stream');
+        if (!msg) return;
+        
+        // For images: try to get full image from files store
+        let data = msg.fileData;
+        let mime = msg.mimeType || 'application/octet-stream';
+        if (msg.type === "image" && msg.fileId) {
+            const fileRecord = await DB.getFile(msg.fileId);
+            if (fileRecord && fileRecord.data) {
+                data = fileRecord.data;
+                mime = fileRecord.mime || mime;
+            }
+        }
+        if (!data) return;
+        const blob = await this._base64ToBlob(data, mime);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = msg.fileName || 'download'; a.click();
@@ -2373,6 +2542,10 @@ const ChatApp = {
         if (event) { event.stopPropagation(); event.preventDefault(); }
         const msg = await DB.get("messages", msgId, this.my.aesKey);
         if (!msg) return;
+        // Delete associated file from files store if image
+        if (msg.type === "image" && msg.fileId) {
+            await DB.deleteFile(msg.fileId);
+        }
         try {
             const tx = DB.db.transaction("messages", "readwrite");
             const store = tx.objectStore("messages");
@@ -2549,3 +2722,6 @@ const ChatApp = {
 };
 
 document.addEventListener("DOMContentLoaded", () => ChatApp.init());
+
+// Expose to window for extension hooks
+window.ChatApp = ChatApp;
