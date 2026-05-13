@@ -2646,18 +2646,14 @@ const ChatApp = {
             }
         }
 
-        // Wait for image to load so we can compute fit-to-screen zoom
+        // Wait for image to load, set initial zoom to fit-to-screen
         img.onload = () => {
-            const sw = window.innerWidth;
-            const sh = window.innerHeight;
-            const iw = img.naturalWidth || sw;
-            const ih = img.naturalHeight || sh;
-            iv.minZoom = Math.min(sw / iw, sh / ih);
-            if (iv.minZoom > 0) {
-                iv.zoom = iv.minZoom;
-                img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
-                this._updateZoomDisplay();
-            }
+            // CSS max-width/max-height already constrains image to fit screen.
+            // transform scale(1) = CSS rendered size = already fit-to-screen.
+            iv.minZoom = 1;
+            iv.zoom = 1;
+            img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
+            this._updateZoomDisplay();
         };
 
         const viewer = document.getElementById("image-viewer");
@@ -2798,18 +2794,11 @@ const ChatApp = {
         if (!fullData) return;
         const src = `data:${image.mime || 'image/jpeg'};base64,${fullData}`;
         iv.url = src;
-        iv.zoom = iv.minZoom;
         const img = document.getElementById("image-viewer-img");
         img.src = src;
         img.onload = () => {
-            const sw = window.innerWidth;
-            const sh = window.innerHeight;
-            const iw = img.naturalWidth || sw;
-            const ih = img.naturalHeight || sh;
-            iv.minZoom = Math.min(sw / iw, sh / ih);
-            if (iv.minZoom > 0) {
-                iv.zoom = iv.minZoom;
-            }
+            iv.minZoom = 1;
+            iv.zoom = 1;
             img.style.transform = `translate(${iv.panX}px, ${iv.panY}px) rotate(${iv.rotation}deg) scale(${iv.zoom})`;
             this._updateZoomDisplay();
         };
