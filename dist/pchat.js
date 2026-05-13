@@ -2686,6 +2686,14 @@ const ChatApp = {
         };
 
         document.onkeydown = (e) => { if (e.key === "Escape") this.closeImageViewer(); };
+
+        // Toolbar hover: pause hide timer on mouseenter, resume on mouseleave
+        const toolbar = document.getElementById("image-viewer-toolbar");
+        toolbar.onmouseenter = () => { clearTimeout(iv.toolbarTimer); };
+        toolbar.onmouseleave = () => { this._resetToolbarTimer(); };
+
+        // Mouse move on viewer resets toolbar timer
+        viewer.onmousemove = () => { this._resetToolbarTimer(); };
     },
 
     _touchDist(touches) {
@@ -2742,7 +2750,7 @@ const ChatApp = {
     rotateImage(event) {
         if (event) event.stopPropagation();
         const iv = this.imageViewer;
-        iv.rotation = (iv.rotation + 270) % 360; // +270 mod 360 = -90 mod 360 = rotate counter-clockwise 90°
+        iv.rotation = (iv.rotation + 90) % 360;
         const img = document.getElementById("image-viewer-img");
         img.style.transform = `rotate(${iv.rotation}deg) scale(${iv.zoom}) translate(${iv.panX}px, ${iv.panY}px)`;
         this._resetToolbarTimer();
@@ -2754,11 +2762,13 @@ const ChatApp = {
             event.stopPropagation();
         }
         const viewer = document.getElementById("image-viewer");
-        viewer.classList.remove("show"); viewer.onwheel = null;
+        viewer.classList.remove("show"); viewer.onwheel = null; viewer.onmousemove = null;
         const img = document.getElementById("image-viewer-img");
         img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null;
         const container = document.getElementById("image-viewer-container");
         container.ontouchstart = null; container.ontouchmove = null; container.ontouchend = null;
+        const toolbar = document.getElementById("image-viewer-toolbar");
+        toolbar.onmouseenter = null; toolbar.onmouseleave = null;
         document.onkeydown = null; clearTimeout(this.imageViewer.zoomTimer); clearTimeout(this.imageViewer.toolbarTimer);
     },
 
