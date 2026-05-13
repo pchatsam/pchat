@@ -1059,6 +1059,10 @@ const ChatApp = {
         this._initPeer();
         this._renderContacts();
         this._renderGroups();
+
+        // Write login token + start heartbeat
+        this._writeLoginToken();
+        this._startLoginHeartbeat();
     },
 
     // ---- Login (existing user) ----
@@ -1123,6 +1127,10 @@ const ChatApp = {
             this._initPeer();
             this._renderContacts();
             this._renderGroups();
+
+            // Write login token to localStorage (cross-tab same-identity detection)
+            this._writeLoginToken();
+            this._startLoginHeartbeat();
         } catch (e) {
             this._hideLoading();
             if (btn) { btn.textContent = origText; btn.disabled = false; }
@@ -3045,6 +3053,31 @@ const ChatApp = {
             div.innerHTML = `<div class="avatar">👥</div><div class="info" onclick="ChatApp.openConversation('group','${g.id}')"><div class="name">${g.name}</div><div class='status'>` + _i18n.fmt('pchat.status.groupMembers', 'n', g.memberIds.length) + `<div class='status'></div>`;
             list.appendChild(div);
         }
+    },
+
+    // ---- Session lock: prevent duplicate login across tabs ----
+    _writeLoginToken() {
+        localStorage.setItem('pchat_login', JSON.stringify({ id: this.my.id, ts: Date.now() }));
+    },
+
+    _startLoginHeartbeat() {
+        if (this._loginHeartbeat) clearInterval(this._loginHeartbeat);
+        this._loginHeartbeat = setInterval(() => {
+            const raw = localStorage.getItem('pchat_login');
+            if (!raw) return;
+            try {
+                const tok = JSON.parse(raw);
+                if (tok.id === this.my.id && tok.ts > this._lastTokenTs + 3000) {
+                    // Another tab logged in as us — silently exit
+                    clearInterval(this._loginHeartbeat);
+                    if (this.peer) this.peer.destroy();
+                    Object.values(PeerConn.peers).forEach(s => { try { s.conn.close(); } catch(e){} });
+                    location.hash = '';
+                    location.reload();
+                }
+            } catch(e) {}
+        }, 2000);
+        this._lastTokenTs = Date.now();
     },
 
     // ---- Event binding ----
