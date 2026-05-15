@@ -69,6 +69,34 @@ _i18n.dict = {
     'pchat.alert.idChanged':             { zh: 'ID 已更换', en: 'ID changed', ja: 'ID が変更されました', de: 'ID geändert', fr: 'ID modifié', es: 'ID cambiado', pt: 'ID alterado', he: 'מזהה הוחלף', ko: 'ID 가 변경되었습니다', it: 'ID modificato' },
     'pchat.msg.idChanged':               { zh: '{name} 更换了 ID（旧 ID：{oldId}）', en: '{name} changed ID (old ID: {oldId})', ja: '{name} の ID が変更されました（旧 ID: {oldId}）', de: '{name} hat ID geändert (alte ID: {oldId})', fr: '{name} a changé d\'ID (ancien ID: {oldId})', es: '{name} cambió ID (ID anterior: {oldId})', pt: '{name} alterou ID (ID anterior: {oldId})', he: '{name} שינה מזהה (מזהה ישן: {oldId})', ko: '{name}(이)가 ID를 변경했습니다(기존 ID: {oldId})', it: '{name} ha cambiato ID (vecchio ID: {oldId})' },
     'pchat.msg.idChangedSystem':         { zh: '系统', en: 'System', ja: 'システム', de: 'System', fr: 'Système', es: 'Sistema', pt: 'Sistema', he: 'מערכת', ko: '시스템', it: 'Sistema' },
+    // Transfer
+    'pchat.transfer.title':              { zh: '转移账户', en: 'Transfer Account', ja: 'アカウント移行', de: 'Konto übertragen', fr: 'Transférer le compte', es: 'Transferir cuenta', pt: 'Transferir conta', he: 'העבר חשבון', ko: '계정 이전', it: 'Trasferisci account' },
+    'pchat.transfer.titleReceive':       { zh: '接收转移', en: 'Receive Transfer', ja: '移行受け取り', de: 'Übertragung empfangen', fr: 'Recevoir le transfert', es: 'Recibir transferencia', pt: 'Receber transferência', he: 'קבל העברה', ko: '이전 받기', it: 'Ricevi trasferimento' },
+    'pchat.transfer.selectAccount':      { zh: '选择要转移的账户', en: 'Select account to transfer', ja: '移行するアカウントを選択', de: 'Konto zum Übertragen wählen', fr: 'Sélectionner le compte à transférer', es: 'Seleccionar cuenta a transferir', pt: 'Selecionar conta para transferir', he: 'בחר חשבון להעברה', ko: '이전할 계정 선택', it: 'Seleziona account da trasferire' },
+    'pchat.transfer.enterPassword':      { zh: '输入密码验证', en: 'Enter password to verify', ja: 'パスワードを入力して確認', de: 'Passwort zur Überprüfung eingeben', fr: 'Entrez le mot de passe pour vérifier', es: 'Ingresa contraseña para verificar', pt: 'Digite senha para verificar', he: 'הזן סיסמה לאימות', ko: '확인 위해 비밀번호 입력', it: 'Inserisci password per verificare' },
+    'pchat.transfer.verify':             { zh: '验证', en: 'Verify', ja: '確認', de: 'Überprüfen', fr: 'Vérifier', es: 'Verificar', pt: 'Verificar', he: 'אימות', ko: '확인', it: 'Verifica' },
+    'pchat.transfer.scanning':           { zh: '等待对方连接...', en: 'Waiting for connection...', ja: '接続を待機中...', de: 'Warten auf Verbindung...', fr: 'En attente de connexion...', es: 'Esperando conexión...', pt: 'Aguardando conexão...', he: 'מחכה לחיבור...', ko: '연결 대기 중...', it: 'In attesa di connessione...' },
+    'pchat.transfer.connecting':         { zh: '正在连接...', en: 'Connecting...', ja: '接続中...', de: 'Verbinde...', fr: 'Connexion...', es: 'Conectando...', pt: 'Conectando...', he: 'מתחבר...', ko: '연결 중...', it: 'Connessione...' },
+    'pchat.transfer.sending':            { zh: '正在发送: {table}', en: 'Sending: {table}', ja: '送信中: {table}', de: 'Senden: {table}', fr: 'Envoi: {table}', es: 'Enviando: {table}', pt: 'Enviando: {table}', he: 'שולח: {table}', ko: '전송 중: {table}', it: 'Invio: {table}' },
+    'pchat.transfer.receiving':          { zh: '正在接收: {table}', en: 'Receiving: {table}', ja: '受信中: {table}', de: 'Empfangen: {table}', fr: 'Réception: {table}', es: 'Recibiendo: {table}', pt: 'Recebendo: {table}', he: 'מקבל: {table}', ko: '수신 중: {table}', it: 'Ricezione: {table}' },
+    'pchat.transfer.complete':           { zh: '转移完成！', en: 'Transfer complete!', ja: '移行完了！', de: 'Übertragung abgeschlossen!', fr: 'Transfert terminé!', es: '¡Transferencia completa!', pt: 'Transferência concluída!', he: 'העברה הושלמה!', ko: '이전 완료!', it: 'Trasferimento completo!' },
+    'pchat.transfer.received':           { zh: '接收完成！账户已添加', en: 'Received! Account added', ja: '受け取り完了！アカウント追加', de: 'Empfangen! Konto hinzugefügt', fr: 'Reçu! Compte ajouté', es: '¡Recibido! Cuenta agregada', pt: 'Recebido! Conta adicionada', he: 'התקבל! חשבון נוסף', ko: '수신 완료! 계정 추가됨', it: 'Ricevuto! Account aggiunto' },
+    'pchat.transfer.error.password':     { zh: '密码错误', en: 'Wrong password', ja: 'パスワードが間違っています', de: 'Falsches Passwort', fr: 'Mot de passe incorrect', es: 'Contraseña incorrecta', pt: 'Senha incorreta', he: 'סיסמה שגויה', ko: '잘못된 비밀번호', it: 'Password errata' },
+    'pchat.transfer.error.noSelect':     { zh: '请先选择账户', en: 'Please select an account first', ja: 'まずアカウントを選択してください', de: 'Bitte wählen Sie zuerst ein Konto', fr: 'Veuillez d\'abord sélectionner un compte', es: 'Selecciona una cuenta primero', pt: 'Selecione uma conta primeiro', he: 'בחר חשבון קודם', ko: '먼저 계정을 선택하세요', it: 'Seleziona prima un account' },
+    'pchat.transfer.btn.out':            { zh: '转移账户', en: 'Transfer', ja: '移行', de: 'Übertragen', fr: 'Transférer', es: 'Transferir', pt: 'Transferir', he: 'העברה', ko: '이전', it: 'Trasferisci' },
+    'pchat.transfer.btn.in':             { zh: '接收转移', en: 'Receive', ja: '受け取り', de: 'Empfangen', fr: 'Recevoir', es: 'Recibir', pt: 'Receber', he: 'קבל', ko: '받기', it: 'Ricevi' },
+    'pchat.transfer.btn.scan':           { zh: '扫描二维码', en: 'Scan QR Code', ja: 'QRコードスキャン', de: 'QR-Code scannen', fr: 'Scanner QR Code', es: 'Escanear QR', pt: 'Escanear QR', he: 'סרוק QR', ko: 'QR 코드 스캔', it: 'Scansiona QR' },
+    'pchat.transfer.btn.connect':        { zh: '连接', en: 'Connect', ja: '接続', de: 'Verbinden', fr: 'Connecter', es: 'Conectar', pt: 'Conectar', he: 'חיבור', ko: '연결', it: 'Connetti' },
+    'pchat.transfer.enterId':            { zh: '或输入 ID', en: 'Or enter ID', ja: 'またはIDを入力', de: 'Oder ID eingeben', fr: 'Ou entrer l\'ID', es: 'O ingresa ID', pt: 'Ou digite ID', he: 'או הזן מזהה', ko: '또는 ID 입력', it: 'O inserisci ID' },
+    'pchat.transfer.pending':            { zh: '等待接收方连接', en: 'Waiting for receiver', ja: '受信者待機中', de: 'Warten auf Empfänger', fr: 'En attente du récepteur', es: 'Esperando receptor', pt: 'Aguardando receptor', he: 'מחכה לקולט', ko: '수신자 대기 중', it: 'In attesa del destinatario' },
+    'pchat.transfer.done':               { zh: '完成', en: 'Done', ja: '完了', de: 'Fertig', fr: 'Terminé', es: 'Listo', pt: 'Concluído', he: 'סיום', ko: '완료', it: 'Fatto' },
+    'pchat.transfer.table.user':         { zh: '用户信息', en: 'User info', ja: 'ユーザー情報', de: 'Benutzerinfo', fr: 'Infos utilisateur', es: 'Info usuario', pt: 'Info do usuário', he: 'פרטי משתמש', ko: '사용자 정보', it: 'Info utente' },
+    'pchat.transfer.table.contacts':     { zh: '联系人', en: 'Contacts', ja: '連絡先', de: 'Kontakte', fr: 'Contacts', es: 'Contactos', pt: 'Contatos', he: 'אנשי קשר', ko: '연락처', it: 'Contatti' },
+    'pchat.transfer.table.messages':     { zh: '消息', en: 'Messages', ja: 'メッセージ', de: 'Nachrichten', fr: 'Messages', es: 'Mensajes', pt: 'Mensagens', he: 'הודעות', ko: '메시지', it: 'Messaggi' },
+    'pchat.transfer.table.groups':       { zh: '群组', en: 'Groups', ja: 'グループ', de: 'Gruppen', fr: 'Groupes', es: 'Grupos', pt: 'Grupos', he: 'קבוצות', ko: '그룹', it: 'Gruppi' },
+    'pchat.transfer.table.invitations':  { zh: '邀请', en: 'Invitations', ja: '招待', de: 'Einladungen', fr: 'Invitations', es: 'Invitaciones', pt: 'Convites', he: 'הזמנות', ko: '초대', it: 'Inviti' },
+    'pchat.login.btn.selectAccount':     { zh: '请先选择账户', en: 'Please select an account', ja: 'アカウントを選択してください', de: 'Bitte Konto wählen', fr: 'Veuillez sélectionner un compte', es: 'Selecciona una cuenta', pt: 'Selecione uma conta', he: 'בחר חשבון', ko: '계정을 선택하세요', it: 'Seleziona un account' },
+    'pchat.login.btn.deleteAccount':     { zh: '删除此账户', en: 'Delete this account', ja: 'このアカウントを削除', de: 'Dieses Konto löschen', fr: 'Supprimer ce compte', es: 'Eliminar esta cuenta', pt: 'Excluir esta conta', he: 'מחק חשבון זה', ko: '이 계정 삭제', it: 'Elimina questo account' },
     'pchat.msg.voice':                   { zh: '语音', en: 'Voice', ja: '音声', de: 'Sprache', fr: 'Voix', es: 'Voz', pt: 'Voz', he: 'קול', ko: '음성', it: 'Voce' },
     'pchat.file.incomplete':             { zh: '文件传输不完整（大小不匹配）', en: 'File transfer incomplete (size mismatch)', ja: 'ファイル転送が不完全（サイズ不一致）', de: 'Dateiübertragung unvollständig (Größenunterschied)', fr: 'Transfert de fichier incomplet (taille incompatible)', es: 'Transferencia incompleta (tamaño no coincide)', pt: 'Transferência incompleta (tamanho incompatível)', he: 'העברת קובץ לא הושלמה (אי התאמה בגודל)', ko: '파일 전송 불완전(크기 불일치)', it: 'Trasferimento incompleto (dimensioni non corrispondenti)' },
     'pchat.file.checksumFail':           { zh: '文件传输校验失败（内容损坏）', en: 'File checksum failed (data corrupted)', ja: 'ファイルチェックサム失敗（データ破損）', de: 'Datei-Prüfsumme fehlgeschlagen (Daten beschädigt)', fr: 'Vérification de fichier échouée (données corrompues)', es: 'Verificación fallida (datos corruptos)', pt: 'Verificação falhou (dados corrompidos)', he: 'בדיקת קובץ נכשלה (נתונים פגומים)', ko: '파일 체크섬 실패(데이터 손상)', it: 'Verifica fallita (dati corrotti)' },
@@ -1580,7 +1608,37 @@ const ChatApp = {
                     const id = code.data.trim();
                     if (id && id !== this.my.id) {
                         this.scanAnimFrame = null; // prevent further scans
-                        // Immediately add contact
+                        
+                        // Check if in transfer-in scan mode
+                        if (this._transferInScanMode) {
+                            // Transfer mode: route to transfer handler
+                            if (this._handleTransferInScanResult(id)) {
+                                // Stop camera and close modal
+                                if (this.scanStream) {
+                                    this.scanStream.getTracks().forEach(t => t.stop());
+                                    this.scanStream = null;
+                                }
+                                if (video) video.srcObject = null;
+                                if (video) video.style.display = 'none';
+                                if (status) {
+                                    status.textContent = '✓';
+                                    status.style.fontSize = '80px';
+                                    status.style.color = '#4caf50';
+                                }
+                                setTimeout(() => {
+                                    this.closeScanModal();
+                                    if (video) video.style.display = '';
+                                    if (status) {
+                                        status.textContent = '';
+                                        status.style.fontSize = '12px';
+                                        status.style.color = '#888';
+                                    }
+                                }, 1000);
+                            }
+                            return;
+                        }
+                        
+                        // Normal mode: add friend
                         this._requestFriend(id);
                         // Stop camera
                         if (this.scanStream) {
@@ -3697,6 +3755,572 @@ const ChatApp = {
 
     async DB_put_msg(msg) {
         await DB.put("messages", msg, this.my.aesKey);
+    },
+
+    // ==================== TRANSFER (Account Migration) ====================
+    // Temporary PeerJS instance for transfer
+    _transferPeer: null,
+    _transferConn: null,
+    _transferDirection: null, // 'out' or 'in'
+    _transferSourceDb: null,
+    _transferSourceKey: null,
+    _transferSourceUserId: null,
+    _transferTargetDb: null,
+    _transferTargetUserId: null,
+    _transferSelectedId: null,
+    _transferInScanMode: false,
+
+    // ---- UI: Show Transfer Out Modal ----
+    showTransferOut() {
+        const modal = document.getElementById("transfer-out-panel");
+        if (modal) modal.classList.add("show");
+        if (modal) modal.style.display = "flex";
+
+        const container = document.getElementById("transfer-out-account-select");
+        if (!container) return;
+
+        const accounts = AccountManager.listAccounts();
+        container.innerHTML = "";
+
+        const label = document.createElement("p");
+        label.textContent = _i18n.t('pchat.transfer.selectAccount');
+        label.style.cssText = "font-size:12px;color:#888;margin-bottom:8px;text-align:center;";
+        container.appendChild(label);
+
+        for (const acc of accounts) {
+            const div = document.createElement("div");
+            div.className = "account-item";
+            div.dataset.id = acc.userId;
+            div.innerHTML = `
+                <div class="account-info">
+                    <span class="account-nickname">${acc.nickname}</span>
+                    <span class="account-id">${acc.userId}</span>
+                </div>
+            `;
+            div.onclick = () => {
+                container.querySelectorAll(".account-item").forEach(el => el.classList.remove("selected"));
+                div.classList.add("selected");
+                this._transferSelectedId = acc.userId;
+            };
+            container.appendChild(div);
+        }
+
+        document.getElementById("transfer-out-password").value = "";
+        document.getElementById("transfer-out-password").style.display = "";
+        document.getElementById("transfer-out-verify-btn").style.display = "";
+        document.getElementById("transfer-out-account-select").style.display = "";
+        document.getElementById("transfer-out-qr").style.display = "none";
+        document.getElementById("transfer-out-progress").style.display = "none";
+        this._transferSelectedId = null;
+    },
+
+    hideTransferOut() {
+        const modal = document.getElementById("transfer-out-panel");
+        if (modal) modal.classList.remove("show");
+        if (modal) modal.style.display = "none";
+        this._destroyTransferPeer();
+    },
+
+    // ---- UI: Show Transfer In Modal ----
+    showTransferIn() {
+        const modal = document.getElementById("transfer-in-panel");
+        if (modal) modal.classList.add("show");
+        if (modal) modal.style.display = "flex";
+
+        document.getElementById("transfer-in-status").textContent = "";
+        document.getElementById("transfer-in-id-input").value = "";
+        document.getElementById("transfer-in-progress").style.display = "none";
+    },
+
+    hideTransferIn() {
+        const modal = document.getElementById("transfer-in-panel");
+        if (modal) modal.classList.remove("show");
+        if (modal) modal.style.display = "none";
+        this._destroyTransferPeer();
+    },
+
+    showTransferInScan() {
+        this._transferInScanMode = true;
+        this.showScanModal();
+    },
+
+    _handleTransferInScanResult(qrText) {
+        if (!qrText || !qrText.startsWith("transfer-")) {
+            this.showAlert("Invalid QR code");
+            this._transferInScanMode = false;
+            return false;
+        }
+        const transferId = qrText.slice(9);
+        document.getElementById("transfer-in-id-input").value = transferId;
+        this._transferInScanMode = false;
+        this.transferInConnect();
+        return true;
+    },
+
+    _destroyTransferPeer() {
+        if (this._transferPeer) {
+            try { this._transferPeer.destroy(); } catch(e) {}
+            this._transferPeer = null;
+        }
+        this._transferConn = null;
+        this._transferDirection = null;
+    },
+
+    // ---- TRANSFER OUT: Verify password ----
+    async transferOutVerify() {
+        if (!this._transferSelectedId) {
+            this.showAlert(_i18n.t('pchat.transfer.error.noSelect'));
+            return;
+        }
+
+        const pw = document.getElementById("transfer-out-password").value;
+        if (!pw) {
+            this.showAlert(_i18n.t('pchat.alert.enterPassword'));
+            return;
+        }
+
+        try {
+            // Open source DB
+            const sourceDb = await new Promise((resolve, reject) => {
+                const dbName = DB.BASE_NAME + "_" + this._transferSelectedId;
+                const req = indexedDB.open(dbName, DB.VER);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+
+            // Verify password
+            const testKey = await Crypto.deriveAesKey(pw);
+            const userStore = sourceDb.transaction("user", "readonly").objectStore("user");
+            const user = await new Promise((resolve, reject) => {
+                const req = userStore.get("current");
+                req.onsuccess = () => {
+                    // Try to decrypt
+                    const raw = req.result;
+                    if (!raw) { resolve(null); return; }
+                    try {
+                        const decrypted = Crypto.decryptAes(raw, testKey);
+                        resolve(JSON.parse(decrypted));
+                    } catch(e) { resolve(null); }
+                };
+                req.onerror = () => resolve(null);
+            });
+
+            if (!user || !user.userId) {
+                this.showAlert(_i18n.t('pchat.transfer.error.password'));
+                return;
+            }
+
+            this._transferSourceDb = sourceDb;
+            this._transferSourceKey = testKey;
+            this._transferSourceUserId = user.userId;
+
+            // Generate transfer ID
+            const transferId = "transfer_" + Crypto.generateId();
+
+            this._transferPeer = new Peer(transferId, { debug: 1 });
+
+            this._transferPeer.on("open", () => {
+                console.log("[Transfer] Peer open:", transferId);
+
+                const qrDiv = document.getElementById("transfer-out-qr");
+                qrDiv.style.display = "block";
+                const canvas = document.getElementById("transfer-out-qr-canvas");
+                canvas.innerHTML = "";
+                new QRCode(canvas, {
+                    text: "transfer-" + transferId,
+                    width: 180,
+                    height: 180,
+                });
+
+                document.getElementById("transfer-out-account-select").style.display = "none";
+                document.getElementById("transfer-out-password").style.display = "none";
+                document.getElementById("transfer-out-verify-btn").style.display = "none";
+
+                const progress = document.getElementById("transfer-out-progress");
+                if (progress) {
+                    progress.style.display = "block";
+                    progress.querySelector(".transfer-progress-info").textContent = _i18n.t('pchat.transfer.pending');
+                }
+            });
+
+            this._transferPeer.on("connection", (conn) => {
+                console.log("[Transfer] Connection from:", conn.peer);
+                this._transferConn = conn;
+                this._transferDirection = "out";
+
+                conn.on("open", () => {});
+
+                conn.on("data", async (data) => {
+                    await this._handleTransferOutData(data);
+                });
+
+                conn.on("close", () => {
+                    console.log("[Transfer] Connection closed");
+                });
+            });
+
+            this._transferPeer.on("error", (err) => {
+                console.error("[Transfer] Peer error:", err);
+                if (err.type === "unavailable-id") {
+                    this._transferPeer.destroy();
+                    this.transferOutVerify();
+                }
+            });
+
+        } catch (e) {
+            console.error("[Transfer] Verify error:", e);
+            this.showAlert(_i18n.t('pchat.transfer.error.password'));
+        }
+    },
+
+    async _handleTransferOutData(data) {
+        if (data.type === "transfer-request") {
+            const hasTables = data.hasTables || {};
+            await this._startSendingTables(hasTables);
+
+        } else if (data.type === "transfer-ack") {
+            this._releaseTransferNext();
+
+        } else if (data.type === "table-ack") {
+            const tableName = data.tableName;
+            console.log("[Transfer-Out] Table", tableName, "done");
+            if (this._transferTableQueue) {
+                this._transferTableQueue.shift();
+                this._sendNextTable();
+            }
+        }
+    },
+
+    async _startSendingTables(hasTables) {
+        const tables = ["user", "contacts", "messages", "groups", "invitations"];
+        this._transferTableQueue = [...tables];
+        this._transferHasTables = hasTables;
+        this._transferPendingAck = 0;
+
+        this._transferConn.send({
+            type: "transfer-start",
+            tables: tables,
+        });
+
+        await this._sendNextTable();
+    },
+
+    async _sendNextTable() {
+        if (this._transferTableQueue.length === 0) {
+            this._transferConn.send({ type: "transfer-complete" });
+
+            const progress = document.getElementById("transfer-out-progress");
+            if (progress) {
+                progress.querySelector(".transfer-progress-info").textContent = _i18n.t('pchat.transfer.complete');
+                progress.querySelector(".transfer-progress-fill").style.width = "100%";
+            }
+
+            setTimeout(() => {
+                this._destroyTransferPeer();
+                this.hideTransferOut();
+                this.showAlert(_i18n.t('pchat.transfer.complete'));
+            }, 1000);
+            return;
+        }
+
+        const tableName = this._transferTableQueue[0];
+
+        // Get all items from source DB table
+        const items = await new Promise((resolve) => {
+            try {
+                const store = this._transferSourceDb.transaction(tableName, "readonly").objectStore(tableName);
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => resolve([]);
+            } catch(e) { resolve([]); }
+        });
+
+        console.log("[Transfer-Out] Table", tableName, ":", items.length, "items");
+
+        this._transferConn.send({
+            type: "table-start",
+            tableName,
+            total: items.length,
+        });
+
+        const tableLabel = _i18n.t('pchat.transfer.table.' + tableName) || tableName;
+        const progress = document.getElementById("transfer-out-progress");
+        if (progress) {
+            progress.style.display = "block";
+            progress.querySelector(".transfer-progress-info").textContent =
+                _i18n.fmt('pchat.transfer.sending', 'table', tableLabel);
+        }
+
+        this._transferCurrentTable = tableName;
+        this._transferCurrentItems = items;
+        this._transferCurrentIndex = 0;
+        this._transferPendingAck = 0;
+        this._transferTableTotal = items.length;
+
+        // Send first batch (up to 5)
+        for (let i = 0; i < Math.min(5, items.length); i++) {
+            this._sendTransferItem(items[i], i);
+        }
+
+        // If no items, send table-done immediately
+        if (items.length === 0) {
+            this._transferConn.send({ type: "table-done", tableName });
+        }
+    },
+
+    _sendTransferItem(item, index) {
+        try {
+            const data = this._convertToJSON(item);
+            this._transferConn.send({
+                type: "transfer-chunk",
+                table: this._transferCurrentTable,
+                index,
+                total: this._transferTableTotal,
+                data,
+            });
+            this._transferCurrentIndex++;
+            this._transferPendingAck++;
+
+            const pct = Math.round((index / this._transferTableTotal) * 100);
+            const progress = document.getElementById("transfer-out-progress");
+            if (progress) {
+                progress.querySelector(".transfer-progress-fill").style.width = pct + "%";
+            }
+        } catch (e) {
+            console.error("[Transfer-Out] Send error:", e);
+        }
+    },
+
+    _releaseTransferNext() {
+        this._transferPendingAck--;
+
+        if (this._transferCurrentIndex < this._transferTableTotal && this._transferPendingAck < 5) {
+            const item = this._transferCurrentItems[this._transferCurrentIndex];
+            this._sendTransferItem(item, this._transferCurrentIndex);
+        } else if (this._transferCurrentIndex >= this._transferTableTotal && this._transferPendingAck <= 0) {
+            this._transferConn.send({
+                type: "table-done",
+                tableName: this._transferCurrentTable,
+            });
+        }
+    },
+
+    _convertToJSON(val) {
+        if (val === null || val === undefined) return null;
+        if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return val;
+        if (val instanceof Date) return { __date: val.getTime() };
+        if (val instanceof ArrayBuffer || val instanceof Uint8Array || val instanceof Uint8ClampedArray) {
+            return { __uint8: Array.from(new Uint8Array(val)) };
+        }
+        if (Array.isArray(val)) return val.map(v => this._convertToJSON(v));
+        if (typeof val === 'object') {
+            const obj = {};
+            for (const [k, v] of Object.entries(val)) {
+                obj[k] = this._convertToJSON(v);
+            }
+            return obj;
+        }
+        return String(val);
+    },
+
+    // ---- TRANSFER IN: Connect to sender ----
+    async transferInConnect() {
+        const input = document.getElementById("transfer-in-id-input").value.trim();
+        if (!input) {
+            this.showAlert("Please enter transfer ID");
+            return;
+        }
+
+        const transferId = input.startsWith("transfer-") ? input : "transfer-" + input;
+
+        // Generate new user ID and create target DB
+        const newUserId = Crypto.generateId();
+        const targetDbName = DB.BASE_NAME + "_" + newUserId;
+
+        try {
+            const targetDb = await new Promise((resolve, reject) => {
+                const req = indexedDB.open(targetDbName, DB.VER);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains("user")) db.createObjectStore("user", { keyPath: "id" });
+                    if (!db.objectStoreNames.contains("contacts")) {
+                        const cs = db.createObjectStore("contacts", { keyPath: "userId" });
+                        cs.createIndex("timestamp", "timestamp", { unique: false });
+                    }
+                    if (!db.objectStoreNames.contains("messages")) {
+                        const ms = db.createObjectStore("messages", { keyPath: "id" });
+                        ms.createIndex("peerId", "peerId", { unique: false });
+                        ms.createIndex("timestamp", "timestamp", { unique: false });
+                    }
+                    if (!db.objectStoreNames.contains("groups")) db.createObjectStore("groups", { keyPath: "id" });
+                    if (!db.objectStoreNames.contains("files")) db.createObjectStore("files", { keyPath: "id" });
+                    if (!db.objectStoreNames.contains("invitations")) db.createObjectStore("invitations", { keyPath: "id" });
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+
+            this._transferTargetDb = targetDb;
+            this._transferTargetUserId = newUserId;
+        } catch (e) {
+            console.error("[Transfer-In] Failed to create target DB:", e);
+            this.showAlert("Failed to prepare storage");
+            return;
+        }
+
+        const myId = "recv_" + Crypto.generateId();
+        this._transferPeer = new Peer(myId, { debug: 1 });
+
+        document.getElementById("transfer-in-status").textContent = _i18n.t('pchat.transfer.connecting');
+
+        this._transferPeer.on("open", () => {
+            const conn = this._transferPeer.connect(transferId, { reliable: true });
+            this._transferConn = conn;
+            this._transferDirection = "in";
+
+            conn.on("open", () => {
+                console.log("[Transfer-In] Connected to:", transferId);
+                conn.send({
+                    type: "transfer-request",
+                    hasTables: {},
+                });
+                document.getElementById("transfer-in-status").textContent = _i18n.t('pchat.transfer.receiving');
+            });
+
+            conn.on("data", async (data) => {
+                await this._handleTransferInData(data);
+            });
+
+            conn.on("close", () => {
+                console.log("[Transfer-In] Connection closed");
+            });
+        });
+
+        this._transferPeer.on("error", (err) => {
+            console.error("[Transfer-In] Peer error:", err);
+            this.showAlert("Connection failed: " + err.type);
+        });
+    },
+
+    async _handleTransferInData(data) {
+        if (data.type === "transfer-start") {
+            this._transferInTables = data.tables || [];
+            this._transferInCurrentTable = null;
+            this._transferInItems = [];
+            this._transferInExpected = 0;
+            this._transferInReceived = 0;
+            console.log("[Transfer-In] Tables:", this._transferInTables);
+
+        } else if (data.type === "table-start") {
+            this._transferInCurrentTable = data.tableName;
+            this._transferInExpected = data.total;
+            this._transferInReceived = 0;
+            this._transferInItems = new Array(data.total);
+
+            const tableLabel = _i18n.t('pchat.transfer.table.' + data.tableName) || data.tableName;
+            const progress = document.getElementById("transfer-in-progress");
+            if (progress) {
+                progress.style.display = "block";
+                progress.querySelector(".transfer-progress-info").textContent =
+                    _i18n.fmt('pchat.transfer.receiving', 'table', tableLabel) + ` (0/${data.total})`;
+                progress.querySelector(".transfer-progress-fill").style.width = "0%";
+            }
+
+        } else if (data.type === "transfer-chunk") {
+            this._transferInItems[data.index] = this._convertFromJSON(data.data);
+            this._transferInReceived++;
+
+            const pct = Math.round((this._transferInReceived / this._transferInExpected) * 100);
+            const tableLabel = _i18n.t('pchat.transfer.table.' + this._transferInCurrentTable) || this._transferInCurrentTable;
+            const progress = document.getElementById("transfer-in-progress");
+            if (progress) {
+                progress.querySelector(".transfer-progress-info").textContent =
+                    _i18n.fmt('pchat.transfer.receiving', 'table', tableLabel) +
+                    ` (${this._transferInReceived}/${this._transferInExpected})`;
+                progress.querySelector(".transfer-progress-fill").style.width = pct + "%";
+            }
+
+            this._transferConn.send({
+                type: "transfer-ack",
+                index: data.index,
+                table: data.table,
+            });
+
+        } else if (data.type === "table-done") {
+            const tableName = data.tableName;
+            console.log("[Transfer-In] Table", tableName, "complete:", this._transferInReceived + "/" + this._transferInExpected);
+
+            await this._storeTableInTarget(tableName, this._transferInItems);
+
+            this._transferConn.send({ type: "table-ack", tableName });
+
+        } else if (data.type === "transfer-complete") {
+            console.log("[Transfer-In] Transfer complete!");
+
+            // Register the new account
+            const userRecord = this._transferInItems_user || null;
+            let nickname = "Transferred Account";
+            if (userRecord) {
+                for (const u of userRecord) {
+                    if (u && u.userId) { nickname = u.nickname || nickname; break; }
+                }
+            }
+            AccountManager.addAccount(this._transferTargetUserId, nickname);
+
+            // Close target DB (it will be reopened on login)
+            if (this._transferTargetDb) {
+                try { this._transferTargetDb.close(); } catch(e) {}
+            }
+
+            const progress = document.getElementById("transfer-in-progress");
+            if (progress) {
+                progress.querySelector(".transfer-progress-info").textContent = _i18n.t('pchat.transfer.received');
+                progress.querySelector(".transfer-progress-fill").style.width = "100%";
+            }
+
+            setTimeout(() => {
+                this._destroyTransferPeer();
+                this.hideTransferIn();
+                this.showAlert(_i18n.t('pchat.transfer.received'));
+                this.init();
+            }, 1500);
+        }
+    },
+
+    async _storeTableInTarget(tableName, items) {
+        // Remember user records for nickname extraction
+        if (tableName === "user") {
+            this._transferInItems_user = items;
+        }
+
+        const store = this._transferTargetDb.transaction(tableName, "readwrite").objectStore(tableName);
+
+        for (const item of items) {
+            if (item === null || item === undefined) continue;
+            try {
+                await new Promise((resolve) => {
+                    const req = store.put(item);
+                    req.onsuccess = () => resolve();
+                    req.onerror = () => resolve();
+                });
+            } catch (e) {
+                console.warn("[Transfer-In] Failed to store", tableName, "item:", e.message);
+            }
+        }
+        console.log("[Transfer-In] Stored", items.filter(Boolean).length, "items in", tableName);
+    },
+
+    _convertFromJSON(val) {
+        if (val === null || val === undefined) return val;
+        if (typeof val !== 'object') return val;
+        if (val.__date !== undefined) return new Date(val.__date);
+        if (val.__uint8 !== undefined) return new Uint8Array(val.__uint8);
+        if (Array.isArray(val)) return val.map(v => this._convertFromJSON(v));
+        const obj = {};
+        for (const [k, v] of Object.entries(val)) {
+            obj[k] = this._convertFromJSON(v);
+        }
+        return obj;
     },
 };
 
