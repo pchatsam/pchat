@@ -4133,7 +4133,7 @@ const ChatApp = {
 
         const transferId = input.startsWith("transfer-") ? input : "transfer-" + input;
 
-        // Generate new user ID and create target DB
+        // Generate new user ID for the receiving account
         const newUserId = Crypto.generateId();
         const targetDbName = DB.BASE_NAME + "_" + newUserId;
 
@@ -4257,20 +4257,23 @@ const ChatApp = {
         } else if (data.type === "transfer-complete") {
             console.log("[Transfer-In] Transfer complete!");
 
-            // Register the new account
-            const userRecord = this._transferInItems_user || null;
+            // Extract nickname from user records
+            const userRecords = this._transferInItems_user || [];
             let nickname = "Transferred Account";
-            if (userRecord) {
-                for (const u of userRecord) {
-                    if (u && u.userId) { nickname = u.nickname || nickname; break; }
+            for (const u of userRecords) {
+                if (u && u.nickname) {
+                    nickname = u.nickname;
+                    break;
                 }
             }
-            AccountManager.addAccount(this._transferTargetUserId, nickname);
 
             // Close target DB (it will be reopened on login)
             if (this._transferTargetDb) {
                 try { this._transferTargetDb.close(); } catch(e) {}
             }
+
+            // Register the new account with the generated userId
+            AccountManager.addAccount(this._transferTargetUserId, nickname);
 
             const progress = document.getElementById("transfer-in-progress");
             if (progress) {
