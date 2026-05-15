@@ -65,6 +65,10 @@ _i18n.dict = {
     'pchat.alert.peerOffline':           { zh: '对方不在线，请稍后再试', en: 'Peer is offline, try again later', ja: '相手がオフラインです、後で再試行', de: 'Peer ist offline, versuchen Sie es später', fr: 'Le pair est hors ligne, réessayez plus tard', es: 'Contacto desconectado, intenta más tarde', pt: 'Contato offline, tente mais tarde', he: 'הצד השני לא מחובר, נסה שוב מאוחר יותר', ko: '대피가 오프라인입니다, 나중에 재시도', it: 'Contatto offline, riprova più tardi' },
     'pchat.alert.enterPeerId':           { zh: '请输入对方ID', en: 'Please enter peer ID', ja: '相手のIDを入力してください', de: 'Bitte Peer-ID eingeben', fr: 'Veuillez entrer l\'ID du pair', es: 'Por favor ingresa ID del contacto', pt: 'Por favor digite ID do contato', he: 'אנא הזן מזהה עמית', ko: '대피 ID를 입력하세요', it: 'Inserisci ID del contatto' },
     'pchat.alert.cannotAddSelf':         { zh: '不能添加自己', en: 'Cannot add yourself', ja: '自分を追加することはできません', de: 'Sie können sich nicht selbst hinzufügen', fr: 'Vous ne pouvez pas vous ajouter vous-même', es: 'No puedes agregarte a ti mismo', pt: 'Não pode adicionar a si mesmo', he: 'לא ניתן להוסיף את עצמך', ko: '자신을 추가할 수 없습니다', it: 'Non puoi aggiungerti' },
+    'pchat.alert.idConflict':            { zh: '你的 ID "{id}" 已被占用，是否更换 ID？', en: 'Your ID "{id}" is taken, change ID?', ja: 'ID「{id}」が既に使われています、ID を変更しますか？', de: 'Ihre ID "{id}" ist belegt, ID ändern?', fr: 'Votre ID "{id}" est prise, changer d\'ID ?', es: 'Tu ID "{id}" está ocupada, cambiar ID?', pt: 'Seu ID "{id}" está ocupado, trocar ID?', he: 'המזהה "{id}" תפוס, להחליף מזהה?', ko: 'ID "{id}"이(가) 이미 사용 중입니다, ID를 변경하시겠습니까?', it: 'Il tuo ID "{id}" è occupato, cambiare ID?' },
+    'pchat.alert.idChanged':             { zh: 'ID 已更换', en: 'ID changed', ja: 'ID が変更されました', de: 'ID geändert', fr: 'ID modifié', es: 'ID cambiado', pt: 'ID alterado', he: 'מזהה הוחלף', ko: 'ID 가 변경되었습니다', it: 'ID modificato' },
+    'pchat.msg.idChanged':               { zh: '{name} 更换了 ID（旧 ID：{oldId}）', en: '{name} changed ID (old ID: {oldId})', ja: '{name} の ID が変更されました（旧 ID: {oldId}）', de: '{name} hat ID geändert (alte ID: {oldId})', fr: '{name} a changé d\'ID (ancien ID: {oldId})', es: '{name} cambió ID (ID anterior: {oldId})', pt: '{name} alterou ID (ID anterior: {oldId})', he: '{name} שינה מזהה (מזהה ישן: {oldId})', ko: '{name}(이)가 ID를 변경했습니다(기존 ID: {oldId})', it: '{name} ha cambiato ID (vecchio ID: {oldId})' },
+    'pchat.msg.idChangedSystem':         { zh: '系统', en: 'System', ja: 'システム', de: 'System', fr: 'Système', es: 'Sistema', pt: 'Sistema', he: 'מערכת', ko: '시스템', it: 'Sistema' },
     'pchat.msg.voice':                   { zh: '语音', en: 'Voice', ja: '音声', de: 'Sprache', fr: 'Voix', es: 'Voz', pt: 'Voz', he: 'קול', ko: '음성', it: 'Voce' },
     'pchat.file.incomplete':             { zh: '文件传输不完整（大小不匹配）', en: 'File transfer incomplete (size mismatch)', ja: 'ファイル転送が不完全（サイズ不一致）', de: 'Dateiübertragung unvollständig (Größenunterschied)', fr: 'Transfert de fichier incomplet (taille incompatible)', es: 'Transferencia incompleta (tamaño no coincide)', pt: 'Transferência incompleta (tamanho incompatível)', he: 'העברת קובץ לא הושלמה (אי התאמה בגודל)', ko: '파일 전송 불완전(크기 불일치)', it: 'Trasferimento incompleto (dimensioni non corrispondenti)' },
     'pchat.file.checksumFail':           { zh: '文件传输校验失败（内容损坏）', en: 'File checksum failed (data corrupted)', ja: 'ファイルチェックサム失敗（データ破損）', de: 'Datei-Prüfsumme fehlgeschlagen (Daten beschädigt)', fr: 'Vérification de fichier échouée (données corrompues)', es: 'Verificación fallida (datos corruptos)', pt: 'Verificação falhou (dados corrompidos)', he: 'בדיקת קובץ נכשלה (נתונים פגומים)', ko: '파일 체크섬 실패(데이터 손상)', it: 'Verifica fallita (dati corrotti)' },
@@ -281,11 +285,19 @@ function base64ToUint8(b64) {
 
 // ==================== IndexedDB ====================
 const DB = {
-    NAME: "MindRenderPChat",
+    BASE_NAME: "MindRenderPChat",
+    NAME: "MindRenderPChat", // can be overridden to BASE_NAME + "_" + userId
     VER: 2,
     db: null,
 
-    async open() {
+    async openFor(userId) {
+        // Close existing DB if different
+        const targetName = userId ? (this.BASE_NAME + "_" + userId) : this.BASE_NAME;
+        if (this.db && this.NAME !== targetName) {
+            try { this.db.close(); } catch(e) {}
+            this.db = null;
+        }
+        this.NAME = targetName;
         return new Promise((resolve, reject) => {
             const req = indexedDB.open(this.NAME, this.VER);
             req.onupgradeneeded = (e) => {
@@ -305,15 +317,20 @@ const DB = {
                     ms.createIndex("timestamp", "timestamp", { unique: false });
                 }
                 if (!db.objectStoreNames.contains("groups")) db.createObjectStore("groups", { keyPath: "id" });
-                // New: files store for full-size images (not encrypted, keyPath = id)
                 if (!db.objectStoreNames.contains("files")) {
                     db.createObjectStore("files", { keyPath: "id" });
+                }
+                if (!db.objectStoreNames.contains("invitations")) {
+                    db.createObjectStore("invitations", { keyPath: "id" });
                 }
             };
             req.onsuccess = (e) => { this.db = e.target.result; resolve(this.db); };
             req.onerror = () => reject(req.error);
         });
     },
+
+    // Legacy open (backward compat)
+    async open() { return this.openFor(null); },
 
     _store(name, mode) { return this.db.transaction(name, mode || "readonly").objectStore(name); },
 
@@ -409,6 +426,64 @@ const DB = {
         });
     },
 };
+
+// ==================== AccountManager ====================
+// Manages multiple user accounts in localStorage + per-account IndexedDB
+const AccountManager = {
+    STORAGE_KEY: "pchat_accounts",
+
+    // Get all saved accounts
+    listAccounts() {
+        const data = localStorage.getItem(this.STORAGE_KEY);
+        if (!data) return [];
+        try { return JSON.parse(data); } catch(e) { return []; }
+    },
+
+    // Add account
+    addAccount(userId, nickname) {
+        const accounts = this.listAccounts();
+        const existing = accounts.find(a => a.userId === userId);
+        if (existing) {
+            existing.nickname = nickname;
+        } else {
+            accounts.push({ userId, nickname, ts: Date.now() });
+        }
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(accounts));
+    },
+
+    // Remove account
+    async removeAccount(userId) {
+        const accounts = this.listAccounts();
+        const filtered = accounts.filter(a => a.userId !== userId);
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered));
+        // Delete the IndexedDB for this account
+        const dbNames = await indexedDB.databases();
+        const dbName = DB.BASE_NAME + "_" + userId;
+        for (const db of dbNames) {
+            if (db.name === dbName) {
+                indexedDB.deleteDatabase(dbName);
+                break;
+            }
+        }
+    },
+
+    // Check if account has data (DB exists with user record)
+    async hasData(userId) {
+        try {
+            await DB.openFor(userId);
+            const user = await DB.get("user", "current", null).catch(() => null);
+            return !!user;
+        } catch(e) {
+            return false;
+        }
+    },
+
+    // Open DB for account
+    async openDBFor(userId) {
+        return DB.openFor(userId);
+    },
+};
+
 
 // ==================== PeerConn (PeerJS wrapper) ====================
 // Replaces WebRTC + WebSocket signaling with PeerJS-managed connections
@@ -622,6 +697,9 @@ const PeerConn = {
                 } else if (data.type === "receipt") {
                     // Received read receipt for a message
                     ChatApp._onReceiptReceived(peerId, data.msgId);
+                } else if (data.type === "id-change") {
+                    // Contact changed their ID - update contact list
+                    ChatApp._onIdChangeNotification(peerId, data);
                 }
             } catch (err) { console.error("[PeerConn] parse:", err); }
         });
@@ -937,47 +1015,92 @@ const ChatApp = {
 
     async init() {
         _i18n.applyUI();
-        await DB.open();
 
-        // Parse invite link from URL hash — now just contains inviter ID
+        // Parse invite link from URL hash
         const hash = location.hash.slice(1);
         let pendingInviteId = null;
         if (hash.startsWith("invite-")) {
             pendingInviteId = hash.slice(7);
         }
 
-        // Check if user already has an account
-        const ex = await DB.get("user", "current", null).catch(() => null);
-
+        // Load account list
+        const accounts = AccountManager.listAccounts();
         this._show("setup-panel");
-        if (ex) {
-            // Existing user — show login form
-            if (pendingInviteId) {
-                // Save invite ID for post-login connection
-                this.pendingInviteId = pendingInviteId;
-                localStorage.removeItem("mr_invite");
-                const inviteEl = document.getElementById("invite-from");
-                inviteEl.textContent = _i18n.fmt('pchat.register.inviteFrom', 'id', pendingInviteId);
-                inviteEl.style.display = "block";
-            }
-            this._show("login-form");
-            document.getElementById("delete-account-btn").style.display = "block";
-        } else {
-            // No account — show register form
-            if (pendingInviteId) {
-                this.invite = { inviterId: pendingInviteId };
-                localStorage.setItem("mr_invite", JSON.stringify(this.invite));
-                this._show("invite-info");
-                document.getElementById("invite-from").textContent = _i18n.fmt('pchat.register.inviteFrom', 'id', pendingInviteId);
+
+        // Render account list
+        const accountList = document.getElementById("account-list");
+        if (accountList) {
+            accountList.innerHTML = "";
+            if (accounts.length > 0) {
+                const listEl = document.getElementById("account-select-panel");
+                if (listEl) listEl.style.display = "block";
+                
+                for (const acc of accounts) {
+                    const div = document.createElement("div");
+                    div.className = "account-item";
+                    div.innerHTML = `
+                        <div class="account-info">
+                            <span class="account-nickname">${acc.nickname}</span>
+                            <span class="account-id">${acc.userId}</span>
+                        </div>
+                        <div class="account-actions">
+                            <button class="account-delete-btn" data-id="${acc.userId}" title="${_i18n.t('pchat.login.btn.deleteAccount')}">×</button>
+                        </div>
+                    `;
+                    div.querySelector(".account-info").onclick = () => {
+                        // Select this account
+                        document.querySelectorAll(".account-item").forEach(el => el.classList.remove("selected"));
+                        div.classList.add("selected");
+                        this._selectedAccountId = acc.userId;
+                        // Show password input
+                        const pwForm = document.getElementById("login-password-panel");
+                        if (pwForm) pwForm.style.display = "block";
+                    };
+                    div.querySelector(".account-delete-btn").onclick = (e) => {
+                        e.stopPropagation();
+                        AccountManager.removeAccount(acc.userId);
+                        this.init(); // Re-render
+                    };
+                    accountList.appendChild(div);
+                }
             } else {
-                this._show("invite-info");
+                const listEl = document.getElementById("account-select-panel");
+                if (listEl) listEl.style.display = "none";
             }
-            this._hide("login-form");
+        }
+
+        // Show register form if no accounts or invite link
+        const regForm = document.getElementById("invite-info");
+        if (regForm) {
+            if (accounts.length === 0 || pendingInviteId) {
+                regForm.style.display = "block";
+                if (pendingInviteId) {
+                    this.pendingInviteId = pendingInviteId;
+                    localStorage.removeItem("mr_invite");
+                    const inviteEl = document.getElementById("invite-from");
+                    if (inviteEl) {
+                        inviteEl.textContent = _i18n.fmt('pchat.register.inviteFrom', 'id', pendingInviteId);
+                        inviteEl.style.display = "block";
+                    }
+                }
+            } else {
+                regForm.style.display = "none";
+            }
+        }
+
+        // Show transfer buttons
+        const transferPanel = document.getElementById("transfer-panel");
+        if (transferPanel) {
+            if (accounts.length > 0) {
+                transferPanel.style.display = "block";
+            } else {
+                transferPanel.style.display = "none";
+            }
         }
 
         this._bindEvents();
 
-        // 非 HTTPS 环境下浏览器不允许访问麦克风，隐藏语音相关按钮
+        // Hide voice features in non-secure context
         const isSecure = location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1";
         if (!isSecure) {
             const callBtn = document.getElementById("call-btn");
@@ -1019,13 +1142,11 @@ const ChatApp = {
     },
 
     // ---- Register (standalone or from invite link) ----
-    // ---- Register (standalone or from invite link) ----
     async registerUser() {
         const nick = document.getElementById("nickname-input").value.trim();
         const pw = document.getElementById("password-input").value;
         if (!nick) { this.showAlert(_i18n.t('pchat.alert.enterNickname')); return; }
         if (!pw) { this.showAlert(_i18n.t('pchat.alert.enterPassword')); return; }
-
 
         this._showLoading(10, _i18n.t('pchat.loading.genKey'));
 
@@ -1034,11 +1155,18 @@ const ChatApp = {
         this._showLoading(30, _i18n.t('pchat.loading.deriveVerifyKey'));
         const verifyKey = await Crypto.deriveAesKey(pw);
         this._showLoading(60, _i18n.t('pchat.loading.deriveDataKey'));
-        this.my.aesKey = await Crypto.deriveAesKey(pw, this.my.id);
+        this.my.aesKey = verifyKey;
         this.my.password = pw;
+
+        // Open DB for this account
+        this._showLoading(70, _i18n.t('pchat.loading.openDB'));
+        await DB.openFor(this.my.id);
 
         this._showLoading(80, _i18n.t('pchat.loading.saveUser'));
         await DB.put("user", { id: "current", userId: this.my.id, nickname: nick, ts: Date.now(), cachedKey: this.my.aesKey }, verifyKey);
+
+        // Save to account list
+        AccountManager.addAccount(this.my.id, nick);
 
         // 保存邀请人 ID（PeerJS 初始化后发送好友请求）
         const inv = JSON.parse(localStorage.getItem("mr_invite") || "null");
@@ -1070,33 +1198,44 @@ const ChatApp = {
         const pw = document.getElementById("login-password-input").value;
         if (!pw) { this.showAlert(_i18n.t('pchat.alert.enterPassword')); return; }
 
+        // Check if account is selected
+        if (!this._selectedAccountId) {
+            this.showAlert(_i18n.t('pchat.alert.selectAccount'));
+            return;
+        }
+
         const btn = document.getElementById("login-btn");
         const origText = btn ? btn.textContent : _i18n.t('pchat.login.btn.loggingIn');
         if (btn) { btn.textContent = _i18n.t('pchat.login.btn.loggingIn'); btn.disabled = true; }
         this._showLoading(5, _i18n.t('pchat.loading.verify'));
 
         try {
-            // 先尝试解密验证密码（用通用盐）
-            this._showLoading(10, _i18n.t('pchat.loading.deriveVerifyKey'));
+            // Open DB for selected account
+            this._showLoading(10, _i18n.t('pchat.loading.openDB'));
+            await DB.openFor(this._selectedAccountId);
+
+            // Verify password
+            this._showLoading(30, _i18n.t('pchat.loading.deriveVerifyKey'));
             const testKey = await Crypto.deriveAesKey(pw);
 
-            this._showLoading(30, _i18n.t('pchat.loading.readUser'));
+            this._showLoading(50, _i18n.t('pchat.loading.readUser'));
             const user = await DB.get("user", "current", testKey);
-            if (!user || !user.userId) { this._hideLoading(); if (btn) { btn.textContent = origText; btn.disabled = false; } this.showAlert(_i18n.t('pchat.alert.passwordError')); return; }
+            if (!user || !user.userId) {
+                this._hideLoading();
+                if (btn) { btn.textContent = origText; btn.disabled = false; }
+                this.showAlert(_i18n.t('pchat.alert.passwordError'));
+                return;
+            }
 
-            // 用真实 userId 重新派生 AES 密钥
             this.my.id = user.userId;
             this.my.nickname = user.nickname;
 
-            // 优先使用缓存的 aesKey
             if (user.cachedKey) {
                 this._showLoading(70, _i18n.t('pchat.loading.useCachedKey'));
                 this.my.aesKey = user.cachedKey;
             } else {
-                this._showLoading(50, _i18n.t('pchat.loading.deriveDataKey'));
-                this.my.aesKey = await Crypto.deriveAesKey(pw, this.my.id);
-                // 回写缓存
-                await DB.put("user", { id: "current", userId: this.my.id, nickname: this.my.nickname, ts: Date.now(), cachedKey: this.my.aesKey }, testKey);
+                this._showLoading(70, _i18n.t('pchat.loading.deriveDataKey'));
+                this.my.aesKey = testKey;
             }
             this.my.password = pw;
 
@@ -1107,7 +1246,6 @@ const ChatApp = {
             this._showLoading(95, _i18n.t('pchat.loading.loadGroups'));
             this.groups = await DB.list("groups", this.my.aesKey);
 
-            // Migrate old image messages: store full image in files store, keep only thumbnail in message
             this._showLoading(97, 'Migrating images...');
             await this._migrateImageMessages();
 
@@ -1118,8 +1256,6 @@ const ChatApp = {
 
             this._hide("setup-panel");
             this._show("main-panel");
-
-            document.getElementById("delete-account-btn").style.display = "none";
 
             document.getElementById("my-nickname").textContent = this.my.nickname;
             document.getElementById("my-id-display").textContent = this.my.id;
@@ -1266,6 +1402,30 @@ const ChatApp = {
     _initPeer() {
         PeerConn.init(this.my.id, async (id) => {
             console.log("[PeerJS] Initialized with ID:", id);
+            
+            // Check if ID was taken by someone else
+            if (id !== this.my.id) {
+                console.warn("[PeerConn] ID conflict: your ID", this.my.id, "is taken");
+                const oldId = this.my.id;
+                const peer = PeerConn.peer;
+                if (peer) peer.destroy();
+                
+                // Ask user if they want to change ID
+                const confirmed = confirm(_i18n.fmt('pchat.alert.idConflict', 'id', oldId));
+                if (!confirmed) {
+                    // User declined - return to login
+                    this._show('setup-panel');
+                    this._hide('main-panel');
+                    return;
+                }
+                
+                // Change ID
+                await this._changeMyId(oldId);
+                // Notify contacts after ID change (will happen after PeerJS is ready)
+                this._notifyIdChange(oldId);
+                return;
+            }
+            
             // Auto-connect to all contacts (only those with publicKey = handshake complete)
             for (const c of this.contacts) {
                 if (c.publicKey) {
@@ -1280,6 +1440,64 @@ const ChatApp = {
                 this.pendingInviteId = null;
             }
         });
+    },
+
+    // ---- Change my ID (emergency when ID is taken) ----
+    async _changeMyId(oldId) {
+        console.log("[IDChange] Changing ID from", oldId);
+        const newId = Crypto.generateId();
+        console.log("[IDChange] New ID:", newId);
+        
+        // Update user record (aesKey stays the same, only ID changes)
+        this.my.id = newId;
+        await DB.put("user", {
+            id: "current",
+            userId: newId,
+            nickname: this.my.nickname,
+            ts: Date.now(),
+            cachedKey: this.my.aesKey
+        }, this.my.aesKey);
+        
+        // Update UI
+        document.getElementById("my-id-display").textContent = newId;
+        
+        // Re-init PeerJS with new ID
+        this._initPeer();
+    },
+
+    // ---- Notify contacts about ID change ----
+    async _notifyIdChange(oldId) {
+        console.log("[IDChange] Notifying contacts of ID change");
+        for (const c of this.contacts) {
+            if (!c.publicKey) continue;
+            
+            try {
+                const payload = JSON.stringify({
+                    type: "id-change",
+                    oldId: oldId,
+                    newId: this.my.id,
+                    timestamp: Date.now()
+                });
+                
+                const encrypted = await Crypto.encryptWithPubkey(c.publicKey, payload);
+                
+                // Try to connect and send (if online)
+                const state = await PeerConn.connect(c.userId);
+                if (state && state.conn && state.conn.open) {
+                    state.conn.send({
+                        type: "id-change",
+                        fromId: this.my.id,
+                        encrypted: encrypted
+                    });
+                    console.log(`[IDChange] Sent to ${c.userId}`);
+                }
+            } catch (e) {
+                console.warn(`[IDChange] Failed to notify ${c.userId}:`, e.message);
+            }
+        }
+        
+        // Show success message
+        this.showAlert(_i18n.fmt('pchat.alert.idChanged', 'id', this.my.id));
     },
 
     // send() is used for signaling messages (now via PeerJS metadata or not needed)
@@ -1622,6 +1840,55 @@ const ChatApp = {
     },
 
     // ---- Handle incoming receipt ----
+    // ---- Handle ID change notification ----
+    async _onIdChangeNotification(senderId, data) {
+        console.log("[IDChange] Got notification from", senderId);
+        try {
+            // Decrypt the payload using sender's private key
+            const myPrivKey = this.my.keypair?.privateKey;
+            if (!myPrivKey) {
+                console.warn("[IDChange] No private key available");
+                return;
+            }
+            
+            const decrypted = await Crypto.decryptWithPrivkey(myPrivKey, data.encrypted);
+            const payload = JSON.parse(decrypted);
+            
+            if (payload.type !== "id-change") {
+                console.warn("[IDChange] Invalid payload type");
+                return;
+            }
+            
+            // Find contact by oldId (the sender's previous ID)
+            const oldId = payload.oldId;
+            const newId = payload.newId;
+            const contact = this.contacts.find(c => c.userId === oldId);
+            
+            if (!contact) {
+                console.warn("[IDChange] No contact found for oldId", oldId);
+                return;
+            }
+            
+            // Update contact's userId
+            contact.userId = newId;
+            await DB.put("contacts", contact, this.my.aesKey);
+            
+            // Update in-memory contacts
+            this.contacts = await DB.list("contacts", this.my.aesKey);
+            
+            // Re-render UI
+            this._renderContacts();
+            
+            // Add system message to current conversation
+            const nick = contact.nickname || oldId;
+            this.showAlert(_i18n.fmt('pchat.msg.idChanged', 'name', nick, 'oldId', oldId));
+            
+            console.log(`[IDChange] Updated ${oldId} → ${newId}`);
+        } catch (e) {
+            console.warn("[IDChange] Failed to process:", e.message);
+        }
+    },
+
     async _onReceiptReceived(peerId, msgId) {
         console.log(`[Receipt] Got receipt from ${peerId} for msg ${msgId}`);
         // Find and update the message in DB
