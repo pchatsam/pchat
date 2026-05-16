@@ -9,12 +9,12 @@
    <stop offset="100%" style="stop-color:#5b8def"/>
   </linearGradient>
  </defs>
- <circle cx="73" cy="75" r="35" fill="url(#ga)" opacity="0.85"/>
- <circle cx="127" cy="75" r="35" fill="url(#gb)" opacity="0.85"/>
+ <circle cx="73" cy="75" r="35" fill="url(#ga)" opacity="1"/>
+ <circle cx="127" cy="75" r="35" fill="url(#gb)" opacity="1"/>
  <circle cx="73" cy="65" r="11" fill="#0f0f1a"/>
  <circle cx="127" cy="65" r="11" fill="#0f0f1a"/>
  <circle cx="70" cy="80" r="6" fill="#fff" opacity="0.2"/>
  <circle cx="124" cy="80" r="6" fill="#fff" opacity="0.2"/>
- <path d="M38 85 Q43 120 110 140" fill="none" stroke="url(#ga)" stroke-width="2" opacity="0.3" stroke-linecap="round"/>
- <path d="M164 85 Q160 120 115 150" fill="none" stroke="url(#gb)" stroke-width="2" opacity="0.3" stroke-linecap="round"/>
+ <path d="M38 85 Q43 120 110 140" fill="none" stroke="url(#ga)" stroke-width="3" opacity="1" stroke-linecap="round"/>
+ <path d="M164 85 Q160 120 115 150" fill="none" stroke="url(#gb)" stroke-width="3" opacity="1" stroke-linecap="round"/>
 </svg>
