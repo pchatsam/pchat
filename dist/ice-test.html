@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STUN 服务器连通性测试</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+
+  .container { max-width: 960px; margin: 0 auto; }
+
+  h1 {
+    text-align: center;
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: .25rem;
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: #94a3b8;
+    font-size: .875rem;
+    margin-bottom: 2rem;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: .75rem;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .6rem 1.25rem;
+    border: none;
+    border-radius: .5rem;
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+    outline: none;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-primary {
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    color: #fff;
+  }
+  .btn-primary:hover { box-shadow: 0 0 16px rgba(99,102,241,.45); }
+  .btn-primary:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+  .btn-secondary {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+  }
+  .btn-secondary:hover { border-color: #64748b; color: #e2e8f0; }
+
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: .75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: .625rem;
+    padding: .85rem 1rem;
+    text-align: center;
+  }
+  .card .num   { font-size: 1.5rem; font-weight: 700; }
+  .card .label { font-size: .75rem; color: #64748b; margin-top: .15rem; }
+  .card.ok .num   { color: #4ade80; }
+  .card.fail .num { color: #f87171; }
+  .card.slow .num { color: #facc15; }
+  .card.total .num{ color: #38bdf8; }
+
+  .table-wrap {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: .75rem;
+    overflow-x: auto;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+
+  thead th {
+    background: #0f172a;
+    position: sticky; top: 0;
+    padding: .7rem .6rem;
+    text-align: left;
+    font-weight: 600;
+    color: #94a3b8;
+    white-space: nowrap;
+    border-bottom: 1px solid #334155;
+    user-select: none;
+    cursor: pointer;
+  }
+  thead th:hover { color: #e2e8f0; }
+  thead th.s-asc::after  { content: " ▲"; font-size: .7rem; }
+  thead th.s-desc::after { content: " ▼"; font-size: .7rem; }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(51,65,85,.5);
+    transition: background .15s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(56,189,248,.06); }
+  td { padding: .6rem .6rem; white-space: nowrap; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .2rem .6rem; border-radius: 9999px;
+    font-size: .78rem; font-weight: 600;
+  }
+  .badge.pending  { background: rgba(148,163,184,.15); color: #94a3b8; }
+  .badge.testing  { background: rgba(56,189,248,.15); color: #38bdf8; animation: pulse 1.2s ease-in-out infinite; }
+  .badge.ok       { background: rgba(74,222,128,.15); color: #4ade80; }
+  .badge.fail     { background: rgba(248,113,113,.15); color: #f87171; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .tag {
+    display: inline-block; padding: .1rem .4rem; border-radius: .25rem;
+    font-size: .7rem; font-weight: 600;
+  }
+  .tag.cn       { background: rgba(74,222,128,.12); color: #4ade80; }
+  .tag.overseas { background: rgba(250,204,217,.12); color: #fb7185; }
+
+  .retry-btn {
+    background: transparent; border: 1px solid #475569;
+    color: #94a3b8; padding: .2rem .5rem; border-radius: .35rem;
+    font-size: .75rem; cursor: pointer; transition: all .15s;
+  }
+  .retry-btn:hover { border-color: #38bdf8; color: #38bdf8; }
+
+  .ip-cell {
+    font-family: "SF Mono","Fira Code","Cascadia Code",Consolas,monospace;
+    font-size: .8rem; color: #a5b4fc;
+  }
+
+  .latency-cell { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .latency-fast { color: #4ade80; }
+  .latency-mid  { color: #facc15; }
+  .latency-slow { color: #f97316; }
+
+  .note { text-align: center; color: #475569; font-size: .75rem; margin-top: 1.25rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🔍 STUN 服务器连通性测试</h1>
+  <p class="subtitle">使用 WebRTC RTCPeerConnection 探测 STUN 服务器在中国的真实连通性</p>
+
+  <div class="toolbar">
+    <button class="btn btn-primary" id="btnTestAll" onclick="testAll()">▶ 全部测试</button>
+    <button class="btn btn-secondary" onclick="clearAll()">✕ 清空结果</button>
+  </div>
+
+  <div class="summary">
+    <div class="card total"><div class="num" id="sumTotal">0</div><div class="label">总计</div></div>
+    <div class="card ok"><div class="num" id="sumOk">0</div><div class="label">可用</div></div>
+    <div class="card slow"><div class="num" id="sumSlow">0</div><div class="label">较慢 (&gt;1s)</div></div>
+    <div class="card fail"><div class="num" id="sumFail">0</div><div class="label">不可用</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th data-sort="host">服务器地址</th>
+          <th data-sort="port">端口</th>
+          <th data-sort="vendor">厂商</th>
+          <th data-sort="region">区域</th>
+          <th data-sort="status">状态</th>
+          <th data-sort="latency">延迟</th>
+          <th data-sort="ip">Public IP</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <p class="note">测试使用浏览器原生 WebRTC API，结果依赖当前网络环境</p>
+</div>
+
+<script>
+// ── STUN 服务器列表 ──────────────────────────────────────────
+const SERVERS = [
+  { host: "stun.chat.bilibili.com",   port: 3478,  vendor: "哔哩哔哩",   region: "cn" },
+  { host: "stun.qq.com",              port: 3478,  vendor: "腾讯",       region: "cn" },
+  { host: "stun.miwifi.com",          port: 3478,  vendor: "小米",       region: "cn" },
+  { host: "stun.cloopen.com",         port: 3478,  vendor: "容联云",     region: "cn" },
+  { host: "stun.qvod.com",            port: 3478,  vendor: "QVOD",       region: "cn" },
+  { host: "stun.baidu.com",           port: 3478,  vendor: "百度",       region: "cn" },
+  { host: "stun.126.com",             port: 3478,  vendor: "网易",       region: "cn" },
+  { host: "stun.aliyuncs.com",        port: 3478,  vendor: "阿里",       region: "cn" },
+  { host: "stun.tencentcloudapi.com", port: 3478,  vendor: "腾讯云",     region: "cn" },
+  { host: "stun.syncthing.net",       port: 3478,  vendor: "Syncthing",  region: "overseas" },
+  { host: "stun.cloudflare.com",      port: 3478,  vendor: "Cloudflare", region: "overseas" },
+  { host: "stun.nextcloud.com",       port: 3478,  vendor: "Nextcloud",  region: "overseas" },
+  { host: "stun.voipgate.com",        port: 3478,  vendor: "VoIPgate",   region: "overseas" },
+  { host: "stun.l.google.com",        port: 19302, vendor: "Google",     region: "overseas" },
+];
+
+const TIMEOUT_MS = 5000;
+
+// 结果存储: Map<index, {status, latency, ip}>
+const results = new Map();
+let sortKey = null;
+let sortDir = 1; // 1 = asc, -1 = desc
+
+// 跟踪当前活跃测试数（用于 testAll 结束后恢复按钮）
+let activeTests = 0;
+
+// ── 初始化表格 ──────────────────────────────────────────────
+function initTable() {
+  const tbody = document.getElementById("tbody");
+  tbody.innerHTML = "";
+  SERVERS.forEach(function(s, i) {
+    results.set(i, { status: "pending", latency: null, ip: null });
+    var tr = document.createElement("tr");
+    tr.id = "row-" + i;
+    tr.innerHTML =
+      "<td>" + (i + 1) + "</td>" +
+      "<td>" + esc(s.host) + "</td>" +
+      "<td>" + s.port + "</td>" +
+      "<td>" + esc(s.vendor) + "</td>" +
+      "<td>" + regionTag(s.region) + "</td>" +
+      '<td class="status-cell">' + statusBadge("pending", "待测") + "</td>" +
+      '<td class="latency-cell">—</td>' +
+      '<td class="ip-cell">—</td>' +
+      '<td><button class="retry-btn" onclick="testSingle(' + i + ')">测试</button></td>';
+    tbody.appendChild(tr);
+  });
+  updateSummary();
+  document.getElementById("sumTotal").textContent = SERVERS.length;
+}
+
+// ── 单服务器测试 ────────────────────────────────────────────
+function testSingle(index) {
+  var s = SERVERS[index];
+  var t0 = performance.now();
+
+  updateRowStatus(index, "testing", "⏳ 测试中…");
+  activeTests++;
+
+  return new Promise(function(resolve) {
+    var finished = false;
+    var foundSrflx = false;
+    var foundHost = false;
+
+    var finish = function() {
+      if (!finished) { finished = true; activeTests--; resolve(); }
+    };
+
+    // 超时处理
+    var timer = setTimeout(function() {
+      if (finished) return;
+      finish();
+      try { pc.close(); } catch(e) {}
+      // 如果已经有 srflx 结果，不要覆盖
+      if (!foundSrflx && !foundHost) {
+        results.set(index, { status: "fail", latency: Math.round(performance.now() - t0), ip: null });
+        updateRowResult(index, results.get(index));
+      }
+    }, TIMEOUT_MS);
+
+    try {
+      var pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:" + s.host + ":" + s.port }],
+        iceTransportPolicy: "all"  // 同时收集 host 和 srflx
+      });
+
+      // 创建空 data channel 以触发 ICE 收集
+      pc.createDataChannel("");
+
+      // 显式触发 ICE 协商（某些浏览器/环境需要 createOffer + setLocalDescription）
+      pc.createOffer().then(function(offer) {
+        return pc.setLocalDescription(offer);
+      }).catch(function(err) {
+        clearTimeout(timer);
+        if (finished) return;
+        finish();
+        results.set(index, { status: "fail", latency: Math.round(performance.now() - t0), ip: null });
+        updateRowResult(index, results.get(index));
+      });
+
+      pc.onicecandidate = function(e) {
+        if (e.candidate && e.candidate.candidate) {
+          var candidate = e.candidate.candidate;
+          var ip = parseCandidateIP(candidate);
+
+          if (candidate.indexOf("srflx") >= 0) {
+            // srflx candidate 表示 STUN 服务器可用
+            foundSrflx = true;
+            clearTimeout(timer);
+            var latency = Math.round(performance.now() - t0);
+            results.set(index, { status: "ok", latency: latency, ip: ip });
+            updateRowResult(index, results.get(index));
+            try { pc.close(); } catch(ex) {}
+            finish();
+          } else if (candidate.indexOf("host") >= 0 && !foundHost) {
+            // 有 host candidate 说明 RTCPeerConnection 能工作
+            // 但不代表 STUN 可用，继续等待 srflx
+            foundHost = true;
+          }
+        } else if (e.candidate === null) {
+          // ICE gathering 完成
+          clearTimeout(timer);
+          if (finished) return;
+          if (!foundSrflx) {
+            // 没有收到 srflx candidate，STUN 不可用
+            results.set(index, { status: "fail", latency: Math.round(performance.now() - t0), ip: null });
+            updateRowResult(index, results.get(index));
+          }
+          try { pc.close(); } catch(ex) {}
+          finish();
+        }
+      };
+
+      // 移除 onicecandidateerror 的立即失败逻辑，避免误判临时错误
+      pc.onicecandidateerror = function() {
+        // 不立即失败，可能是临时错误，等超时或 gathering 完成
+      };
+
+      // onicegatheringstatechange 用于在 gathering 完成时收尾
+      pc.onicegatheringstatechange = function() {
+        if (pc.iceGatheringState === "complete") {
+          clearTimeout(timer);
+          if (finished) return;
+          if (!foundSrflx) {
+            results.set(index, { status: "fail", latency: Math.round(performance.now() - t0), ip: null });
+            updateRowResult(index, results.get(index));
+          }
+          try { pc.close(); } catch(ex) {}
+          finish();
+        }
+      };
+
+      // 移除 onconnectionstatechange（它容易与手动 close 冲突，导致成功结果被覆盖为 fail）
+    } catch (err) {
+      clearTimeout(timer);
+      if (finished) return;
+      finish();
+      results.set(index, { status: "fail", latency: Math.round(performance.now() - t0), ip: null });
+      updateRowResult(index, results.get(index));
+    }
+  });
+}
+
+// ── 全部测试（并行） ────────────────────────────────────────
+async function testAll() {
+  clearResults();
+  document.getElementById("btnTestAll").disabled = true;
+
+  var promises = SERVERS.map(function(_, i) { return testSingle(i); });
+  await Promise.allSettled(promises);
+
+  document.getElementById("btnTestAll").disabled = false;
+}
+
+// ── 清空结果 ────────────────────────────────────────────────
+function clearAll() {
+  clearResults();
+  initTable();
+  document.getElementById("btnTestAll").disabled = false;
+}
+
+function clearResults() {
+  results.forEach(function(_, i) {
+    results.set(i, { status: "pending", latency: null, ip: null });
+  });
+  updateSummary();
+}
+
+// ── UI 更新 ─────────────────────────────────────────────────
+function updateRowStatus(index, status, text) {
+  var row = document.getElementById("row-" + index);
+  if (!row) return;
+  row.querySelector(".status-cell").innerHTML = statusBadge(status, text);
+}
+
+function updateRowResult(index, r) {
+  var row = document.getElementById("row-" + index);
+  if (!row) return;
+
+  var sc = row.querySelector(".status-cell");
+  if (r.status === "ok") {
+    sc.innerHTML = statusBadge("ok", "✅ 可用");
+  } else {
+    sc.innerHTML = statusBadge("fail", "❌ 不可用");
+  }
+
+  var lc = row.querySelector(".latency-cell");
+  if (r.latency != null) {
+    var cls = r.latency < 500 ? "latency-fast" : (r.latency < 1500 ? "latency-mid" : "latency-slow");
+    lc.innerHTML = "<span class=\"" + cls + "\">" + r.latency + " ms</span>";
+  } else {
+    lc.textContent = "—";
+  }
+
+  row.querySelector(".ip-cell").textContent = r.ip || "—";
+  updateSummary();
+}
+
+function updateSummary() {
+  var ok = 0, fail = 0, slow = 0;
+  results.forEach(function(r) {
+    if (r.status === "ok") {
+      ok++;
+      if (r.latency > 1000) slow++;
+    } else if (r.status === "fail") {
+      fail++;
+    }
+  });
+  document.getElementById("sumOk").textContent = ok;
+  document.getElementById("sumFail").textContent = fail;
+  document.getElementById("sumSlow").textContent = slow;
+}
+
+// ── 工具函数 ────────────────────────────────────────────────
+function statusBadge(cls, text) {
+  return '<span class="badge ' + cls + '">' + text + '</span>';
+}
+
+function regionTag(region) {
+  var map = {
+    cn:       ["🇨🇳 国内", "cn"],
+    overseas: ["🌐 国际", "overseas"]
+  };
+  var pair = map[region] || ["❓", "cn"];
+  return '<span class="tag ' + pair[1] + '">' + pair[0] + '</span>';
+}
+
+function esc(str) {
+  var d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+/**
+ * 从 ICE candidate 字符串中提取 STUN 返回的 public IP
+ * 典型 srflx candidate 格式:
+ *   candidate:523384501 1 udp 2113937151 120.55.112.45 52121 typ srflx raddr 192.168.1.10 rport 52121
+ * 字段索引:       0      1  2    3          4              5     6   7    8             9   10
+ * public IP = parts[4] (srflx 后面的地址)
+ */
+function parseCandidateIP(candidateStr) {
+  try {
+    // parts[0] = "candidate:...", parts[1..5] = standard fields, parts[6..N] = attributes
+    var parts = candidateStr.split(" ");
+    // 找到 "typ" 的位置
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] === "typ" && parts[i + 1] === "srflx") {
+        // 在 ICE spec 中，srflx 类型候选的 mapped address 在标准字段中（索引 4）
+        // 但如果字符串以 "candidate:" 开头，索引需要偏移
+        // 更可靠的方式：找到 typ srflx 后，IP 在标准 candidate 的第 5 个 token (index 4)
+        // 由于我们已经有整个字符串，标准格式中 IP 是第 5 个 token
+        if (parts[0].indexOf("candidate:") === 0) {
+          // 标准 candidate 格式: candidate:<foundation> <component> <protocol> <priority> <ip> <port> typ <type> ...
+          // 所以 IP = parts[4]
+          return parts[4] || null;
+        }
+        return parts[i + 2] || null;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+// ── 表头排序 ────────────────────────────────────────────────
+document.querySelectorAll("thead th[data-sort]").forEach(function(th) {
+  th.addEventListener("click", function() {
+    var key = th.dataset.sort;
+    if (sortKey === key) { sortDir *= -1; } else { sortKey = key; sortDir = 1; }
+
+    // 更新排序标记
+    document.querySelectorAll("thead th[data-sort]").forEach(function(t) {
+      t.classList.remove("s-asc", "s-desc");
+    });
+    th.classList.add(sortDir > 0 ? "s-asc" : "s-desc");
+
+    var tbody = document.getElementById("tbody");
+    var rows = Array.from(tbody.querySelectorAll("tr"));
+
+    rows.sort(function(a, b) {
+      var iA = parseInt(a.id.split("-")[1]);
+      var iB = parseInt(b.id.split("-")[1]);
+      var sA = SERVERS[iA], sB = SERVERS[iB];
+      var rA = results.get(iA), rB = results.get(iB);
+
+      var vA, vB;
+      switch (key) {
+        case "host":     vA = sA.host; vB = sB.host; break;
+        case "port":     vA = sA.port; vB = sB.port; break;
+        case "vendor":   vA = sA.vendor; vB = sB.vendor; break;
+        case "region":   vA = sA.region; vB = sB.region; break;
+        case "status": {
+          var order = { ok: 0, fail: 1, testing: 2, pending: 3 };
+          vA = order[rA.status] !== undefined ? order[rA.status] : 9;
+          vB = order[rB.status] !== undefined ? order[rB.status] : 9;
+          break;
+        }
+        case "latency":
+          vA = rA.latency != null ? rA.latency : Infinity;
+          vB = rB.latency != null ? rB.latency : Infinity;
+          break;
+        case "ip":
+          vA = rA.ip || "zzz"; vB = rB.ip || "zzz";
+          break;
+        default:
+          vA = 0; vB = 0;
+      }
+
+      if (typeof vA === "string") {
+        return sortDir * vA.localeCompare(vB, "zh-CN");
+      }
+      return sortDir * (vA - vB);
+    });
+
+    rows.forEach(function(row) { tbody.appendChild(row); });
+  });
+});
+
+// ── 启动 ────────────────────────────────────────────────────
+initTable();
+</script>
+</body>
+</html>

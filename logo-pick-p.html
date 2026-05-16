@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PChat Logo - 双人剪影 P 系列</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#0f0f1a; color:#eee; padding:40px; }
+h1 { text-align:center; margin-bottom:8px; font-size:28px; color:#4ecca3; }
+.sub { text-align:center; color:#666; font-size:14px; margin-bottom:40px; }
+.grid { display:flex; flex-wrap:wrap; gap:30px; justify-content:center; max-width:1200px; margin:0 auto; }
+.card { background:#1a1a2e; border-radius:16px; padding:30px; text-align:center; width:280px; transition:all .2s; }
+.card:hover { background:#1e1e38; box-shadow:0 0 24px rgba(78,204,163,0.12); transform:translateY(-2px); }
+.card svg { display:block; margin:0 auto 16px; }
+.card h3 { font-size:13px; color:#777; margin-bottom:6px; letter-spacing:1px; }
+.card .desc { font-size:12px; color:#4ecca3; }
+.badge { display:inline-block; padding:2px 8px; border-radius:8px; margin-bottom:8px; font-size:10px; font-weight:700; }
+.badge.a { background:#4ecca3; color:#0f0f1a; }
+.badge.b { background:#3498db; color:#fff; }
+</style>
+</head>
+<body>
+<h1>🍃 PChat Logo — 双人剪影 · P 系列</h1>
+<p class="sub">双人对话 + 字母 P = 品牌标识</p>
+
+<div class="grid">
+
+<!-- P-1: Two profiles form P's loop -->
+<div class="card">
+<h3><span class="badge a">P-1</span> 双人成 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="p1a" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="p1b" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem: left figure -->
+  <circle cx="65" cy="58" r="24" fill="url(#p1a)" opacity="0.9"/>
+  <rect x="48" y="80" width="34" height="72" rx="17" fill="url(#p1a)" opacity="0.9"/>
+  <!-- P loop: right figure -->
+  <circle cx="135" cy="58" r="24" fill="url(#p1b)" opacity="0.9"/>
+  <rect x="118" y="80" width="34" height="40" rx="17" fill="url(#p1b)" opacity="0.9"/>
+  <!-- face dots -->
+  <circle cx="58" cy="50" r="3" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="72" cy="50" r="3" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="128" cy="50" r="3" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="142" cy="50" r="3" fill="#0f0f1a" opacity="0.3"/>
+  <!-- smile arcs -->
+  <path d="M55 63 Q65 70 75 63" fill="none" stroke="#0f0f1a" stroke-width="2" opacity="0.25" stroke-linecap="round"/>
+  <path d="M125 63 Q135 70 145 63" fill="none" stroke="#0f0f1a" stroke-width="2" opacity="0.25" stroke-linecap="round"/>
+  <!-- connection line -->
+  <path d="M90 58 Q110 40 115 58" fill="none" stroke="#4ecca3" stroke-width="1.5" opacity="0.3" stroke-dasharray="3 4"/>
+  <path d="M90 105 Q110 100 115 95" fill="none" stroke="#3498db" stroke-width="1.5" opacity="0.3" stroke-dasharray="3 4"/>
+</svg>
+<div class="desc">两人并排 → P 的竖和圈</div>
+</div>
+
+<!-- P-2: Abstract P with chat bubbles as profiles -->
+<div class="card">
+<h3><span class="badge a">P-2</span> 气泡 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="p2a" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#1abc9c"/>
+    </linearGradient>
+    <linearGradient id="p2b" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c4dff"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem: vertical person -->
+  <circle cx="58" cy="52" r="20" fill="url(#p2a)" opacity="0.9"/>
+  <rect x="42" y="70" width="32" height="70" rx="16" fill="url(#p2a)" opacity="0.85"/>
+  <!-- P loop: circular chat area -->
+  <circle cx="120" cy="85" r="38" fill="none" stroke="url(#p2b)" stroke-width="3"/>
+  <circle cx="120" cy="85" r="38" fill="url(#p2b)" opacity="0.1"/>
+  <!-- chat dots in the loop -->
+  <circle cx="108" cy="72" r="4" fill="#7c4dff" opacity="0.5"/>
+  <circle cx="120" cy="72" r="4" fill="#7c4dff" opacity="0.4"/>
+  <circle cx="132" cy="72" r="4" fill="#7c4dff" opacity="0.3"/>
+  <circle cx="108" cy="88" r="4" fill="#4ecca3" opacity="0.5"/>
+  <circle cx="120" cy="88" r="4" fill="#4ecca3" opacity="0.4"/>
+  <!-- connect stem to loop -->
+  <line x1="74" y1="72" x2="82" y2="72" stroke="#4ecca3" stroke-width="2" opacity="0.3"/>
+  <!-- face -->
+  <circle cx="52" cy="45" r="2.5" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="64" cy="45" r="2.5" fill="#0f0f1a" opacity="0.3"/>
+</svg>
+<div class="desc">竖线人 + 环形对话区 = P</div>
+</div>
+
+<!-- P-3: Two faces make P shape via negative space -->
+<div class="card">
+<h3><span class="badge a">P-3</span> 负空间 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="p3a" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#3498db"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer P shape filled with profiles pattern -->
+  <path d="M55 30 L55 175 L135 175 C155 175 170 162 170 145 L170 105 C170 88 155 75 135 75 L90 75 L90 30 Z" fill="url(#p3a)" opacity="0.12"/>
+  <path d="M55 30 L55 175 L135 175 C155 175 170 162 170 145 L170 105 C170 88 155 75 135 75 L90 75 L90 30 Z" fill="none" stroke="url(#p3a)" stroke-width="3"/>
+  <!-- Left profile in stem -->
+  <circle cx="75" cy="65" r="14" fill="url(#p3a)" opacity="0.7"/>
+  <rect x="64" y="78" width="22" height="30" rx="11" fill="url(#p3a)" opacity="0.6"/>
+  <!-- Right profile in loop -->
+  <circle cx="125" cy="65" r="14" fill="url(#p3a)" opacity="0.7"/>
+  <rect x="114" y="78" width="22" height="30" rx="11" fill="url(#p3a)" opacity="0.5"/>
+  <!-- face details -->
+  <circle cx="70" cy="60" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="80" cy="60" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="120" cy="60" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="130" cy="60" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <!-- connection dots -->
+  <circle cx="86" cy="85" r="2" fill="#3498db" opacity="0.4"/>
+  <circle cx="86" cy="95" r="2" fill="#3498db" opacity="0.3"/>
+</svg>
+<div class="desc">P 形边框内含双人</div>
+</div>
+
+<!-- P-4: Minimal P with head profiles -->
+<div class="card">
+<h3><span class="badge a">P-4</span> 头像 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="p4a" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00b894"/>
+    </linearGradient>
+    <linearGradient id="p4b" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#0984e3"/>
+      <stop offset="100%" style="stop-color:#74b9ff"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem -->
+  <rect x="62" y="50" width="22" height="110" rx="11" fill="url(#p4a)" opacity="0.85"/>
+  <!-- Profile head on stem -->
+  <circle cx="73" cy="50" r="18" fill="url(#p4a)" opacity="0.9"/>
+  <circle cx="68" cy="43" r="2.5" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="78" cy="43" r="2.5" fill="#0f0f1a" opacity="0.3"/>
+  <!-- P loop: second profile -->
+  <circle cx="135" cy="110" r="28" fill="url(#p4b)" opacity="0.85"/>
+  <circle cx="128" cy="100" r="3" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="142" cy="100" r="3" fill="#0f0f1a" opacity="0.3"/>
+  <!-- connection arc -->
+  <path d="M84 80 Q120 60 135 95" fill="none" stroke="#4ecca3" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+  <path d="M84 50 Q100 35 120 50" fill="none" stroke="#4ecca3" stroke-width="1.5" opacity="0.25" stroke-linecap="round"/>
+</svg>
+<div class="desc">竖 = 头+身, 圈 = 另一人头</div>
+</div>
+
+<!-- P-5: P letter with integrated chat bubble and profile -->
+<div class="card">
+<h3><span class="badge b">P-5</span> 聊天气泡 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="p5a" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#1abc9c"/>
+    </linearGradient>
+    <linearGradient id="p5b" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6c5ce7"/>
+      <stop offset="100%" style="stop-color:#a29bfe"/>
+    </linearGradient>
+  </defs>
+  <!-- Chat bubble forming P's loop -->
+  <rect x="90" y="40" width="80" height="65" rx="22" fill="url(#p5b)" opacity="0.85"/>
+  <path d="M95 105 L88 118 L102 103" fill="url(#p5b)" opacity="0.85"/>
+  <!-- Text lines in bubble -->
+  <rect x="108" y="58" width="45" height="6" rx="3" fill="#fff" opacity="0.3"/>
+  <rect x="108" y="72" width="30" height="6" rx="3" fill="#fff" opacity="0.2"/>
+  <rect x="108" y="86" width="38" height="6" rx="3" fill="#fff" opacity="0.15"/>
+  <!-- P stem: profile person -->
+  <circle cx="58" cy="75" r="22" fill="url(#p5a)" opacity="0.9"/>
+  <rect x="40" y="95" width="36" height="65" rx="18" fill="url(#p5a)" opacity="0.85"/>
+  <circle cx="52" cy="68" r="3" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="64" cy="68" r="3" fill="#0f0f1a" opacity="0.3"/>
+  <path d="M48 80 Q58 88 68 80" fill="none" stroke="#0f0f1a" stroke-width="2" opacity="0.2" stroke-linecap="round"/>
+</svg>
+<div class="desc">竖杆人 + 圆形气泡 = P</div>
+</div>
+
+<!-- P-6: Flowing P with two figures -->
+<div class="card">
+<h3><span class="badge b">P-6</span> 流线 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="p6a" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00cec9"/>
+    </linearGradient>
+    <linearGradient id="p6b" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#e17055"/>
+      <stop offset="100%" style="stop-color:#fab1a0"/>
+    </linearGradient>
+  </defs>
+  <!-- Continuous P stroke formed by two figures -->
+  <!-- Stem: person 1 -->
+  <circle cx="60" cy="50" r="16" fill="url(#p6a)" opacity="0.85"/>
+  <rect x="47" y="64" width="26" height="55" rx="13" fill="url(#p6a)" opacity="0.8"/>
+  <!-- Arc connecting to person 2 forming P loop -->
+  <path d="M73 64 Q150 30 150 85 Q150 130 120 130 Q85 130 73 119" fill="none" stroke="url(#p6b)" stroke-width="22" stroke-linecap="round" opacity="0.8"/>
+  <!-- Person 2 head on the arc -->
+  <circle cx="135" cy="72" r="14" fill="url(#p6b)" opacity="0.9"/>
+  <!-- faces -->
+  <circle cx="55" cy="44" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="65" cy="44" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="131" cy="66" r="2" fill="#fff" opacity="0.4"/>
+  <circle cx="139" cy="66" r="2" fill="#fff" opacity="0.4"/>
+  <!-- stem connector -->
+  <line x1="73" y1="64" x2="128" y2="72" stroke="#fab1a0" stroke-width="1.5" opacity="0.3" stroke-dasharray="4 3"/>
+</svg>
+<div class="desc">双人曲线勾勒 P 形</div>
+</div>
+
+<!-- P-7: Geometric duo forming P -->
+<div class="card">
+<h3><span class="badge a">P-7</span> 几何 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="p7a" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#2ecc71"/>
+    </linearGradient>
+    <linearGradient id="p7b" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2980b9"/>
+      <stop offset="100%" style="stop-color:#3498db"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem -->
+  <rect x="55" y="45" width="28" height="120" rx="14" fill="url(#p7a)" opacity="0.85"/>
+  <!-- Head circles forming P loop -->
+  <circle cx="130" cy="55" r="22" fill="url(#p7b)" opacity="0.85"/>
+  <circle cx="130" cy="105" r="22" fill="url(#p7b)" opacity="0.75"/>
+  <circle cx="128" cy="155" r="18" fill="url(#p7b)" opacity="0.55"/>
+  <!-- arc connecting loop to stem -->
+  <path d="M83 55 Q110 55 110 55" fill="none" stroke="#4ecca3" stroke-width="2" opacity="0.3"/>
+  <path d="M83 80 Q110 100 110 100" fill="none" stroke="#3498db" stroke-width="1.5" opacity="0.25"/>
+  <!-- faces on head circles -->
+  <circle cx="123" cy="45" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="137" cy="45" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="123" cy="95" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="137" cy="95" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="122" cy="148" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="134" cy="148" r="2" fill="#0f0f1a" opacity="0.3"/>
+  <!-- profile on stem -->
+  <circle cx="69" cy="52" r="10" fill="#fff" opacity="0.2"/>
+</svg>
+<div class="desc">竖线 + 三颗人头 = P</div>
+</div>
+
+<!-- P-8: Compact app icon style -->
+<div class="card">
+<h3><span class="badge b">P-8</span> App 图标风</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="p8bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#1abc9c"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded rect background (app icon shape) -->
+  <rect x="20" y="20" width="160" height="160" rx="36" fill="url(#p8bg)"/>
+  <!-- P stem: left person silhouette -->
+  <circle cx="65" cy="65" r="22" fill="#0f0f1a" opacity="0.3"/>
+  <rect x="48" y="85" width="34" height="65" rx="17" fill="#0f0f1a" opacity="0.25"/>
+  <!-- P loop: right person silhouette -->
+  <circle cx="128" cy="65" r="22" fill="#0f0f1a" opacity="0.3"/>
+  <rect x="111" y="85" width="34" height="50" rx="17" fill="#0f0f1a" opacity="0.22"/>
+  <!-- Connection between them -->
+  <path d="M87 75 Q110 60 110 65" fill="none" stroke="#fff" stroke-width="2" opacity="0.3" stroke-linecap="round"/>
+  <path d="M87 100 Q110 100 111 95" fill="none" stroke="#fff" stroke-width="2" opacity="0.2" stroke-linecap="round"/>
+  <!-- Eyes -->
+  <circle cx="60" cy="57" r="3" fill="#0f0f1a" opacity="0.35"/>
+  <circle cx="72" cy="57" r="3" fill="#0f0f1a" opacity="0.35"/>
+  <circle cx="123" cy="57" r="3" fill="#0f0f1a" opacity="0.35"/>
+  <circle cx="135" cy="57" r="3" fill="#0f0f1a" opacity="0.35"/>
+</svg>
+<div class="desc">圆角图标 + 双人负空间</div>
+</div>
+
+<!-- P-9: Abstract minimal -->
+<div class="card">
+<h3><span class="badge a">P-9</span> 极简 P 人</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="p9g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#3498db"/>
+    </linearGradient>
+  </defs>
+  <!-- P as a single minimalist shape -->
+  <!-- Stem -->
+  <rect x="62" y="50" width="16" height="110" rx="8" fill="url(#p9g)" opacity="0.85"/>
+  <!-- Head dot on stem -->
+  <circle cx="70" cy="50" r="12" fill="url(#p9g)" opacity="0.9"/>
+  <!-- Loop: chat arrow arc from stem -->
+  <path d="M78 62 C130 40 150 70 130 100 C110 130 78 100 78 80" fill="none" stroke="url(#p9g)" stroke-width="16" stroke-linecap="round" opacity="0.8"/>
+  <!-- Second head on the loop arc -->
+  <circle cx="135" cy="55" r="8" fill="url(#p9g)" opacity="0.85"/>
+  <!-- Minimal eyes -->
+  <circle cx="66" cy="46" r="1.5" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="74" cy="46" r="1.5" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="132" cy="52" r="1.5" fill="#0f0f1a" opacity="0.3"/>
+  <circle cx="138" cy="52" r="1.5" fill="#0f0f1a" opacity="0.3"/>
+</svg>
+<div class="desc">一笔画 P + 双人头</div>
+</div>
+
+</div>
+
+<div style="text-align:center;margin-top:40px;color:#666;font-size:13px;">
+  <p>🎨 所有备选均基于「双人剪影」+「P 字母」融合风格</p>
+  <p style="margin-top:4px;">第一页风格 11 原版见 <a href="/logo-pick-2.html" style="color:#4ecca3;">logo-pick-2.html</a></p>
+</div>
+</body>
+</html>

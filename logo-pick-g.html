@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PChat Logo - 几何抽象双人 P</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#0f0f1a; color:#eee; padding:40px; }
+h1 { text-align:center; margin-bottom:8px; font-size:28px; color:#4ecca3; }
+.sub { text-align:center; color:#666; font-size:14px; margin-bottom:40px; }
+.grid { display:flex; flex-wrap:wrap; gap:30px; justify-content:center; max-width:1200px; margin:0 auto; }
+.card { background:#1a1a2e; border-radius:16px; padding:30px; text-align:center; width:280px; transition:all .2s; }
+.card:hover { background:#1e1e38; box-shadow:0 0 24px rgba(78,204,163,0.12); transform:translateY(-2px); }
+.card svg { display:block; margin:0 auto 16px; }
+.card h3 { font-size:13px; color:#777; margin-bottom:6px; letter-spacing:1px; }
+.card .desc { font-size:12px; color:#4ecca3; }
+</style>
+</head>
+<body>
+<h1>🍃 PChat Logo — 几何抽象 · 双圆 P 系列</h1>
+<p class="sub">无五官 / 纯几何 / 融合 P 字母</p>
+
+<div class="grid">
+
+<!-- G-1: Classic two circles + P stem -->
+<div class="card">
+<h3>G-1 &mdash; 基础双圆 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="g1a" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="g1b" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem: tall rounded rect -->
+  <rect x="62" y="42" width="20" height="120" rx="10" fill="url(#g1a)" opacity="0.85"/>
+  <!-- Two circles forming the loop of P -->
+  <circle cx="130" cy="65" r="34" fill="url(#g1b)" opacity="0.8"/>
+  <circle cx="125" cy="125" r="32" fill="url(#g1b)" opacity="0.7"/>
+</svg>
+<div class="desc">P 字几何解构</div>
+</div>
+
+<!-- G-2: Overlap circles + vertical bar -->
+<div class="card">
+<h3>G-2 &mdash; 交叠圆 + 竖杆</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="g2a" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="g2b" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <rect x="60" y="48" width="18" height="112" rx="9" fill="url(#g2a)" opacity="0.85"/>
+  <circle cx="55" cy="38" r="22" fill="url(#g2a)" opacity="0.85"/>
+  <circle cx="105" cy="42" r="28" fill="url(#g2b)" opacity="0.8"/>
+  <circle cx="118" cy="90" r="28" fill="url(#g2b)" opacity="0.7"/>
+  <circle cx="110" cy="138" r="24" fill="url(#g2b)" opacity="0.6"/>
+</svg>
+<div class="desc">竖杆 + 圆簇</div>
+</div>
+
+<!-- G-3: Two profiles as arcs -->
+<div class="card">
+<h3>G-3 &mdash; 弧线双人</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="g3a" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="g3b" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem -->
+  <rect x="60" y="48" width="18" height="112" rx="9" fill="url(#g3a)" opacity="0.85"/>
+  <!-- Two arcs forming P loop -->
+  <path d="M78 55 C120 20 175 60 140 110" fill="none" stroke="url(#g3b)" stroke-width="20" stroke-linecap="round" opacity="0.8"/>
+  <path d="M78 100 C115 140 170 120 140 155" fill="none" stroke="url(#g3b)" stroke-width="16" stroke-linecap="round" opacity="0.6"/>
+</svg>
+<div class="desc">弧线勾勒 P 圈</div>
+</div>
+
+<!-- G-4: Geometric P with dot network -->
+<div class="card">
+<h3>G-4 &mdash; 网点 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="g4a" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="g4b" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem: dots column -->
+  <circle cx="60" cy="40" r="8" fill="url(#g4a)"/>
+  <circle cx="60" cy="70" r="9" fill="url(#g4a)"/>
+  <circle cx="60" cy="100" r="9" fill="url(#g4a)"/>
+  <circle cx="60" cy="130" r="8" fill="url(#g4a)"/>
+  <circle cx="60" cy="160" r="7" fill="url(#g4a)"/>
+  <!-- P loop: dots ring -->
+  <circle cx="120" cy="58" r="10" fill="url(#g4b)"/>
+  <circle cx="145" cy="70" r="9" fill="url(#g4b)"/>
+  <circle cx="150" cy="95" r="10" fill="url(#g4b)"/>
+  <circle cx="140" cy="120" r="9" fill="url(#g4b)"/>
+  <circle cx="120" cy="135" r="8" fill="url(#g4b)"/>
+  <circle cx="95" cy="130" r="8" fill="url(#g4b)"/>
+</svg>
+<div class="desc">圆点阵列 P</div>
+</div>
+
+<!-- G-5: Concentric rings + stem -->
+<div class="card">
+<h3>G-5 &mdash; 同心环 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="g5a" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="g5b" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem -->
+  <rect x="62" y="48" width="18" height="108" rx="9" fill="url(#g5a)" opacity="0.85"/>
+  <!-- P loop: concentric rings -->
+  <circle cx="120" cy="95" r="42" fill="none" stroke="url(#g5b)" stroke-width="14" opacity="0.65"/>
+  <circle cx="120" cy="95" r="26" fill="none" stroke="url(#g5b)" stroke-width="14" opacity="0.45"/>
+  <circle cx="120" cy="95" r="10" fill="url(#g5b)" opacity="0.85"/>
+</svg>
+<div class="desc">同心环 + 竖杆 = P</div>
+</div>
+
+<!-- G-6: Sliced circle P -->
+<div class="card">
+<h3>G-6 &mdash; 切片圆 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="g6a" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="g6b" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem -->
+  <rect x="58" y="42" width="18" height="120" rx="9" fill="url(#g6a)" opacity="0.85"/>
+  <!-- P loop: two half-circles -->
+  <path d="M76 70 A40 40 0 0 1 156 70" fill="none" stroke="url(#g6b)" stroke-width="20" stroke-linecap="round" opacity="0.8"/>
+  <path d="M76 110 A40 40 0 0 0 156 110" fill="none" stroke="url(#g6b)" stroke-width="20" stroke-linecap="round" opacity="0.6"/>
+</svg>
+<div class="desc">双弧 = P 的圆</div>
+</div>
+
+<!-- G-7: Triangle dots + circle -->
+<div class="card">
+<h3>G-7 &mdash; 三角圆 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="g7a" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="g7b" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem -->
+  <rect x="58" y="50" width="16" height="108" rx="8" fill="url(#g7a)" opacity="0.85"/>
+  <!-- P loop: three circles in triangle -->
+  <circle cx="115" cy="58" r="16" fill="url(#g7b)" opacity="0.85"/>
+  <circle cx="145" cy="95" r="16" fill="url(#g7b)" opacity="0.75"/>
+  <circle cx="105" cy="125" r="16" fill="url(#g7b)" opacity="0.65"/>
+</svg>
+<div class="desc">三点圆 = P 圈</div>
+</div>
+
+<!-- G-8: Pill-shaped P -->
+<div class="card">
+<h3>G-8 &mdash; 胶囊 P</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="g8a" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="g8b" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- P stem: pill -->
+  <rect x="58" y="40" width="20" height="124" rx="10" fill="url(#g8a)" opacity="0.85"/>
+  <!-- P loop: pill circle -->
+  <rect x="88" y="40" width="80" height="80" rx="40" fill="none" stroke="url(#g8b)" stroke-width="18" opacity="0.75"/>
+  <circle cx="128" cy="80" r="16" fill="url(#g8b)" opacity="0.85"/>
+</svg>
+<div class="desc">胶囊形 P</div>
+</div>
+
+<!-- G-9: Minimalist two circles + thin stem -->
+<div class="card">
+<h3>G-9 &mdash; 极简双圆</h3>
+<svg viewBox="0 0 200 200" width="160" height="160">
+  <defs>
+    <linearGradient id="g9a" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ecca3"/>
+      <stop offset="100%" style="stop-color:#00e676"/>
+    </linearGradient>
+    <linearGradient id="g9b" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#3498db"/>
+      <stop offset="100%" style="stop-color:#5b8def"/>
+    </linearGradient>
+  </defs>
+  <!-- Thin P stem -->
+  <rect x="62" y="48" width="12" height="112" rx="6" fill="url(#g9a)" opacity="0.85"/>
+  <!-- Two equal circles = two people -->
+  <circle cx="130" cy="68" r="36" fill="url(#g9b)" opacity="0.75"/>
+  <circle cx="130" cy="132" r="30" fill="url(#g9b)" opacity="0.55"/>
+</svg>
+<div class="desc">细杆 + 双圆 = P</div>
+</div>
+
+</div>
+</body>
+</html>

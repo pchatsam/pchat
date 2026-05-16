@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PChat Logo — 爱心弧线版</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f1a;color:#eee;padding:60px;text-align:center}
+h1{font-size:28px;color:#4ecca3;margin-bottom:8px}
+.sub{color:#666;font-size:14px;margin-bottom:50px}
+.grid{display:flex;flex-wrap:wrap;gap:50px;justify-content:center}
+.card{background:#1a1a2e;border-radius:20px;padding:40px;width:320px}
+.card h3{font-size:13px;color:#777;margin-bottom:24px;letter-spacing:1px}
+.card svg{display:block;margin:0 auto}
+.note{font-size:11px;color:#555;margin-top:14px}
+.pick{display:inline-block;background:#4ecca3;color:#0f0f1a;font-size:10px;padding:2px 10px;border-radius:10px;font-weight:700;margin-bottom:12px}
+</style>
+</head>
+<body>
+<h1>🍃 PChat Logo — 爱心弧线</h1>
+<p class="sub">6 circle 不变 · 2 path 往上弯 → 爱心形</p>
+
+<div class="grid">
+
+<!-- A: 完整爱心弧 -->
+<div class="card">
+<div class="pick">A</div>
+<h3>完整爱心 · 平滑</h3>
+<svg viewBox="0 0 200 200" width="200" height="200">
+ <defs>
+  <linearGradient id="ra" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="100%" style="stop-color:#00e676"/>
+  </linearGradient>
+  <linearGradient id="rb" x1="100%" y1="0%" x2="0%" y2="0%">
+   <stop offset="0%" style="stop-color:#3498db"/>
+   <stop offset="100%" style="stop-color:#5b8def"/>
+  </linearGradient>
+ </defs>
+ <!-- 6 circles 保持不变 -->
+ <circle cx="73" cy="75" r="35" fill="url(#ra)" opacity="0.85"/>
+ <circle cx="127" cy="75" r="35" fill="url(#rb)" opacity="0.85"/>
+ <circle cx="73" cy="65" r="11" fill="#0f0f1a"/>
+ <circle cx="127" cy="65" r="11" fill="#0f0f1a"/>
+ <circle cx="70" cy="80" r="6" fill="#fff" opacity="0.2"/>
+ <circle cx="124" cy="80" r="6" fill="#fff" opacity="0.2"/>
+ <!-- 弧线往上弯：从左外侧拱过顶部到右外侧 -->
+ <path d="M38 85 C38 15 80 15 100 55" fill="none" stroke="url(#ra)" stroke-width="5" opacity="0.55" stroke-linecap="round"/>
+ <path d="M100 55 C120 15 162 15 162 85" fill="none" stroke="url(#rb)" stroke-width="5" opacity="0.55" stroke-linecap="round"/>
+</svg>
+<p class="note">拱形弧线连接外侧 · 爱心顶</p>
+</div>
+
+<!-- B: 粗弧线 -->
+<div class="card">
+<div class="pick">B</div>
+<h3>粗弧线 · 明显</h3>
+<svg viewBox="0 0 200 200" width="200" height="200">
+ <defs>
+  <linearGradient id="rca" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="100%" style="stop-color:#00e676"/>
+  </linearGradient>
+  <linearGradient id="rcb" x1="100%" y1="0%" x2="0%" y2="0%">
+   <stop offset="0%" style="stop-color:#3498db"/>
+   <stop offset="100%" style="stop-color:#5b8def"/>
+  </linearGradient>
+  <linearGradient id="rcarc" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="50%" style="stop-color:#5b8def"/>
+   <stop offset="100%" style="stop-color:#3498db"/>
+  </linearGradient>
+ </defs>
+ <!-- 6 circles -->
+ <circle cx="73" cy="75" r="35" fill="url(#rca)" opacity="0.85"/>
+ <circle cx="127" cy="75" r="35" fill="url(#rcb)" opacity="0.85"/>
+ <circle cx="73" cy="65" r="11" fill="#0f0f1a"/>
+ <circle cx="127" cy="65" r="11" fill="#0f0f1a"/>
+ <circle cx="70" cy="80" r="6" fill="#fff" opacity="0.2"/>
+ <circle cx="124" cy="80" r="6" fill="#fff" opacity="0.2"/>
+ <!-- 粗弧线 -->
+ <path d="M38 90 C38 20 75 10 100 55" fill="none" stroke="url(#rcarc)" stroke-width="10" opacity="0.55" stroke-linecap="round"/>
+ <path d="M100 55 C125 10 162 20 162 90" fill="none" stroke="url(#rcarc)" stroke-width="10" opacity="0.55" stroke-linecap="round"/>
+</svg>
+<p class="note">10px 粗弧 · 更突出</p>
+</div>
+
+<!-- C: 高拱 -->
+<div class="card">
+<div class="pick">C</div>
+<h3>高拱 · 舒展</h3>
+<svg viewBox="0 0 200 200" width="200" height="200">
+ <defs>
+  <linearGradient id="rda" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="100%" style="stop-color:#00e676"/>
+  </linearGradient>
+  <linearGradient id="rdb" x1="100%" y1="0%" x2="0%" y2="0%">
+   <stop offset="0%" style="stop-color:#3498db"/>
+   <stop offset="100%" style="stop-color:#5b8def"/>
+  </linearGradient>
+ </defs>
+ <!-- 6 circles -->
+ <circle cx="73" cy="75" r="35" fill="url(#rda)" opacity="0.85"/>
+ <circle cx="127" cy="75" r="35" fill="url(#rdb)" opacity="0.85"/>
+ <circle cx="73" cy="65" r="11" fill="#0f0f1a"/>
+ <circle cx="127" cy="65" r="11" fill="#0f0f1a"/>
+ <circle cx="70" cy="80" r="6" fill="#fff" opacity="0.2"/>
+ <circle cx="124" cy="80" r="6" fill="#fff" opacity="0.2"/>
+ <!-- 高拱弧线 -->
+ <path d="M38 80 C38 5 80 -5 100 55" fill="none" stroke="url(#rda)" stroke-width="6" opacity="0.5" stroke-linecap="round"/>
+ <path d="M100 55 C120 -5 162 5 162 80" fill="none" stroke="url(#rdb)" stroke-width="6" opacity="0.5" stroke-linecap="round"/>
+</svg>
+<p class="note">拱得更高 · 优雅</p>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,9 +1,9 @@
 /* ============================================================
-   MindRender PChat — Invite-link + PeerJS P2P messaging
+   PChat — Invite-link + PeerJS P2P messaging
    - PeerJS handles all signaling (replaces custom WS relay)
    - PeerJS CDN: <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
    - PeerJS public signaling server
-   - DB: MindRenderPChat (separate from chat version)
+   - DB: PChat (separate from chat version)
    ============================================================
 */
 
@@ -97,6 +97,7 @@ _i18n.dict = {
     'pchat.transfer.table.invitations':  { zh: '邀请', en: 'Invitations', ja: '招待', de: 'Einladungen', fr: 'Invitations', es: 'Invitaciones', pt: 'Convites', he: 'הזמנות', ko: '초대', it: 'Inviti' },
     'pchat.login.btn.selectAccount':     { zh: '请先选择账户', en: 'Please select an account', ja: 'アカウントを選択してください', de: 'Bitte Konto wählen', fr: 'Veuillez sélectionner un compte', es: 'Selecciona una cuenta', pt: 'Selecione uma conta', he: 'בחר חשבון', ko: '계정을 선택하세요', it: 'Seleziona un account' },
     'pchat.login.btn.deleteAccount':     { zh: '删除此账户', en: 'Delete this account', ja: 'このアカウントを削除', de: 'Dieses Konto löschen', fr: 'Supprimer ce compte', es: 'Eliminar esta cuenta', pt: 'Excluir esta conta', he: 'מחק חשבון זה', ko: '이 계정 삭제', it: 'Elimina questo account' },
+    'pchat.msg.deleteConfirm':           { zh: '请输入密码确认删除此账户，此操作不可恢复', en: 'Enter password to confirm account deletion. This action cannot be undone.', ja: 'アカウント削除を確認するにはパスワードを入力してください。この操作は取り消せません。', de: 'Passwort eingeben, um Kontolöschung zu bestätigen. Diese Aktion kann nicht rückgängig gemacht werden.', fr: 'Entrez le mot de passe pour confirmer la suppression du compte. Cette action est irréversible.', es: 'Ingrese la contraseña para confirmar la eliminación de la cuenta. Esta acción no se puede deshacer.', pt: 'Digite a senha para confirmar a exclusão da conta. Esta ação não pode ser desfeita.', he: 'הזן סיסמה כדי לאשר מחיקת חשבון. פעולה זו אינה ניתנת לביטול.', ko: '계정 삭제를 확인하려면 암호를 입력하십시오. 이 작업은 취소할 수 없습니다.', it: 'Inserisci la password per confermare l\'eliminazione dell\'account. Questa azione non può essere annullata.' },
     'pchat.msg.voice':                   { zh: '语音', en: 'Voice', ja: '音声', de: 'Sprache', fr: 'Voix', es: 'Voz', pt: 'Voz', he: 'קול', ko: '음성', it: 'Voce' },
     'pchat.file.incomplete':             { zh: '文件传输不完整（大小不匹配）', en: 'File transfer incomplete (size mismatch)', ja: 'ファイル転送が不完全（サイズ不一致）', de: 'Dateiübertragung unvollständig (Größenunterschied)', fr: 'Transfert de fichier incomplet (taille incompatible)', es: 'Transferencia incompleta (tamaño no coincide)', pt: 'Transferência incompleta (tamanho incompatível)', he: 'העברת קובץ לא הושלמה (אי התאמה בגודל)', ko: '파일 전송 불완전(크기 불일치)', it: 'Trasferimento incompleto (dimensioni non corrispondenti)' },
     'pchat.file.checksumFail':           { zh: '文件传输校验失败（内容损坏）', en: 'File checksum failed (data corrupted)', ja: 'ファイルチェックサム失敗（データ破損）', de: 'Datei-Prüfsumme fehlgeschlagen (Daten beschädigt)', fr: 'Vérification de fichier échouée (données corrompues)', es: 'Verificación fallida (datos corruptos)', pt: 'Verificação falhou (dados corrompidos)', he: 'בדיקת קובץ נכשלה (נתונים פגומים)', ko: '파일 체크섬 실패(데이터 손상)', it: 'Verifica fallita (dati corrotti)' },
@@ -169,22 +170,10 @@ const Crypto = {
 
     generateKeypair(tag) {
         const rsa = forge.pki.rsa.generateKeyPair({bits: 2048, e: 0x10001});
-        const kp = {
+        return {
             publicKey: forge.pki.publicKeyToPem(rsa.publicKey),
             privateKey: forge.pki.privateKeyToPem(rsa.privateKey),
         };
-        // Self-test: encrypt with pubkey, decrypt with privkey
-        try {
-            const test = 'forge-selftest';
-            const pub = forge.pki.publicKeyFromPem(kp.publicKey);
-            const enc = forge.util.encode64(pub.encrypt(test, 'RSA-OAEP', { md: forge.md.sha256.create() }));
-            const priv = forge.pki.privateKeyFromPem(kp.privateKey);
-            const dec = priv.decrypt(forge.util.decode64(enc), 'RSA-OAEP', { md: forge.md.sha256.create() });
-            console.log(`[Crypto] Keypair self-test ${dec === test ? 'PASS' : 'FAIL'}, fp=${Crypto.keyFingerprint(kp.publicKey)}`);
-        } catch(e) {
-            console.warn('[Crypto] Keypair self-test FAILED:', e.message);
-        }
-        return kp;
     },
 
     async encryptChunks(pubKeyPem, plaintext) {
@@ -246,17 +235,7 @@ const Crypto = {
         const pubPemFromPriv = forge.pki.publicKeyToPem(pubFromPriv);
         console.log(`[Crypto] Derived pubkey from this privkey fp=${Crypto.keyFingerprint(pubPemFromPriv)}`);
         
-        // 自测：用这个私钥对应的公钥加密，再用这个私钥解密
-        try {
-            const pub2 = forge.pki.publicKeyFromPem(pubPemFromPriv);
-            const testBs = forge.util.encodeUtf8('selftest');
-            const testEnc = forge.util.encode64(pub2.encrypt(testBs, 'RSA-OAEP', { md: forge.md.sha256.create() }));
-            const testDec = forge.util.decodeUtf8(priv.decrypt(forge.util.decode64(testEnc), 'RSA-OAEP', { md: forge.md.sha256.create() }));
-            console.log(`[Crypto] Inline self-test: ${testDec === 'selftest' ? 'PASS' : 'FAIL'}`);
-        } catch(e) {
-            console.warn('[Crypto] Inline self-test FAILED:', e.message);
-        }
-        
+
         const enc = forge.util.decode64(ciphertextB64);
         const dec = priv.decrypt(enc, 'RSA-OAEP', {
             md: forge.md.sha256.create(),
@@ -266,7 +245,7 @@ const Crypto = {
     },
 
     deriveAesKey(password, userId) {
-        const salt = CryptoJS.enc.Utf8.parse("mindrender-chat-salt" + (userId || ""));
+        const salt = CryptoJS.enc.Utf8.parse("pchat-salt" + (userId || ""));
         return CryptoJS.PBKDF2(password, salt, {
             keySize: 256 / 32,
             iterations: 100000,
@@ -313,8 +292,8 @@ function base64ToUint8(b64) {
 
 // ==================== IndexedDB ====================
 const DB = {
-    BASE_NAME: "MindRenderPChat",
-    NAME: "MindRenderPChat", // can be overridden to BASE_NAME + "_" + userId
+    BASE_NAME: "PChat",
+    NAME: "PChat", // can be overridden to BASE_NAME + "_" + userId
     VER: 2,
     db: null,
 
@@ -368,7 +347,7 @@ const DB = {
         const tx = this.db.transaction(name, "readwrite");
         const store = tx.objectStore(name);
         const keyPath = store.keyPath;
-        const record = { id: item.id || item.contactId || item.userId, encrypted: enc, ts: Date.now() };
+        const record = { id: item.id || item.contactId || item.userId, encrypted: enc, ts: Date.now(), peerId: item.peerId || '', timestamp: item.ts || Date.now() };
         // Ensure the keyPath field exists on the record
         if (keyPath === "contactId") record.contactId = item.contactId;
         else if (keyPath === "id") record.id = item.id;
@@ -413,18 +392,80 @@ const DB = {
         });
     },
 
-    // ---- Store raw file data (not encrypted, separate store) ----
-    async putFile(fileId, base64Data, mime) {
+    // 利用 peerId 索引做范围查询，避免全表扫描+解密
+    async listMessagesByPeer(peerId, aesKey) {
+        const tx = this.db.transaction("messages", "readonly");
+        const store = tx.objectStore("messages");
+        const index = store.index("peerId");
+        const range = IDBKeyRange.only(peerId);
+        const req = index.getAll(range);
+        return new Promise((resolve, reject) => {
+            tx.onerror = () => reject(tx.error);
+            req.onsuccess = async () => {
+                const results = [];
+                for (const it of req.result) {
+                    try {
+                        const parsed = JSON.parse(await Crypto.decryptAes(aesKey, it.encrypted));
+                        results.push(parsed);
+                    } catch (e) {
+                        console.warn('[DB] Decrypt failed for message', it.id, ':', e.message, 'aesKey fingerprint:', (aesKey || '').substring(0, 16) + '...');
+                        const fallback = { ...it };
+                        if (fallback.contactId && !fallback.userId) {
+                            fallback.userId = fallback.contactId.replace("contact_", "");
+                        }
+                        results.push(fallback);
+                    }
+                }
+                results.sort((a, b) => a.ts - b.ts);
+                // Fallback: if index returned nothing (old records lack peerId field),
+                // do full table scan and filter by decrypted peerId
+                if (results.length === 0) {
+                    console.log('[DB] Index empty, falling back to full scan for peerId:', peerId);
+                    const allReq = store.getAll();
+                    allReq.onsuccess = async () => {
+                        const allResults = [];
+                        for (const it of allReq.result) {
+                            try {
+                                const parsed = JSON.parse(await Crypto.decryptAes(aesKey, it.encrypted));
+                                if (parsed.peerId === peerId) allResults.push(parsed);
+                            } catch (e) { /* skip undecryptable */ }
+                        }
+                        allResults.sort((a, b) => a.ts - b.ts);
+                        resolve(allResults);
+                    };
+                    allReq.onerror = () => reject(allReq.error);
+                    return;
+                }
+                resolve(results);
+            };
+            req.onerror = () => reject(req.error);
+        });
+    },
+
+    // ---- Store raw file data (AES encrypted, separate store) ----
+    async putFile(fileId, base64Data, mime, aesKey) {
         const tx = this.db.transaction("files", "readwrite");
         const store = tx.objectStore("files");
-        store.put({ id: fileId, data: base64Data, mime: mime || "image/png", ts: Date.now() });
+        const encrypted = await Crypto.encryptAes(aesKey, base64Data);
+        store.put({ id: fileId, data: encrypted, mime: mime || "image/png", ts: Date.now() });
         return new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
     },
 
-    async getFile(fileId) {
+    async getFile(fileId, aesKey) {
         const req = this._store("files").get(fileId);
         return new Promise((resolve) => {
-            req.onsuccess = () => resolve(req.result || null);
+            req.onsuccess = async () => {
+                const record = req.result;
+                if (!record) { resolve(null); return; }
+                try {
+                    const decrypted = await Crypto.decryptAes(aesKey, record.data);
+                    record.data = decrypted;
+                } catch(e) {
+                    console.warn(`[DB] File decrypt failed for ${fileId}:`, e.message, 'aesKey fingerprint:', (aesKey || '').substring(0, 16) + '...');
+                    resolve(null); return;
+                }
+                resolve(record);
+            };
             req.onerror = () => resolve(null);
         });
     },
@@ -484,14 +525,21 @@ const AccountManager = {
         const accounts = this.listAccounts();
         const filtered = accounts.filter(a => a.userId !== userId);
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered));
+        // Close DB connection before deleting
+        if (DB.db) { try { DB.db.close(); } catch(e) {} DB.db = null; }
         // Delete the IndexedDB for this account
-        const dbNames = await indexedDB.databases();
         const dbName = DB.BASE_NAME + "_" + userId;
-        for (const db of dbNames) {
-            if (db.name === dbName) {
-                indexedDB.deleteDatabase(dbName);
-                break;
+        try {
+            const dbNames = await indexedDB.databases();
+            for (const db of dbNames) {
+                if (db.name === dbName) {
+                    indexedDB.deleteDatabase(dbName);
+                    break;
+                }
             }
+        } catch(e) {
+            // Fallback: delete by name directly
+            indexedDB.deleteDatabase(dbName);
         }
     },
 
@@ -527,13 +575,11 @@ const PeerConn = {
         const peerConfig = {
             config: {
                 iceServers: [
-                    { urls: 'stun:stun.baidu.com:3478' },
-                    { urls: 'stun:stun.126.com:3478' },
-                    { urls: 'stun:stun.aliyuncs.com:3478' },
-                    { urls: 'stun:stun.tencentcloudapi.com:3478' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun.chat.bilibili.com:3478' },
+                    { urls: 'stun:stun.miwifi.com:3478' },
                     { urls: 'stun:stun.cloudflare.com:3478' },
-                    { urls: 'stun:stun.syncthing.net:3478' },
+                    { urls: 'stun:stun.nextcloud.com:3478' },
+                    { urls: 'stun:stun.l.google.com:19302' },
                 ]
             }
         };
@@ -728,6 +774,11 @@ const PeerConn = {
                 } else if (data.type === "id-change") {
                     // Contact changed their ID - update contact list
                     ChatApp._onIdChangeNotification(peerId, data);
+                } else if (data.type === "transfer-request" || data.type === "transfer-start" ||
+                           data.type === "table-start" || data.type === "table-done" ||
+                           data.type === "transfer-chunk" || data.type === "transfer-complete") {
+                    // Transfer messages routed to transfer handler
+                    await ChatApp._handleTransferInData(data);
                 }
             } catch (err) { console.error("[PeerConn] parse:", err); }
         });
@@ -890,6 +941,80 @@ const ChatApp = {
         this._hide('alert-modal');
     },
 
+    // ---- Delete confirm popup ----
+    _deleteConfirmUserId: null,
+
+    async _showDeleteConfirm(userId) {
+        const modal = document.getElementById("delete-confirm-modal");
+        if (!modal) return;
+
+        const titleEl = document.getElementById("delete-confirm-title");
+        const descEl = document.getElementById("delete-confirm-desc");
+        const pwInput = document.getElementById("delete-confirm-password");
+        const cancelBtn = document.getElementById("delete-confirm-cancel");
+        const okBtn = document.getElementById("delete-confirm-ok");
+
+        if (titleEl) titleEl.textContent = _i18n.t('pchat.login.btn.deleteAccount');
+        if (descEl) descEl.textContent = _i18n.t('pchat.msg.deleteConfirm');
+        if (pwInput) pwInput.value = '';
+
+        this._deleteConfirmUserId = userId;
+
+        // 移除旧监听，避免重复绑定
+        const newCancelBtn = cancelBtn ? cancelBtn.cloneNode(true) : null;
+        const newOkBtn = okBtn ? okBtn.cloneNode(true) : null;
+        if (cancelBtn && newCancelBtn) cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        if (okBtn && newOkBtn) okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+
+        this._show("delete-confirm-modal");
+
+        const finalCancel = document.getElementById("delete-confirm-cancel");
+        const finalOk = document.getElementById("delete-confirm-ok");
+        const finalPw = document.getElementById("delete-confirm-password");
+
+        if (finalCancel) {
+            finalCancel.onclick = () => this._hide("delete-confirm-modal");
+        }
+        if (finalOk) {
+            finalOk.onclick = () => this._handleDeleteConfirm();
+        }
+        if (finalPw) {
+            finalPw.onkeydown = (e) => { if (e.key === "Enter") this._handleDeleteConfirm(); };
+        }
+
+        setTimeout(() => { if (finalPw) finalPw.focus(); }, 100);
+    },
+
+    async _handleDeleteConfirm() {
+        const pwInput = document.getElementById("delete-confirm-password");
+        const inputPw = pwInput ? pwInput.value : '';
+
+        if (!inputPw) {
+            this.showAlert(_i18n.t('pchat.alert.enterPassword'));
+            return;
+        }
+
+        const userId = this._deleteConfirmUserId;
+        try {
+            // 用密码派生密钥，尝试读取 user 记录验证密码
+            await DB.openFor(userId);
+            const testKey = await Crypto.deriveAesKey(inputPw);
+            const user = await DB.get("user", "current", testKey);
+            if (user && user.userId) {
+                // 密码正确，执行删除
+                this._hide("delete-confirm-modal");
+                AccountManager.removeAccount(userId);
+                this.init();
+            } else {
+                this.showAlert(_i18n.t('pchat.alert.passwordError'));
+                if (pwInput) pwInput.value = '';
+            }
+        } catch (err) {
+            this.showAlert(_i18n.t('pchat.alert.passwordError'));
+            if (pwInput) pwInput.value = '';
+        }
+    },
+
     _hideFriendRequestModal() {
         const card = document.getElementById('friend-request-card');
         if (card) card.style.display = 'none';
@@ -1042,6 +1167,25 @@ const ChatApp = {
     },
 
     async init() {
+        // Version and debug info
+        console.log('[PChat] init() - Version: ' + (typeof PCHAT_VERSION !== 'undefined' ? PCHAT_VERSION : 'unknown'));
+        // Debug: check if corner-btn styles exist
+        try {
+            var sheets = document.styleSheets;
+            for (var s = 0; s < sheets.length; s++) {
+                try {
+                    var rules = sheets[s].cssRules || sheets[s].rules;
+                    for (var r = 0; r < rules.length; r++) {
+                        if (rules[r].selectorText && rules[r].selectorText.indexOf('corner-btn') !== -1) {
+                            console.log('[PChat] Found corner-btn rule: ' + rules[r].selectorText);
+                        }
+                    }
+                } catch(e) {}
+            }
+        } catch(e) {
+            console.warn('[PChat] Style check failed:', e);
+        }
+
         _i18n.applyUI();
 
         // Parse invite link from URL hash
@@ -1086,8 +1230,7 @@ const ChatApp = {
                     };
                     div.querySelector(".account-delete-btn").onclick = (e) => {
                         e.stopPropagation();
-                        AccountManager.removeAccount(acc.userId);
-                        this.init(); // Re-render
+                        this._showDeleteConfirm(acc.userId);
                     };
                     accountList.appendChild(div);
                 }
@@ -1116,14 +1259,14 @@ const ChatApp = {
             }
         }
 
-        // Show transfer buttons
-        const transferPanel = document.getElementById("transfer-panel");
-        if (transferPanel) {
-            if (accounts.length > 0) {
-                transferPanel.style.display = "block";
-            } else {
-                transferPanel.style.display = "none";
-            }
+        // Show corner buttons
+        const transferBtn = document.getElementById("transfer-out-btn");
+        const newAccBtn = document.getElementById("new-account-btn");
+        if (transferBtn) {
+            transferBtn.style.display = accounts.length > 0 ? "inline-block" : "none";
+        }
+        if (newAccBtn) {
+            newAccBtn.style.display = "inline-block";
         }
 
         this._bindEvents();
@@ -1206,7 +1349,8 @@ const ChatApp = {
 
         this._hide("setup-panel");
         this._hide("invite-info");
-        document.getElementById("delete-account-btn").style.display = "none";
+        var deleteBtn = document.getElementById("delete-account-btn");
+        if (deleteBtn) deleteBtn.style.display = "none";
         this._show("main-panel");
 
         document.getElementById("my-nickname").textContent = nick;
@@ -1324,7 +1468,7 @@ const ChatApp = {
                     const thumb = await DB.generateThumbnail(msg.fileData, msg.mimeType || "image/png", 200);
 
                     // Store full image in files store
-                    await DB.putFile(fileId, msg.fileData, msg.mimeType || "image/png");
+                    await DB.putFile(fileId, msg.fileData, msg.mimeType || "image/png", this.my.aesKey);
 
                     // Update message: keep only thumbnail, add fileId reference
                     if (thumb) {
@@ -1346,6 +1490,7 @@ const ChatApp = {
     },
 
     // ---- Delete account (clear all data) ----
+    // DEPRECATED: use _showDeleteConfirm() instead
     async deleteAccount() {
         if (!confirm(_i18n.t('pchat.alert.deleteConfirm'))) return;
         try {
@@ -1387,7 +1532,15 @@ const ChatApp = {
     },
     async removeContact(userId) {
         // Remove from IndexedDB
-        try { await DB.db.transaction("contacts", "readwrite").objectStore("contacts").delete("contact_" + userId).promise; } catch {}
+        try {
+            const delTx = DB.db.transaction("contacts", "readwrite");
+            const delStore = delTx.objectStore("contacts");
+            delStore.delete("contact_" + userId);
+            await new Promise((resolve, reject) => {
+                delTx.oncomplete = () => resolve();
+                delTx.onerror = () => reject(delTx.error);
+            });
+        } catch {}
         // Remove from memory
         this.contacts = this.contacts.filter(c => c.userId !== userId);
         // Remove messages to this peer
@@ -1606,6 +1759,7 @@ const ChatApp = {
                 const code = jsQR(imageData.data, imageData.width, imageData.height);
                 if (code) {
                     const id = code.data.trim();
+                    console.log('[Scan] QR detected:', id);
                     if (id && id !== this.my.id) {
                         this.scanAnimFrame = null; // prevent further scans
                         
@@ -1638,7 +1792,33 @@ const ChatApp = {
                             return;
                         }
                         
+                        // Auto-detect transfer ID from normal scan
+                        if (id.startsWith("transfer_")) {
+                            console.log('[Scan] Auto-detect transfer ID:', id);
+                            this.transferInConnect(id);
+                            // Stop camera
+                            if (this.scanStream) {
+                                this.scanStream.getTracks().forEach(t => t.stop());
+                                this.scanStream = null;
+                            }
+                            if (video) { video.srcObject = null; video.style.display = 'none'; }
+                            if (status) {
+                                status.textContent = '✓';
+                                status.style.fontSize = '80px';
+                                status.style.color = '#4caf50';
+                            }
+                            setTimeout(() => {
+                                this.closeScanModal();
+                                if (video) video.style.display = '';
+                                if (status) { status.textContent = ''; status.style.fontSize = '12px'; status.style.color = '#888'; }
+                            }, 1000);
+                            return;
+                        }
+
                         // Normal mode: add friend
+                        if (id.startsWith("transfer_")) {
+                            console.warn('[Scan] BUG: transfer_ ID reached _requestFriend — auto-detect not working!');
+                        }
                         this._requestFriend(id);
                         // Stop camera
                         if (this.scanStream) {
@@ -1860,6 +2040,13 @@ const ChatApp = {
             return;
         }
 
+        if (id.startsWith("transfer_")) {
+            // Route transfer IDs to transfer-in flow (uses main PeerJS)
+            document.getElementById("add-friend-input").value = "";
+            this.transferInConnect(id);
+            return;
+        }
+
         this._requestFriend(id);
         document.getElementById("add-friend-input").value = "";
     },
@@ -1881,11 +2068,10 @@ const ChatApp = {
         const rawContent = isHtml ? content.substring(6) : content;
         
         const msg = { id, peerId, content: rawContent, ts: now, direction: "received", fromId: peerId, isHtml };
-        DB.put("messages", msg, this.my.aesKey).then(() => {
-            if (this.activeConv && this.activeConv.id === peerId) {
-                this._appendMsg(msg);
-            }
-        });
+        await DB.put("messages", msg, this.my.aesKey);
+        if (this.activeConv && this.activeConv.id === peerId) {
+            this._appendMsg(msg);
+        }
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact) {
             contact.lastMessage = { content: rawContent, ts: now, fromId: peerId, isHtml };
@@ -1903,11 +2089,12 @@ const ChatApp = {
         console.log("[IDChange] Got notification from", senderId);
         try {
             // Decrypt the payload using sender's private key
-            const myPrivKey = this.my.keypair?.privateKey;
-            if (!myPrivKey) {
-                console.warn("[IDChange] No private key available");
+            const senderContact = this.contacts.find(c => c.userId === senderId);
+            if (!senderContact || !senderContact.keypair) {
+                console.warn("[IDChange] No keypair available for", senderId);
                 return;
             }
+            const myPrivKey = senderContact.keypair.privateKey;
             
             const decrypted = await Crypto.decryptWithPrivkey(myPrivKey, data.encrypted);
             const payload = JSON.parse(decrypted);
@@ -1978,8 +2165,7 @@ const ChatApp = {
 
     // ---- Render messages with receipt colors ----
     async _renderMessages(convId) {
-        const msgs = await DB.list("messages", this.my.aesKey);
-        const conv = msgs.filter(m => m.peerId === convId && !(m.content === "undefined" && !m.type)).sort((a, b) => a.ts - b.ts);
+        const conv = (await DB.listMessagesByPeer(convId, this.my.aesKey)).filter(m => !(m.content === "undefined" && !m.type));
         this.currentMessages = conv;
         const container = document.getElementById("message-list");
         container.innerHTML = "";
@@ -1998,15 +2184,14 @@ const ChatApp = {
     },
 
     // ---- Voice Message Receive ----
-    onVoiceMsg(peerId, base64data, ts, duration) {
+    async onVoiceMsg(peerId, base64data, ts, duration) {
         const now = ts || Date.now();
         const id = `msg_${peerId}_${now}_voice_${Date.now()}`;
         const msg = { id, peerId, content: base64data, ts: now, direction: "received", fromId: peerId, type: "voice", duration };
-        DB.put("messages", msg, this.my.aesKey).then(() => {
-            if (this.activeConv && this.activeConv.id === peerId) {
-                this._appendMsg(msg);
-            }
-        });
+        await DB.put("messages", msg, this.my.aesKey);
+        if (this.activeConv && this.activeConv.id === peerId) {
+            this._appendMsg(msg);
+        }
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact) {
             contact.lastMessage = { content: _i18n.t('pchat.msg.voice'), ts: now, fromId: peerId };
@@ -2096,8 +2281,10 @@ const ChatApp = {
             storedFileId = d.fileId;
             const thumb = await DB.generateThumbnail(fullBase64, info.mime, 200);
             storedData = thumb || fullBase64;
-            // Store full image in unencrypted files store
-            await DB.putFile(d.fileId, fullBase64, info.mime);
+            // Store full image in files store
+            console.log('[File] Storing file aesKey fingerprint:', this.my.aesKey.substring(0, 16) + '...');
+            await DB.putFile(d.fileId, fullBase64, info.mime, this.my.aesKey);
+            console.log('[File] File stored, fileId:', d.fileId, 'dataLen:', fullBase64.length);
         }
 
         const msg = {
@@ -2115,7 +2302,9 @@ const ChatApp = {
         };
 
         // Store in DB
+        console.log('[File] Storing message aesKey fingerprint:', this.my.aesKey.substring(0, 16) + '...');
         await DB.put("messages", msg, this.my.aesKey);
+        console.log('[File] Message stored, msgId:', id, 'hasFileData:', !!msg.fileData, 'fileDataLen:', (msg.fileData || '').length);
 
         if (this.activeConv && this.activeConv.id === peerId) {
             this._appendMsg(msg);
@@ -2134,6 +2323,12 @@ const ChatApp = {
             this.unreadCount[peerId] = (this.unreadCount[peerId] || 0) + 1;
         }
         this._renderContacts();
+
+        // Send ack back to sender so it can proceed to next file (backpressure)
+        const ackState = PeerConn.peers[peerId];
+        if (ackState && ackState.conn && ackState.conn.open) {
+            ackState.conn.send({ type: "file-ack", fileId: d.fileId });
+        }
     },
 
     // ---- Send message ----
@@ -2157,15 +2352,21 @@ const ChatApp = {
             const msgId = `msg_${convId}_${now}`;
             // 先建一条汇总消息，含初始 receipts
             const receipts = {};
+            let anySent = false;
             for (const memberId of group.memberIds) {
                 const contact = this.contacts.find(c => c.userId === memberId);
                 if (contact && contact.publicKey) {
                     const sent = await PeerConn.send(memberId, content, msgId);
-                    receipts[memberId] = null;
+                    if (sent) anySent = true;
+                    receipts[memberId] = sent ? Date.now() : null;
                     // 更新每个联系人的最后消息
                     contact.lastMessage = { content: rawContent, ts: now, fromId: this.my.id, isHtml };
                     this.saveContact(contact);
                 }
+            }
+            // 全部发送失败时提示
+            if (!anySent && group.memberIds.length > 0) {
+                this.showAlert(_i18n.t('pchat.alert.peerOffline'));
             }
             // 存一条汇总消息
             const msg = { id: msgId, peerId: convId, content: rawContent, ts: now, direction: "sent", fromId: this.my.id, receipts, isHtml };
@@ -2183,9 +2384,8 @@ const ChatApp = {
             const id = `msg_${convId}_${now}`;
             const sent = await PeerConn.send(convId, content, id);
             const msg = { id, peerId: convId, content: rawContent, ts: now, direction: "sent", fromId: this.my.id, sent: sent, isHtml: isHtml };
-            DB.put("messages", msg, this.my.aesKey).then(() => {
-                this._appendMsg(msg);
-            });
+            await DB.put("messages", msg, this.my.aesKey);
+            this._appendMsg(msg);
 
             if (contact) {
                 contact.lastMessage = { content: rawContent, ts: now, fromId: this.my.id, isHtml };
@@ -2310,7 +2510,7 @@ const ChatApp = {
         if (peer && peer.conn && peer.conn.open) {
             peer.conn.send({ type: "voice", content: base64data, ts: now, duration });
             msg.sent = true;
-            DB.put("messages", msg, this.my.aesKey);
+            await DB.put("messages", msg, this.my.aesKey);
         }
         
         this._renderContacts();
@@ -2354,9 +2554,8 @@ const ChatApp = {
 
     // Compute SHA-256 hash of base64 data (works in any context)
     _hashBase64(base64Str) {
-        const bytes = atob(base64Str);
-        let wordArray = CryptoJS.lib.WordArray.create(bytes.length);
-        for (let i = 0; i < bytes.length; i++) wordArray.words[i >>> 2] |= bytes.charCodeAt(i) << (24 - (i & 3) * 8);
+        // CryptoJS 内置 Base64 → WordArray 转换
+        const wordArray = CryptoJS.enc.Base64.parse(base64Str);
         return CryptoJS.SHA256(wordArray).toString(CryptoJS.enc.Hex);
     },
     async _sendFileInternal(file) {
@@ -2389,7 +2588,7 @@ const ChatApp = {
                 if (isImage) {
                     thumbData = await DB.generateThumbnail(base64, file.type, 200);
                     // Store full image in unencrypted files store
-                    await DB.putFile(fileId, base64, file.type);
+                    await DB.putFile(fileId, base64, file.type, this.my.aesKey);
                 }
 
                 // Also display in sender's chat window immediately
@@ -2460,7 +2659,30 @@ const ChatApp = {
                     fileId,
                 });
 
-                console.log(`[File] Done sending ${file.name}`);
+                console.log(`[File] Waiting for ack: ${file.name}`);
+
+                // Wait for file-ack from receiver (with 60s timeout) for backpressure
+                const ackReceived = await new Promise((ackResolve) => {
+                    const handler = (data) => {
+                        if (data.type === "file-ack" && data.fileId === fileId) {
+                            clearTimeout(timer);
+                            conn.off("data", handler);
+                            ackResolve(true);
+                        }
+                    };
+                    const timer = setTimeout(() => {
+                        conn.off("data", handler);
+                        console.warn(`[File] Ack timeout for ${file.name}`);
+                        ackResolve(false);
+                    }, 60000);
+                    conn.on("data", handler);
+                });
+
+                if (ackReceived) {
+                    console.log(`[File] Ack received: ${file.name}`);
+                } else {
+                    console.warn(`[File] No ack for ${file.name}, continuing anyway`);
+                }
                 resolve();
             };
             reader.readAsDataURL(file);
@@ -2522,10 +2744,9 @@ const ChatApp = {
 
     async _loadMessages(peerId) {
         console.log(`[Chat] Loading messages for ${peerId}`);
-        const msgs = await DB.list("messages", this.my.aesKey);
-        console.log(`[Chat] Total messages: ${msgs.length}`);
-        const conv = msgs.filter(m => m.peerId === peerId && !(m.content === "undefined" && !m.type)).sort((a, b) => a.ts - b.ts);
-        console.log(`[Chat] Messages for ${peerId}: ${conv.length}`);
+        const conv = (await DB.listMessagesByPeer(peerId, this.my.aesKey)).filter(m => !(m.content === "undefined" && !m.type));
+        const imgCount = conv.filter(m => m.type === 'image').length;
+        console.log(`[Chat] Messages for ${peerId}: ${conv.length} total, ${imgCount} images, aesKey fingerprint: ${this.my.aesKey.substring(0, 16)}...`);
         this.currentMessages = conv;
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact && conv.length > 0) {
@@ -2657,35 +2878,36 @@ const ChatApp = {
     },
 
     async _openImageFromDb(msgId, fileId, mime) {
+        // 先取消息记录（只取一次）
+        const msg = await DB.get("messages", msgId, this.my.aesKey);
+        console.log('[ImageViewer] aesKey fingerprint:', this.my.aesKey.substring(0, 16) + '...', 'fileId:', fileId, 'msg.fileId:', msg?.fileId);
+
         // Try to load full image from files store directly
         let fullData = null;
         if (fileId) {
-            const fileRecord = await DB.getFile(fileId);
+            const fileRecord = await DB.getFile(fileId, this.my.aesKey);
+            console.log('[ImageViewer] getFile result:', !!fileRecord, 'hasData:', !!fileRecord?.data);
             if (fileRecord && fileRecord.data) {
                 fullData = fileRecord.data;
                 mime = fileRecord.mime || mime;
             }
         }
-        // Fallback: decrypt message and use fileData (old messages may have full image)
-        if (!fullData) {
-            const msg = await DB.get("messages", msgId, this.my.aesKey);
-            if (msg) {
-                if (msg.fileId && !fileId) {
-                    const fileRecord2 = await DB.getFile(msg.fileId);
-                    if (fileRecord2 && fileRecord2.data) {
-                        fullData = fileRecord2.data;
-                        mime = fileRecord2.mime || mime;
-                    }
-                }
-                if (!fullData && msg.fileData) {
-                    fullData = msg.fileData;
-                    mime = mime || msg.mimeType;
-                }
+        // Fallback: use msg.fileId to load from files
+        if (!fullData && msg && msg.fileId && (!fileId || msg.fileId !== fileId)) {
+            const fileRecord2 = await DB.getFile(msg.fileId, this.my.aesKey);
+            if (fileRecord2 && fileRecord2.data) {
+                fullData = fileRecord2.data;
+                mime = fileRecord2.mime || mime;
             }
         }
+        // Fallback: use fileData from message
+        if (!fullData && msg && msg.fileData) {
+            fullData = msg.fileData;
+            mime = mime || msg.mimeType;
+        }
         if (!fullData) return;
-        // 缩略图已在消息的 fileData 中（200px），直接用它打开 viewer
-        const msg = await DB.get("messages", msgId, this.my.aesKey);
+
+        // 复用已读取的 msg 对象
         const thumbData = msg && msg.fileData ? msg.fileData : fullData;
         const thumbSrc = `data:${mime || 'image/jpeg'};base64,${thumbData}`;
         this._currentImageMsgId = msgId;
@@ -2700,7 +2922,7 @@ const ChatApp = {
         let data = msg.fileData;
         let mime = msg.mimeType || 'application/octet-stream';
         if (msg.type === "image" && msg.fileId) {
-            const fileRecord = await DB.getFile(msg.fileId);
+            const fileRecord = await DB.getFile(msg.fileId, this.my.aesKey);
             if (fileRecord && fileRecord.data) {
                 data = fileRecord.data;
                 mime = fileRecord.mime || mime;
@@ -2731,6 +2953,7 @@ const ChatApp = {
         c.peerId = peerId;
         c.mediaConnection = call;
         c.state = "waiting"; // 等待接听
+        c.direction = "sent"; // 主叫标记
         c.startTime = null;
         
         call.on("stream", (remoteStream) => {
@@ -2858,6 +3081,7 @@ const ChatApp = {
             c.active = true; c.peerId = peerId; c.localStream = localStream;
             c.mediaConnection = call; c.startTime = Date.now();
             c.state = "connected";
+            c.direction = "received"; // 接听标记
             call.answer(localStream);
             call.on("stream", (remoteStream) => {
                 if (c.audio) { c.audio.pause(); c.audio.srcObject = null; }
@@ -2900,23 +3124,29 @@ const ChatApp = {
     },
     
     // 通话结束统一处理
-    _onCallEnd() {
+    async _onCallEnd() {
         const c = this.call;
         
         // 计算通话时长并记录
         if (c.startTime) {
             const duration = Math.floor((Date.now() - c.startTime) / 1000);
-            this._recordCallMessage(c.peerId, duration);
+            await this._recordCallMessage(c.peerId, duration, c.direction || "received");
         }
         
         this._stopCallMedia();
         this._hideCallModal();
         this._hideCallInHeader();
         this._resetCallUI();
+        
+        // BUG-014: 清理残留的 _pendingCall，防止通话异常结束后残留
+        if (this._pendingCall) {
+            try { this._pendingCall.close(); } catch(e) {}
+            this._pendingCall = null;
+        }
     },
     
     // 记录通话消息到对话
-    _recordCallMessage(peerId, durationSeconds) {
+    async _recordCallMessage(peerId, durationSeconds, direction) {
         const now = Date.now();
         const durStr = this._formatDuration(durationSeconds);
         const content = _i18n.fmt('pchat.call.log', 'dur', durStr);
@@ -2926,22 +3156,21 @@ const ChatApp = {
             peerId,
             content,
             ts: now,
-            direction: "received",
+            direction: direction || "received",
             fromId: peerId,
             type: "call-log"
         };
         
-        DB.put("messages", msg, this.my.aesKey).then(() => {
-            if (this.activeConv && this.activeConv.id === peerId) {
-                this._appendMsg(msg);
-            }
-            
-            const contact = this.contacts.find(c => c.userId === peerId);
-            if (contact) {
-                contact.lastMessage = { content: content, ts: now, fromId: peerId };
-                this.saveContact(contact);
-            }
-        });
+        await DB.put("messages", msg, this.my.aesKey);
+        if (this.activeConv && this.activeConv.id === peerId) {
+            this._appendMsg(msg);
+        }
+        
+        const contact = this.contacts.find(c => c.userId === peerId);
+        if (contact) {
+            contact.lastMessage = { content: content, ts: now, fromId: peerId };
+            this.saveContact(contact);
+        }
     },
     
     // 格式化时长
@@ -3105,7 +3334,7 @@ const ChatApp = {
         let fullData = null;
         let mime = item.mime;
         if (item.fileId) {
-            const fileRecord = await DB.getFile(item.fileId);
+            const fileRecord = await DB.getFile(item.fileId, this.my.aesKey);
             if (fileRecord && fileRecord.data) {
                 fullData = fileRecord.data;
                 mime = fileRecord.mime || mime;
@@ -3505,7 +3734,7 @@ const ChatApp = {
         // Load full image
         let fullData = null;
         if (image.fileId) {
-            const fileRecord = await DB.getFile(image.fileId);
+            const fileRecord = await DB.getFile(image.fileId, this.my.aesKey);
             if (fileRecord && fileRecord.data) {
                 fullData = fileRecord.data;
                 image.mime = fileRecord.mime || image.mime;
@@ -3638,6 +3867,8 @@ const ChatApp = {
         if (img2Close) { img2Close.removeAttribute("src"); img2Close.style.visibility = "hidden"; }
         const img = document.getElementById("image-viewer-img");
         img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null;
+        img.onload = null;  // 清理图片加载事件
+        img.style.transform = '';  // 重置缩放/平移变换
         const container = document.getElementById("image-viewer-container");
         container.ontouchstart = null; container.ontouchmove = null; container.ontouchend = null;
         const toolbar = document.getElementById("image-viewer-toolbar");
@@ -3710,7 +3941,7 @@ const ChatApp = {
                 if (tok.id === this.my.id && tok.ts > this._lastTokenTs + 3000) {
                     // Another tab logged in as us — silently exit
                     clearInterval(this._loginHeartbeat);
-                    if (this.peer) this.peer.destroy();
+                    if (PeerConn.peer) PeerConn.peer.destroy();
                     Object.values(PeerConn.peers).forEach(s => { try { s.conn.close(); } catch(e){} });
                     location.hash = '';
                     location.reload();
@@ -3749,8 +3980,7 @@ const ChatApp = {
 
     // ---- Public helpers for PeerConn module ----
     async getMessages(peerId) {
-        const all = await DB.list("messages", this.my.aesKey);
-        return all.filter(m => m.peerId === peerId).sort((a, b) => a.ts - b.ts);
+        return await DB.listMessagesByPeer(peerId, this.my.aesKey);
     },
 
     async DB_put_msg(msg) {
@@ -3765,10 +3995,13 @@ const ChatApp = {
     _transferSourceDb: null,
     _transferSourceKey: null,
     _transferSourceUserId: null,
+    _transferSourceNickname: null,
     _transferTargetDb: null,
     _transferTargetUserId: null,
+    _transferTargetNickname: null,
     _transferSelectedId: null,
     _transferInScanMode: false,
+    _transferOutId: null,
 
     // ---- UI: Show Transfer Out Modal ----
     showTransferOut() {
@@ -3819,6 +4052,20 @@ const ChatApp = {
         if (modal) modal.classList.remove("show");
         if (modal) modal.style.display = "none";
         this._destroyTransferPeer();
+        this._transferOutId = null;
+    },
+
+    copyTransferId() {
+        if (!this._transferOutId) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(this._transferOutId).then(() => {
+                this.showAlert(_i18n.fmt('pchat.alert.idCopied', 'id', this._transferOutId));
+            }).catch(() => {
+                this.showAlert(_i18n.fmt('pchat.alert.idCopyManual', 'id', this._transferOutId));
+            });
+        } else {
+            this.showAlert(_i18n.fmt('pchat.alert.idCopyManual', 'id', this._transferOutId));
+        }
     },
 
     // ---- UI: Show Transfer In Modal ----
@@ -3839,18 +4086,37 @@ const ChatApp = {
         this._destroyTransferPeer();
     },
 
+    // ---- UI: Show New Account ----
+    showNewAccount() {
+        location.hash = "";
+        localStorage.removeItem("mr_invite");
+        // 隐藏已有账户列表区域，显示注册表单
+        const accountList = document.getElementById("account-select-panel");
+        if (accountList) accountList.style.display = "none";
+        const pwForm = document.getElementById("login-password-panel");
+        if (pwForm) pwForm.style.display = "none";
+        const inviteInfo = document.getElementById("invite-info");
+        if (inviteInfo) inviteInfo.style.display = "block";
+        const transferBtn = document.getElementById("transfer-out-btn");
+        if (transferBtn) transferBtn.style.display = "none";
+        const newAccBtn = document.getElementById("new-account-btn");
+        if (newAccBtn) newAccBtn.style.display = "none";
+    },
+
     showTransferInScan() {
+        console.log('[Transfer-In] showTransferInScan() called');
         this._transferInScanMode = true;
         this.showScanModal();
     },
 
     _handleTransferInScanResult(qrText) {
-        if (!qrText || !qrText.startsWith("transfer-")) {
+        if (!qrText || !qrText.startsWith("transfer_")) {
             this.showAlert("Invalid QR code");
             this._transferInScanMode = false;
             return false;
         }
-        const transferId = qrText.slice(9);
+        const transferId = qrText;  // already "transfer_xxx"
+        console.log('[Transfer-In] Scan result:', transferId);
         document.getElementById("transfer-in-id-input").value = transferId;
         this._transferInScanMode = false;
         this.transferInConnect();
@@ -3893,12 +4159,12 @@ const ChatApp = {
             const userStore = sourceDb.transaction("user", "readonly").objectStore("user");
             const user = await new Promise((resolve, reject) => {
                 const req = userStore.get("current");
-                req.onsuccess = () => {
+                req.onsuccess = async () => {
                     // Try to decrypt
                     const raw = req.result;
                     if (!raw) { resolve(null); return; }
                     try {
-                        const decrypted = Crypto.decryptAes(raw, testKey);
+                        const decrypted = await Crypto.decryptAes(testKey, raw.encrypted);
                         resolve(JSON.parse(decrypted));
                     } catch(e) { resolve(null); }
                 };
@@ -3913,24 +4179,44 @@ const ChatApp = {
             this._transferSourceDb = sourceDb;
             this._transferSourceKey = testKey;
             this._transferSourceUserId = user.userId;
+            this._transferSourceNickname = user.nickname || user.userId;
 
             // Generate transfer ID
             const transferId = "transfer_" + Crypto.generateId();
 
-            this._transferPeer = new Peer(transferId, { debug: 1 });
+            this._transferPeer = new Peer(transferId, {
+                debug: 1,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.chat.bilibili.com:3478' },
+                        { urls: 'stun:stun.miwifi.com:3478' },
+                        { urls: 'stun:stun.cloudflare.com:3478' },
+                        { urls: 'stun:stun.nextcloud.com:3478' },
+                        { urls: 'stun:stun.l.google.com:19302' },
+                    ]
+                }
+            });
+            console.log('[Transfer-Out] Peer created, waiting for open...');
 
-            this._transferPeer.on("open", () => {
-                console.log("[Transfer] Peer open:", transferId);
+            this._transferPeer.on("open", (id) => {
+                console.log("[Transfer-Out] Peer OPEN, signaling registered. My ID:", id);
 
                 const qrDiv = document.getElementById("transfer-out-qr");
                 qrDiv.style.display = "block";
                 const canvas = document.getElementById("transfer-out-qr-canvas");
                 canvas.innerHTML = "";
                 new QRCode(canvas, {
-                    text: "transfer-" + transferId,
+                    text: transferId,  // ID already has "transfer_" prefix
                     width: 180,
                     height: 180,
                 });
+
+                // Show transfer ID below QR
+                const idDisplay = document.getElementById("transfer-out-id-display");
+                if (idDisplay) idDisplay.textContent = transferId;
+                const copyBtn = document.getElementById("transfer-out-copy-btn");
+                if (copyBtn) copyBtn.style.display = "inline-block";
+                this._transferOutId = transferId;
 
                 document.getElementById("transfer-out-account-select").style.display = "none";
                 document.getElementById("transfer-out-password").style.display = "none";
@@ -3944,26 +4230,39 @@ const ChatApp = {
             });
 
             this._transferPeer.on("connection", (conn) => {
-                console.log("[Transfer] Connection from:", conn.peer);
+                console.log("[Transfer-Out] CONNECTION event from:", conn.peer, "metadata:", conn.metadata);
                 this._transferConn = conn;
                 this._transferDirection = "out";
 
-                conn.on("open", () => {});
+                conn.on("open", () => {
+                    console.log("[Transfer-Out] DataChannel OPEN, ready to transfer");
+                });
 
                 conn.on("data", async (data) => {
+                    console.log("[Transfer-Out] DATA received, type:", data.type, "table:", data.tableName || data.table || '');
                     await this._handleTransferOutData(data);
                 });
 
+                conn.on("error", (err) => {
+                    console.error("[Transfer-Out] Connection ERROR:", err.type || err, err);
+                });
+
                 conn.on("close", () => {
-                    console.log("[Transfer] Connection closed");
+                    console.log("[Transfer-Out] Connection CLOSED");
                 });
             });
 
+            this._transferPeer.on("disconnected", () => {
+                console.log("[Transfer-Out] Peer DISCONNECTED from signaling server");
+            });
+
             this._transferPeer.on("error", (err) => {
-                console.error("[Transfer] Peer error:", err);
+                console.error("[Transfer-Out] Peer ERROR:", err.type, err.message || err);
                 if (err.type === "unavailable-id") {
                     this._transferPeer.destroy();
                     this.transferOutVerify();
+                } else if (err.type === "disconnected" || err.type === "network") {
+                    this.showAlert(_i18n.t('pchat.alert.peerOffline'));
                 }
             });
 
@@ -3992,7 +4291,7 @@ const ChatApp = {
     },
 
     async _startSendingTables(hasTables) {
-        const tables = ["user", "contacts", "messages", "groups", "invitations"];
+        const tables = ["user", "contacts", "messages", "groups", "invitations", "files"];
         this._transferTableQueue = [...tables];
         this._transferHasTables = hasTables;
         this._transferPendingAck = 0;
@@ -4000,6 +4299,8 @@ const ChatApp = {
         this._transferConn.send({
             type: "transfer-start",
             tables: tables,
+            userId: this._transferSourceUserId,
+            nickname: this._transferSourceNickname,
         });
 
         await this._sendNextTable();
@@ -4123,83 +4424,41 @@ const ChatApp = {
         return String(val);
     },
 
-    // ---- TRANSFER IN: Connect to sender ----
-    async transferInConnect() {
-        const input = document.getElementById("transfer-in-id-input").value.trim();
-        if (!input) {
-            this.showAlert("Please enter transfer ID");
+    // ---- TRANSFER IN: Connect via main PeerJS ----
+    async transferInConnect(transferId) {
+        if (!transferId) return;
+        console.log('[Transfer-In] Initiating transfer from:', transferId);
+
+        // Clean up any previous transfer
+        this._destroyTransferPeer();
+
+        // DB creation is deferred until we receive the user record (to preserve original userId)
+        this._transferTargetDb = null;
+        this._transferTargetUserId = null;
+
+        // Connect via main PeerJS (same instance as chat)
+        console.log('[Transfer-In] Connecting via main PeerJS to:', transferId);
+        const state = await PeerConn.connect(transferId);
+
+        // Wait for connection to open (30s timeout)
+        const connected = await new Promise((resolve) => {
+            if (state.conn.open) { resolve(true); return; }
+            const t = setTimeout(() => { console.error("[Transfer-In] Connection timeout"); resolve(false); }, 30000);
+            state.conn.on("open", () => { clearTimeout(t); resolve(true); });
+            state.conn.on("error", () => { clearTimeout(t); resolve(false); });
+        });
+
+        if (!connected) {
+            this.showAlert(_i18n.t('pchat.alert.peerOffline'));
+            delete PeerConn.peers[transferId];
             return;
         }
 
-        const transferId = input.startsWith("transfer-") ? input : "transfer-" + input;
-
-        // Generate new user ID for the receiving account
-        const newUserId = Crypto.generateId();
-        const targetDbName = DB.BASE_NAME + "_" + newUserId;
-
-        try {
-            const targetDb = await new Promise((resolve, reject) => {
-                const req = indexedDB.open(targetDbName, DB.VER);
-                req.onupgradeneeded = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains("user")) db.createObjectStore("user", { keyPath: "id" });
-                    if (!db.objectStoreNames.contains("contacts")) {
-                        const cs = db.createObjectStore("contacts", { keyPath: "userId" });
-                        cs.createIndex("timestamp", "timestamp", { unique: false });
-                    }
-                    if (!db.objectStoreNames.contains("messages")) {
-                        const ms = db.createObjectStore("messages", { keyPath: "id" });
-                        ms.createIndex("peerId", "peerId", { unique: false });
-                        ms.createIndex("timestamp", "timestamp", { unique: false });
-                    }
-                    if (!db.objectStoreNames.contains("groups")) db.createObjectStore("groups", { keyPath: "id" });
-                    if (!db.objectStoreNames.contains("files")) db.createObjectStore("files", { keyPath: "id" });
-                    if (!db.objectStoreNames.contains("invitations")) db.createObjectStore("invitations", { keyPath: "id" });
-                };
-                req.onsuccess = () => resolve(req.result);
-                req.onerror = () => reject(req.error);
-            });
-
-            this._transferTargetDb = targetDb;
-            this._transferTargetUserId = newUserId;
-        } catch (e) {
-            console.error("[Transfer-In] Failed to create target DB:", e);
-            this.showAlert("Failed to prepare storage");
-            return;
-        }
-
-        const myId = "recv_" + Crypto.generateId();
-        this._transferPeer = new Peer(myId, { debug: 1 });
-
-        document.getElementById("transfer-in-status").textContent = _i18n.t('pchat.transfer.connecting');
-
-        this._transferPeer.on("open", () => {
-            const conn = this._transferPeer.connect(transferId, { reliable: true });
-            this._transferConn = conn;
-            this._transferDirection = "in";
-
-            conn.on("open", () => {
-                console.log("[Transfer-In] Connected to:", transferId);
-                conn.send({
-                    type: "transfer-request",
-                    hasTables: {},
-                });
-                document.getElementById("transfer-in-status").textContent = _i18n.t('pchat.transfer.receiving');
-            });
-
-            conn.on("data", async (data) => {
-                await this._handleTransferInData(data);
-            });
-
-            conn.on("close", () => {
-                console.log("[Transfer-In] Connection closed");
-            });
-        });
-
-        this._transferPeer.on("error", (err) => {
-            console.error("[Transfer-In] Peer error:", err);
-            this.showAlert("Connection failed: " + err.type);
-        });
+        console.log('[Transfer-In] Connected, sending transfer-request');
+        this._transferConn = state.conn;
+        this._transferDirection = "in";
+        state.conn.send({ type: "transfer-request", hasTables: {} });
+        this.showAlert(_i18n.t('pchat.transfer.receiving'));
     },
 
     async _handleTransferInData(data) {
@@ -4209,7 +4468,15 @@ const ChatApp = {
             this._transferInItems = [];
             this._transferInExpected = 0;
             this._transferInReceived = 0;
-            console.log("[Transfer-In] Tables:", this._transferInTables);
+            // Use the original userId and nickname
+            if (data.userId) {
+                this._transferTargetUserId = data.userId;
+                this._transferTargetNickname = data.nickname || data.userId;
+            } else {
+                this._transferTargetUserId = Crypto.generateId();
+            }
+            await this._ensureTransferDb(this._transferTargetUserId);
+            console.log("[Transfer-In] Tables:", this._transferInTables, "userId:", data.userId);
 
         } else if (data.type === "table-start") {
             this._transferInCurrentTable = data.tableName;
@@ -4227,7 +4494,21 @@ const ChatApp = {
             }
 
         } else if (data.type === "transfer-chunk") {
-            this._transferInItems[data.index] = this._convertFromJSON(data.data);
+            const item = this._convertFromJSON(data.data);
+
+            // For files table, store immediately to avoid memory accumulation
+            if (data.table === "files" && this._transferTargetDb) {
+                try {
+                    await new Promise((resolve) => {
+                        const s = this._transferTargetDb.transaction("files", "readwrite").objectStore("files");
+                        const req = s.put(item);
+                        req.onsuccess = () => resolve();
+                        req.onerror = () => resolve();
+                    });
+                } catch(e) {}
+            } else {
+                this._transferInItems[data.index] = item;
+            }
             this._transferInReceived++;
 
             const pct = Math.round((this._transferInReceived / this._transferInExpected) * 100);
@@ -4250,30 +4531,29 @@ const ChatApp = {
             const tableName = data.tableName;
             console.log("[Transfer-In] Table", tableName, "complete:", this._transferInReceived + "/" + this._transferInExpected);
 
-            await this._storeTableInTarget(tableName, this._transferInItems);
+            // For files table, items were already stored inline, skip bulk insert
+            if (tableName !== "files") {
+                await this._storeTableInTarget(tableName, this._transferInItems);
+            } else {
+                console.log("[Transfer-In] Files table stored inline, skipping bulk insert");
+            }
 
             this._transferConn.send({ type: "table-ack", tableName });
 
         } else if (data.type === "transfer-complete") {
             console.log("[Transfer-In] Transfer complete!");
 
-            // Extract nickname from user records
-            const userRecords = this._transferInItems_user || [];
-            let nickname = "Transferred Account";
-            for (const u of userRecords) {
-                if (u && u.nickname) {
-                    nickname = u.nickname;
-                    break;
-                }
-            }
+            // Use original userId and nickname from transfer metadata
+            const userId = this._transferTargetUserId;
+            const nickname = this._transferTargetNickname || "Transferred Account";
 
             // Close target DB (it will be reopened on login)
             if (this._transferTargetDb) {
                 try { this._transferTargetDb.close(); } catch(e) {}
             }
 
-            // Register the new account with the generated userId
-            AccountManager.addAccount(this._transferTargetUserId, nickname);
+            // Register the account with original userId and nickname
+            AccountManager.addAccount(userId || this._transferTargetUserId, nickname);
 
             const progress = document.getElementById("transfer-in-progress");
             if (progress) {
@@ -4290,7 +4570,48 @@ const ChatApp = {
         }
     },
 
+    async _ensureTransferDb(userId) {
+        if (this._transferTargetDb) return;
+        const targetDbName = DB.BASE_NAME + "_" + userId;
+        console.log('[Transfer-In] Creating target DB for userId:', userId);
+        this._transferTargetDb = await new Promise((resolve, reject) => {
+            const req = indexedDB.open(targetDbName, DB.VER);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("user")) db.createObjectStore("user", { keyPath: "id" });
+                if (!db.objectStoreNames.contains("contacts")) {
+                    const cs = db.createObjectStore("contacts", { keyPath: "contactId" });
+                    cs.createIndex("userId", "userId", { unique: true });
+                    cs.createIndex("nickname", "nickname", { unique: false });
+                }
+                if (!db.objectStoreNames.contains("messages")) {
+                    const ms = db.createObjectStore("messages", { keyPath: "id" });
+                    ms.createIndex("peerId", "peerId", { unique: false });
+                    ms.createIndex("timestamp", "timestamp", { unique: false });
+                }
+                if (!db.objectStoreNames.contains("groups")) db.createObjectStore("groups", { keyPath: "id" });
+                if (!db.objectStoreNames.contains("files")) db.createObjectStore("files", { keyPath: "id" });
+                if (!db.objectStoreNames.contains("invitations")) db.createObjectStore("invitations", { keyPath: "id" });
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    },
+
     async _storeTableInTarget(tableName, items) {
+        // Wait for DB to be ready (created asynchronously in transfer-start)
+        if (!this._transferTargetDb) {
+            console.warn("[Transfer-In] DB not ready yet, waiting...");
+            // Poll with short timeout
+            for (let i = 0; i < 50; i++) {
+                await new Promise(r => setTimeout(r, 100));
+                if (this._transferTargetDb) break;
+            }
+            if (!this._transferTargetDb) {
+                console.error("[Transfer-In] DB never became ready");
+                return;
+            }
+        }
         // Remember user records for nickname extraction
         if (tableName === "user") {
             this._transferInItems_user = items;

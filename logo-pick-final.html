@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PChat Logo — 选定方案微调</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f1a;color:#eee;padding:40px;text-align:center}
+h1{font-size:28px;color:#4ecca3;margin-bottom:8px}
+.sub{color:#666;font-size:14px;margin-bottom:40px}
+.row{display:flex;flex-wrap:wrap;gap:40px;justify-content:center;align-items:flex-start}
+.col{background:#1a1a2e;border-radius:20px;padding:40px;text-align:center;min-width:300px}
+.col h3{font-size:14px;color:#777;margin-bottom:20px;letter-spacing:1px}
+.col .note{font-size:12px;color:#666;margin-top:12px}
+.vs{display:flex;align-items:center;font-size:24px;color:#666}
+</style>
+</head>
+<body>
+<h1>🍃 PChat Logo — 选定方案微调</h1>
+<p class="sub">双圆 + 顶部弧线 = 爱心 + 双 P</p>
+
+<div class="row">
+
+<!-- 原版 -->
+<div class="col">
+<h3>原版 (参考)</h3>
+<svg viewBox="0 0 200 200" width="220" height="220">
+ <defs>
+ <linearGradient id="ga" x1="0%" y1="0%" x2="100%" y2="0%">
+ <stop offset="0%" style="stop-color:#4ecca3"/>
+ <stop offset="100%" style="stop-color:#00e676"/>
+ </linearGradient>
+ <linearGradient id="gb" x1="100%" y1="0%" x2="0%" y2="0%">
+ <stop offset="0%" style="stop-color:#3498db"/>
+ <stop offset="100%" style="stop-color:#5b8def"/>
+ </linearGradient>
+ </defs>
+ <circle cx="73" cy="75" r="35" fill="url(#ga)" opacity="0.85"/>
+ <circle cx="127" cy="75" r="35" fill="url(#gb)" opacity="0.85"/>
+ <circle cx="73" cy="65" r="11" fill="#0f0f1a"/>
+ <circle cx="127" cy="65" r="11" fill="#0f0f1a"/>
+ <circle cx="70" cy="80" r="6" fill="#fff" opacity="0.2"/>
+ <circle cx="124" cy="80" r="6" fill="#fff" opacity="0.2"/>
+ <path d="M45 155 Q73 120 100 150" fill="none" stroke="url(#ga)" stroke-width="2" opacity="0.3" stroke-linecap="round"/>
+ <path d="M100 150 Q127 120 155 155" fill="none" stroke="url(#gb)" stroke-width="2" opacity="0.3" stroke-linecap="round"/>
+</svg>
+<p class="note">双人剪影 · 有面部</p>
+</div>
+
+<div class="vs">→</div>
+
+<!-- V1: 顶部弧线爱心 -->
+<div class="col">
+<h3>V1 &mdash; 顶部爱心弧</h3>
+<svg viewBox="0 0 200 200" width="220" height="220">
+ <defs>
+  <linearGradient id="vg1a" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="100%" style="stop-color:#00e676"/>
+  </linearGradient>
+  <linearGradient id="vg1b" x1="100%" y1="0%" x2="0%" y2="0%">
+   <stop offset="0%" style="stop-color:#3498db"/>
+   <stop offset="100%" style="stop-color:#5b8def"/>
+  </linearGradient>
+ </defs>
+ <!-- 顶部弧线连接两圆外侧 → 爱心形 -->
+ <path d="M38 75 C38 20 100 20 100 60 C100 20 162 20 162 75" fill="none" stroke="url(#vg1b)" stroke-width="3" opacity="0.6" stroke-linecap="round" stroke-linejoin="round"/>
+ <!-- 两圆 -->
+ <circle cx="73" cy="95" r="35" fill="url(#vg1a)" opacity="0.85"/>
+ <circle cx="127" cy="95" r="35" fill="url(#vg1b)" opacity="0.85"/>
+</svg>
+<p class="note">外侧弧环绕顶部 · 纯几何</p>
+</div>
+
+<!-- V2: 较粗弧线 -->
+<div class="col">
+<h3>V2 &mdash; 粗弧爱心</h3>
+<svg viewBox="0 0 200 200" width="220" height="220">
+ <defs>
+  <linearGradient id="vg2a" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="100%" style="stop-color:#00e676"/>
+  </linearGradient>
+  <linearGradient id="vg2b" x1="100%" y1="0%" x2="0%" y2="0%">
+   <stop offset="0%" style="stop-color:#3498db"/>
+   <stop offset="100%" style="stop-color:#5b8def"/>
+  </linearGradient>
+ </defs>
+ <path d="M38 95 C38 30 100 30 100 70 C100 30 162 30 162 95" fill="none" stroke="url(#vg2b)" stroke-width="8" opacity="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+ <circle cx="73" cy="95" r="35" fill="url(#vg2a)" opacity="0.85"/>
+ <circle cx="127" cy="95" r="35" fill="url(#vg2b)" opacity="0.85"/>
+</svg>
+<p class="note">粗弧线 · 更显眼</p>
+</div>
+
+</div>
+
+<div class="row" style="margin-top:40px">
+
+<!-- V3: 弧线从圆心穿出 -->
+<div class="col">
+<h3>V3 &mdash; 外侧边爱心</h3>
+<svg viewBox="0 0 200 200" width="220" height="220">
+ <defs>
+  <linearGradient id="vg3a" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="100%" style="stop-color:#00e676"/>
+  </linearGradient>
+  <linearGradient id="vg3b" x1="100%" y1="0%" x2="0%" y2="0%">
+   <stop offset="0%" style="stop-color:#3498db"/>
+   <stop offset="100%" style="stop-color:#5b8def"/>
+  </linearGradient>
+ </defs>
+ <!-- 弧线起于左圆左边缘，终于右圆右边缘 -->
+ <path d="M38 85 C38 15 162 15 162 85" fill="none" stroke="url(#vg3b)" stroke-width="12" opacity="0.6" stroke-linecap="round"/>
+ <circle cx="73" cy="90" r="35" fill="url(#vg3a)" opacity="0.85"/>
+ <circle cx="127" cy="90" r="35" fill="url(#vg3b)" opacity="0.85"/>
+</svg>
+<p class="note">饱满爱心弧</p>
+</div>
+
+<!-- V4: 弧线贯穿两圆之间 -->
+<div class="col">
+<h3>V4 &mdash; 心形贯通</h3>
+<svg viewBox="0 0 200 200" width="220" height="220">
+ <defs>
+  <linearGradient id="vg4a" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="100%" style="stop-color:#00e676"/>
+  </linearGradient>
+  <linearGradient id="vg4b" x1="100%" y1="0%" x2="0%" y2="0%">
+   <stop offset="0%" style="stop-color:#3498db"/>
+   <stop offset="100%" style="stop-color:#5b8def"/>
+  </linearGradient>
+  <linearGradient id="vg4arc" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="50%" style="stop-color:#5b8def"/>
+   <stop offset="100%" style="stop-color:#3498db"/>
+  </linearGradient>
+ </defs>
+ <!-- 弧线从左侧圆外侧到右侧圆外侧，形成完整爱心顶 -->
+ <path d="M38 90 C38 20 80 20 100 55 C120 20 162 20 162 90" fill="none" stroke="url(#vg4arc)" stroke-width="12" opacity="0.65" stroke-linecap="round" stroke-linejoin="round"/>
+ <circle cx="73" cy="90" r="35" fill="url(#vg4a)" opacity="0.85"/>
+ <circle cx="127" cy="90" r="35" fill="url(#vg4b)" opacity="0.85"/>
+</svg>
+<p class="note">渐变弧 · 两点融合</p>
+</div>
+
+<!-- V5: 最简版 -->
+<div class="col">
+<h3>V5 &mdash; 极简爱心</h3>
+<svg viewBox="0 0 200 200" width="220" height="220">
+ <defs>
+  <linearGradient id="vg5a" x1="0%" y1="0%" x2="100%" y2="0%">
+   <stop offset="0%" style="stop-color:#4ecca3"/>
+   <stop offset="100%" style="stop-color:#00e676"/>
+  </linearGradient>
+  <linearGradient id="vg5b" x1="100%" y1="0%" x2="0%" y2="0%">
+   <stop offset="0%" style="stop-color:#3498db"/>
+   <stop offset="100%" style="stop-color:#5b8def"/>
+  </linearGradient>
+ </defs>
+ <path d="M40 85 C40 35 100 40 100 80 C100 40 160 35 160 85" fill="none" stroke="url(#vg5b)" stroke-width="14" opacity="0.55" stroke-linecap="round" stroke-linejoin="round"/>
+ <circle cx="70" cy="90" r="32" fill="url(#vg5a)" opacity="0.85"/>
+ <circle cx="130" cy="90" r="32" fill="url(#vg5b)" opacity="0.85"/>
+</svg>
+<p class="note">仅弧 + 两圆</p>
+</div>
+
+</div>
+</body>
+</html>

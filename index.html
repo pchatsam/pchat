@@ -3,8 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PChat - MindRender</title>
-    <link rel="stylesheet" href="./dist/chat.css?v=20260515g">
+    <title>PChat</title>
+    <meta name="theme-color" content="#4ecca3">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/logo.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="stylesheet" href="./dist/chat.css?v=20260516c">
     <!-- i18n: detect browser language and show/hide language spans -->
     <script>
     (function(){
@@ -55,17 +59,14 @@
                 </button>
             </div>
 
-            <!-- 传输面板 -->
-            <div id="transfer-panel" style="display:none;text-align:center;margin-top:16px;">
-                <div style="display:flex;gap:8px;justify-content:center;">
-                    <button id="transfer-out-btn" onclick="ChatApp.showTransferOut()">
-                        <span class="zh">转移账户</span>
-                    </button>
-                    <button id="transfer-in-btn" onclick="ChatApp.showTransferIn()">
-                        <span class="zh">接收转移</span>
-                    </button>
-                </div>
-            </div>
+            <!-- 左上角：转移账户 -->
+            <button id="transfer-out-btn" class="corner-btn corner-btn-left" style="display:none;" onclick="ChatApp.showTransferOut()">
+                <span class="zh">转移账户</span>
+            </button>
+            <!-- 右上角：新建账户 -->
+            <button id="new-account-btn" class="corner-btn corner-btn-right" style="display:none;" onclick="ChatApp.showNewAccount()">
+                <span class="zh">新建账户</span>
+            </button>
 
             <!-- Loading 进度条 -->
             <div id="login-loading" style="display:none;text-align:center;margin-top:16px;">
@@ -91,6 +92,10 @@
             </div>
             <div id="transfer-out-qr" style="display:none;text-align:center;margin:12px 0;">
                 <div id="transfer-out-qr-canvas"></div>
+                <div id="transfer-out-id-display" style="margin-top:8px;font-size:12px;color:#888;word-break:break-all;"></div>
+                <button id="transfer-out-copy-btn" onclick="ChatApp.copyTransferId()" style="margin-top:6px;padding:4px 12px;font-size:12px;display:none;">
+                    <span class="zh">复制 ID</span>
+                </button>
                 <p style="color:#888;font-size:12px;margin-top:8px;"></p>
             </div>
             <div id="transfer-out-progress" style="display:none;margin-top:12px;">
@@ -107,9 +112,9 @@
             <h3><span class="zh">接收转移</span></h3>
             <div style="text-align:center;margin:16px 0;">
                 <p id="transfer-in-status" style="color:#888;font-size:14px;"></p>
-                <button id="transfer-in-scan-btn" onclick="ChatApp.showTransferInScan()">
-                    <span class="zh">扫描二维码</span>
-                </button>
+                <p style="color:#888;font-size:12px;margin-bottom:6px;">
+                    <span class="zh">用侧边栏扫码，或输入对方 ID：</span>
+                </p>
                 <div style="margin-top:8px;">
                     <input type="text" id="transfer-in-id-input" placeholder="" style="width:60%;box-sizing:border-box;text-align:center;">
                     <button id="transfer-in-connect-btn" onclick="ChatApp.transferInConnect()" style="margin-left:4px;">
@@ -174,7 +179,7 @@
             <div id="contact-tab" class="tab-content active">
                 <div id="add-friend-box" style="padding:8px 12px;border-bottom:1px solid #222;">
                     <div style="display:flex;gap:4px;">
-                        <input id="add-friend-input" type="text" placeholder="" maxlength="20" style="flex:1;">
+                        <input id="add-friend-input" type="text" placeholder="" maxlength="30" style="flex:1;">
                         <button onclick="ChatApp.addFriendById()" style="padding:4px 8px;">
                             <span class="zh">添加</span> 
                         </button>
@@ -321,6 +326,19 @@
         </div>
     </div>
 
+    <!-- 删除确认弹窗 -->
+    <div id="delete-confirm-modal" class="modal">
+        <div class="modal-content" style="min-width:300px;">
+            <h3 id="delete-confirm-title"></h3>
+            <p id="delete-confirm-desc" style="margin-bottom:12px; font-size:14px; color:#666;"></p>
+            <input type="password" id="delete-confirm-password" placeholder="输入密码确认" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:12px; box-sizing:border-box;" />
+            <div class="modal-actions">
+                <button id="delete-confirm-cancel" class="btn-secondary">取消</button>
+                <button id="delete-confirm-ok" class="btn-primary" style="background:#d32f2f;">删除</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 图片查看器 -->
     <div id="image-viewer" onclick="ChatApp.closeImageViewer(event)">
         <div id="image-viewer-toolbar">
@@ -339,6 +357,15 @@
 
     <script src="./dist/qrcode.min.js"></script>
     <script src="./dist/jsqr.min.js"></script>
-    <script src="./dist/pchat.js?v=20260515g"></script>
+    <script src="./dist/pchat.js?v=20260516w"></script>
+    <script>
+        const PCHAT_VERSION = '20260516.28';
+        console.log('[PChat] Version: ' + PCHAT_VERSION);
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+        }
+    </script>
 </body>
 </html>
