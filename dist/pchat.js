@@ -1031,6 +1031,8 @@ const PeerConn = {
                     ChatApp._onFileChunk(data);
                 } else if (data.type === "file-footer") {
                     ChatApp._onFileFooter(peerId, data);
+                } else if (data.type === "file-cancel") {
+                    ChatApp._onFileCancel(peerId, data);
                 } else if (data.type === "receipt") {
                     // Received read receipt for a message
                     ChatApp._onReceiptReceived(peerId, data.msgId);
@@ -3428,10 +3430,14 @@ const ChatApp = {
     },
 
     // ---- Transfer progress UI ----
+    _transferStartTimes: {},
     _insertTransferCard(transferId, fileName, fileSize, isSender) {
         try {
         const list = document.getElementById("message-list");
         if (!list) return;
+        this._transferStartTimes[transferId] = Date.now();
+        if (!this._transferSizes) this._transferSizes = {};
+        this._transferSizes[transferId] = fileSize;
         const icon = this._getFileIcon(fileName);
         const sizeStr = this._formatFileSize(fileSize);
         const status = isSender ? '发送中...' : '接收中...';
@@ -3441,9 +3447,9 @@ const ChatApp = {
         card.innerHTML = `<div class="sender-avatar">${isSender ? _i18n.t('pchat.msg.self') : ''}</div>
             <div class="message ${isSender ? 'sent' : 'received'}">
                 <div class="transfer-progress-card" id="transfer-card-${transferId}">
-                    <div class="tp-header"><span class="tp-icon">${icon}</span><span class="tp-name">${fileName.replace(/</g,'&lt;')}</span></div>
+                    <div class="tp-header"><span class="tp-icon">${icon}</span><span class="tp-name">${fileName.replace(/</g,'&lt;')}</span><button onclick="event.stopPropagation();ChatApp.cancelTransfer('${transferId}')" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:2px 6px;" title="取消传输">✕</button></div>
                     <div class="tp-bar-wrap"><div class="tp-bar-fill" id="transfer-bar-${transferId}" style="width:0%"></div></div>
-                    <div class="tp-status"><span id="transfer-pct-${transferId}">0%</span> · <span id="transfer-status-${transferId}">${status}</span><span class="tp-size">${sizeStr}</span></div>
+                    <div class="tp-status"><span id="transfer-pct-${transferId}">0%</span> · <span id="transfer-status-${transferId}">${status}</span><span class="tp-size">${sizeStr}</span><span id="transfer-speed-${transferId}" style="margin-left:6px;font-size:10px;color:var(--text3);"></span></div>
                 </div>
             </div>`;
         list.appendChild(card);
@@ -3456,9 +3462,24 @@ const ChatApp = {
         const bar = document.getElementById(`transfer-bar-${transferId}`);
         const pctEl = document.getElementById(`transfer-pct-${transferId}`);
         const stEl = document.getElementById(`transfer-status-${transferId}`);
+        const spdEl = document.getElementById(`transfer-speed-${transferId}`);
         if (bar) bar.style.width = `${Math.min(100, Math.round(pct))}%`;
-        if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+        if (pctEl) pctEl.textContent = `${Number(pct).toFixed(1)}%`;
         if (stEl && status) stEl.textContent = status;
+        // Speed & ETA
+        if (spdEl && this._transferStartTimes[transferId]) {
+            const elapsed = (Date.now() - this._transferStartTimes[transferId]) / 1000;
+            const pctNum = parseFloat(pct);
+            if (elapsed > 1 && pctNum > 0) {
+                const totalSize = this._transferSizes?.[transferId] || 0;
+                const bytesDone = totalSize * pctNum / 100;
+                const speed = bytesDone / elapsed;
+                const spdStr = speed > 1024*1024 ? `${(speed/1024/1024).toFixed(1)} MB/s` : `${(speed/1024).toFixed(0)} KB/s`;
+                const remaining = pctNum > 0 ? (100 - pctNum) / pctNum * elapsed : 0;
+                const etaStr = remaining > 3600 ? `${Math.round(remaining/3600)}h${Math.round(remaining%3600/60)}m` : remaining > 60 ? `${Math.round(remaining/60)}分` : `${Math.round(remaining)}秒`;
+                spdEl.textContent = pctNum < 99 ? `${spdStr} · 剩余${etaStr}` : '';
+            }
+        }
         try { this._scroll(); } catch(e) {}
     },
 
@@ -3485,6 +3506,51 @@ const ChatApp = {
         }
     },
 
+
+    async cancelTransfer(fileId) {
+        console.log('[Transfer] Cancel:', fileId);
+        const ft = this.fileTransfer;
+        const info = ft.pending[fileId];
+        if (info) {
+            // Send cancel to peer
+            const peer = PeerConn.peers[info.peerId];
+            if (peer && peer.conn && peer.conn.open) {
+                peer.conn.send({ type: 'file-cancel', fileId });
+            }
+            // Cleanup OPFS
+            await DB._flushRawBuffer(fileId).catch(() => {});
+            await DB.closeDirectFile(fileId).catch(() => {});
+            await DB.deleteDirectFile(fileId).catch(() => {});
+            delete ft.pending[fileId];
+        }
+        // Remove progress card
+        const row = document.getElementById(`transfer-${fileId}`);
+        if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
+        // Delete stored message
+        const msgs = await DB.listMessagesByPeer(this.activeConv?.id || '', this.my.aesKey);
+        for (const m of msgs) {
+            if (m.type === 'direct-file' && m.fileId === fileId) {
+                const tx = DB.db.transaction('messages', 'readwrite');
+                tx.objectStore('messages').delete(m.id);
+                await new Promise(r => { tx.oncomplete = r; });
+                break;
+            }
+        }
+    },
+
+    _onFileCancel(peerId, d) {
+        console.log('[Transfer] Received cancel for:', d.fileId);
+        const ft = this.fileTransfer;
+        const info = ft.pending[d.fileId];
+        if (info) {
+            DB._flushRawBuffer(d.fileId).catch(() => {});
+            DB.closeDirectFile(d.fileId).catch(() => {});
+            DB.deleteDirectFile(d.fileId).catch(() => {});
+            delete ft.pending[d.fileId];
+        }
+        const row = document.getElementById(`transfer-${d.fileId}`);
+        if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
+    },
 
     async _finalizeDirectReceive(fileId) {
         const ft = this.fileTransfer;
