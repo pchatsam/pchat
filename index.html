@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./logo.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./dist/chat.css?v=20260517m">
+    <link rel="stylesheet" href="./dist/chat.css?v=20260517n">
     <!-- i18n: detect browser language and show/hide language spans -->
     <script>
     (function(){
@@ -201,14 +201,13 @@
                                 </button>
                 <div id="room-list"></div>
             </div>
+            <div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                <span id="sidebar-version" style="font-size:11px;color:#666;"></span>
+                <button onclick="ChatApp.logout()" title="退出" style="background:none;border:1px solid var(--border);color:var(--text3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">退出</button>
+            </div>
         </div>
-        <div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-            <span id="sidebar-version" style="font-size:11px;color:#666;"></span>
-            <button onclick="ChatApp.logout()" title="退出" style="background:none;border:1px solid var(--border);color:var(--text3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">退出</button>
-        </div>
-    </div>
 
-    <!-- 拖动分隔条 -->
+        <!-- 拖动分隔条 -->
         <div id="sidebar-resize"></div>
 
         <!-- 聊天区 -->
@@ -369,9 +368,9 @@
 
     <script src="./dist/qrcode.min.js"></script>
     <script src="./dist/jsqr.min.js"></script>
-    <script src="./dist/pchat.js?v=20260517m"></script>
+    <script src="./dist/pchat.js?v=20260517n"></script>
     <script>
-        const PCHAT_VERSION = '20260517.13';
+        const PCHAT_VERSION = '20260517.14';
         console.log('[PChat] Version: ' + PCHAT_VERSION);
         document.getElementById('app-version').textContent = 'v' + PCHAT_VERSION;
         document.getElementById('sidebar-version').textContent = 'v' + PCHAT_VERSION;
