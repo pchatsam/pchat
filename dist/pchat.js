@@ -2840,7 +2840,7 @@ const ChatApp = {
         const DIRECT_FILE = 20 * 1024 * 1024; // 20MB: direct transfer, no DB
         const conn = state.conn;
         const isImage = file.type.startsWith("image/");
-        const chunkSize = 16384; // 16KB chunks per data-channel message
+        const chunkSize = file.size > DIRECT_FILE ? 262144 : 16384; // 256KB for direct, 16KB for small
         const fileId = `file_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 
         // Helper: ArrayBuffer → base64
