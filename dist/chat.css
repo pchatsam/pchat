@@ -264,6 +264,9 @@ body {
 .message .file-attachment .file-icon{font-size:24px;}
 .message .file-attachment .file-name{font-size:13px;font-weight:500;word-break:break-all;}
 .message .file-attachment .file-size{font-size:11px;color:var(--text3);}
+/* Direct transfer badge */
+.message .file-attachment.direct-transfer{border:1px dashed var(--green);background:rgba(78,204,163,.06);}
+.message .file-attachment.direct-transfer .file-size{color:var(--green);}
 
 /* ===== Delete button ===== */
 .msg-delete-btn {

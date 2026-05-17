@@ -52,6 +52,8 @@ _i18n.dict = {
     'pchat.alert.passwordError':         { zh: '密码错误', en: 'Wrong password', ja: 'パスワードが間違っています', de: 'Falsches Passwort', fr: 'Mot de passe incorrect', es: 'Contraseña incorrecta', pt: 'Senha incorreta', he: 'סיסמה שגויה', ko: '잘못된 비밀번호', it: 'Password errata' },
     'pchat.alert.deleteConfirm':         { zh: '是否删除所有数据？', en: 'Delete all data?', ja: 'すべてのデータを削除しますか？', de: 'Alle Daten löschen?', fr: 'Supprimer toutes les données?', es: '¿Eliminar todos los datos?', pt: 'Excluir todos os dados?', he: 'למחוק את כל הנתונים?', ko: '모든 데이터를 삭제하시겠습니까?', it: 'Eliminare tutti i dati?' },
     'pchat.alert.deleteFail':            { zh: '删除失败', en: 'Delete failed', ja: '削除に失敗しました', de: 'Löschen fehlgeschlagen', fr: 'Suppression échouée', es: 'Eliminación fallida', pt: 'Exclusão falhou', he: 'מחיקה נכשלה', ko: '삭제 실패', it: 'Eliminazione fallita' },
+    'pchat.alert.fileReadFail':          { zh: '文件读取失败', en: 'File read failed', ja: 'ファイル読み込み失敗', de: 'Datei konnte nicht gelesen werden', fr: 'Échec de lecture du fichier', es: 'Error al leer archivo', pt: 'Falha ao ler arquivo', he: 'קריאת קובץ נכשלה', ko: '파일 읽기 실패', it: 'Lettura file fallita' },
+    'pchat.alert.downloadExpired':       { zh: '文件已过期或不存在', en: 'File expired or not found', ja: 'ファイルの有効期限が切れています', de: 'Datei abgelaufen oder nicht gefunden', fr: 'Fichier expiré ou introuvable', es: 'Archivo caducado o no encontrado', pt: 'Arquivo expirado ou não encontrado', he: 'הקובץ פג תוקף או לא נמצא', ko: '파일이 만료되었거나 존재하지 않습니다', it: 'File scaduto o non trovato' },
     'pchat.contact.confirmDelete':       { zh: '确认', en: 'Confirm', ja: '確認', de: 'Bestätigen', fr: 'Confirmer', es: 'Confirmar', pt: 'Confirmar', he: 'אשר', ko: '확인', it: 'Conferma' },
     'pchat.alert.idCopied':              { zh: 'ID 已复制: {id}', en: 'ID copied: {id}', ja: 'IDコピー済み: {id}', de: 'ID kopiert: {id}', fr: 'ID copié: {id}', es: 'ID copiado: {id}', pt: 'ID copiado: {id}', he: 'מזהה הועתק: {id}', ko: 'ID 복사됨: {id}', it: 'ID copiato: {id}' },
     'pchat.alert.copyFail':              { zh: '复制失败', en: 'Copy failed', ja: 'コピーに失敗しました', de: 'Kopieren fehlgeschlagen', fr: 'Copie échouée', es: 'Copia fallida', pt: 'Cópia falhou', he: 'העתקה נכשלה', ko: '복사 실패', it: 'Copia fallita' },
@@ -361,6 +363,13 @@ const DB = {
         return new Promise((resolve, reject) => {
             req.onsuccess = async () => {
                 if (!req.result) return resolve(null);
+                // Raw format (no encryption, for large files)
+                if (req.result.data) {
+                    try { resolve(JSON.parse(req.result.data)); }
+                    catch { resolve(req.result.data); }
+                    return;
+                }
+                // Encrypted format
                 try { resolve(JSON.parse(await Crypto.decryptAes(key, req.result.encrypted))); }
                 catch { resolve(req.result); }
             };
@@ -451,6 +460,24 @@ const DB = {
         return new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
     },
 
+    // Store file WITHOUT encryption (for large files > 2MB)
+    async putFileRaw(fileId, base64Data, mime) {
+        const tx = this.db.transaction("files", "readwrite");
+        const store = tx.objectStore("files");
+        store.put({ id: fileId, data: base64Data, mime: mime || "application/octet-stream", ts: Date.now() });
+        return new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
+    },
+
+    // Store message WITHOUT encryption (for large files > 2MB)
+    async putRaw(name, item) {
+        const raw = JSON.stringify(item);
+        const tx = this.db.transaction(name, "readwrite");
+        const store = tx.objectStore(name);
+        const record = { id: item.id || item.userId, data: raw, ts: Date.now(), peerId: item.peerId || '' };
+        store.put(record);
+        return new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
+    },
+
     async getFile(fileId, aesKey) {
         const req = this._store("files").get(fileId);
         return new Promise((resolve) => {
@@ -472,6 +499,70 @@ const DB = {
 
     async deleteFile(fileId) {
         this.db.transaction("files", "readwrite").objectStore("files").delete(fileId);
+    },
+
+    // ---- OPFS direct file storage (for large files > 20MB, bypasses IndexedDB) ----
+    _opfsRoot: null,
+    async _getOprfsRoot() {
+        if (!this._opfsRoot) {
+            this._opfsRoot = await navigator.storage.getDirectory();
+        }
+        return this._opfsRoot;
+    },
+
+    // Open a writable stream for a direct-transfer file
+    async openDirectFile(fileId, fileName) {
+        const root = await this._getOprfsRoot();
+        const handle = await root.getFileHandle(`pchat-${fileId}`, { create: true });
+        const writable = await handle.createWritable({ keepExistingData: false });
+        DB._directWriters = DB._directWriters || {};
+        DB._directWriters[fileId] = { writable, handle, fileName };
+        return true;
+    },
+
+    // Write a chunk to an open direct file (base64 string)
+    async writeDirectChunk(fileId, base64Chunk) {
+        const entry = DB._directWriters && DB._directWriters[fileId];
+        if (!entry) return false;
+        const binary = atob(base64Chunk);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        await entry.writable.write(bytes);
+        return true;
+    },
+
+    // Close direct file stream, return file metadata
+    async closeDirectFile(fileId) {
+        const entry = DB._directWriters && DB._directWriters[fileId];
+        if (!entry) return null;
+        await entry.writable.close();
+        const name = entry.fileName;
+        delete DB._directWriters[fileId];
+        return { fileId, fileName: name };
+    },
+
+    // Read a direct file and trigger download
+    async readDirectFile(fileId) {
+        try {
+            const root = await this._getOprfsRoot();
+            const handle = await root.getFileHandle(`pchat-${fileId}`);
+            const file = await handle.getFile();
+            const url = URL.createObjectURL(file);
+            return url;
+        } catch (e) {
+            console.error('[OPFS] Read failed:', fileId, e);
+            return null;
+        }
+    },
+
+    // Delete a direct file
+    async deleteDirectFile(fileId) {
+        try {
+            const root = await this._getOprfsRoot();
+            await root.removeEntry(`pchat-${fileId}`);
+        } catch (e) {
+            // File may not exist, ignore
+        }
     },
 
     // ---- Generate thumbnail from base64 image ----
@@ -2251,19 +2342,32 @@ const ChatApp = {
     // ---- File receive: header ----
     _onFileHeader(peerId, d) {
         const ft = this.fileTransfer;
-        ft.pending[d.fileId] = {
+        const info = {
             peerId,
-            parts: new Array(d.totalChunks),
-            chunkCount: 0,
-            totalChunks: d.totalChunks,
             name: d.name,
             mime: d.mime,
             size: d.size,
             isImage: d.isImage,
-            expectedBase64Len: d.base64Len || 0,
-            expectedHash: d.hash || "",
+            directTransfer: !!d.directTransfer,
         };
-        console.log(`[File] Header received: ${d.name} (${d.size}B, ${d.totalChunks} chunks, hash=${d.hash ? d.hash.slice(0,8)+'...' : 'none'})`);
+
+        if (d.directTransfer) {
+            // Direct transfer: open OPFS file for streaming
+            info.expectedBase64Len = -1; // will be set in footer
+            info.expectedHash = '';
+            info.totalChunks = -1;
+            info.chunkCount = 0;
+            console.log(`[File] DIRECT header: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB), streaming to OPFS`);
+            DB.openDirectFile(d.fileId, d.name).catch(e => console.error('[OPFS] openDirectFile failed:', e));
+        } else {
+            info.parts = new Array(d.totalChunks);
+            info.totalChunks = d.totalChunks;
+            info.chunkCount = 0;
+            info.expectedBase64Len = d.base64Len || 0;
+            info.expectedHash = d.hash || "";
+            console.log(`[File] Header received: ${d.name} (${d.size}B, ${d.totalChunks} chunks, hash=${d.hash ? d.hash.slice(0,8)+'...' : 'none'})`);
+        }
+        ft.pending[d.fileId] = info;
     },
 
     // ---- File receive: chunk ----
@@ -2271,10 +2375,15 @@ const ChatApp = {
         const ft = this.fileTransfer;
         const info = ft.pending[d.fileId];
         if (!info) return;
-        if (info.parts[d.index]) {
-            // Duplicate chunk received, skip
+
+        if (info.directTransfer) {
+            // Direct transfer: write chunk to OPFS immediately
+            DB.writeDirectChunk(d.fileId, d.data).catch(e => console.error('[OPFS] writeDirectChunk failed:', e));
+            info.chunkCount++;
             return;
         }
+
+        if (info.parts[d.index]) return; // duplicate
         info.parts[d.index] = d.data;
         info.chunkCount++;
     },
@@ -2283,7 +2392,41 @@ const ChatApp = {
     async _onFileFooter(peerId, d) {
         const ft = this.fileTransfer;
         const info = ft.pending[d.fileId];
-        if (!info || info.chunkCount < info.totalChunks) {
+        if (!info) return;
+
+        if (info.directTransfer) {
+            // Direct transfer: close OPFS, store metadata-only message
+            console.log(`[File] DIRECT footer for ${info.name}, closing OPFS`);
+            await DB.closeDirectFile(d.fileId);
+            delete ft.pending[d.fileId];
+
+            const now = Date.now();
+            const id = `msg_${peerId}_${now}_${Math.random().toString(36).slice(2,6)}`;
+            const msg = {
+                id, peerId, ts: now,
+                direction: "received", fromId: peerId,
+                type: "direct-file",
+                fileName: info.name, mimeType: info.mime, fileSize: info.size,
+                fileId: d.fileId,
+            };
+            await DB.putRaw("messages", msg);
+
+            if (this.activeConv && this.activeConv.id === peerId) {
+                this._appendMsg(msg);
+            }
+            const contact = this.contacts.find(c => c.userId === peerId);
+            if (contact) {
+                contact.lastMessage = {
+                    content: _i18n.t('pchat.file.prefixFile') + ' ' + info.name,
+                    ts: now, fromId: peerId,
+                };
+                this.saveContact(contact);
+                this._renderContacts();
+            }
+            return;
+        }
+
+        if (info.chunkCount < info.totalChunks) {
             console.warn("[File] Footer before all chunks, missing chunks");
             return;
         }
@@ -2604,7 +2747,7 @@ const ChatApp = {
         return CryptoJS.SHA256(wordArray).toString(CryptoJS.enc.Hex);
     },
     async _sendFileInternal(file) {
-        console.log('[sendFile] start, file:', file.name, 'type:', file.type);
+        console.log('[sendFile] start, file:', file.name, 'type:', file.type, 'size:', file.size);
         const peerId = this.activeConv.id;
         const state = PeerConn.peers[peerId];
         console.log('[sendFile] state:', state, 'conn open:', state?.conn?.open);
@@ -2614,120 +2757,238 @@ const ChatApp = {
             return;
         }
 
+        const LARGE_FILE = 2 * 1024 * 1024;  // 2MB: skip encryption
+        const DIRECT_FILE = 20 * 1024 * 1024; // 20MB: direct transfer, no DB
+        const conn = state.conn;
         const isImage = file.type.startsWith("image/");
-        const chunkSize = 16384; // 16KB chunks
+        const chunkSize = 16384; // 16KB chunks per data-channel message
         const fileId = `file_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 
-        // Read file as base64
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const base64 = e.target.result.split(',')[1]; // strip data: prefix
-                const conn = state.conn;
-                const totalChunks = Math.ceil(base64.length / chunkSize);
+        // Helper: ArrayBuffer → base64
+        const arrayBufferToBase64 = (buffer) => {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.length;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        };
 
-                console.log(`[File] Sending ${file.name} (${file.size}B base64=${base64.length}, ${totalChunks} chunks)`);
+        // Helper: send file metadata + chunks to peer
+        const sendChunks = async (base64Data, totalSize) => {
+            const totalChunks = Math.ceil(base64Data.length / chunkSize);
+            const fileHash = this._hashBase64(base64Data);
 
-                // For images: generate thumbnail, store full image in files store
-                let thumbData = null;
-                if (isImage) {
-                    thumbData = await DB.generateThumbnail(base64, file.type, 200);
-                    // Store full image in unencrypted files store
-                    await DB.putFile(fileId, base64, file.type, this.my.aesKey);
-                }
+            conn.send({
+                type: "file-header",
+                fileId, name: file.name, mime: file.type,
+                size: totalSize, totalChunks, isImage,
+                base64Len: base64Data.length, hash: fileHash,
+            });
 
-                // Also display in sender's chat window immediately
-                const now = Date.now();
-                const id = `msg_${peerId}_${now}_${Math.random().toString(36).slice(2,6)}`;
-                const sentMsg = {
-                    id,
-                    peerId,
-                    ts: now,
-                    direction: "sent",
-                    fromId: this.my.id,
-                    type: isImage ? "image" : "file",
-                    fileName: file.name,
-                    mimeType: file.type,
-                    fileSize: file.size,
-                    fileId: isImage ? fileId : null,
-                    // For images: store only thumbnail in message (not full base64)
-                    fileData: isImage ? (thumbData || base64) : base64,
-                };
-
-                // Save to DB and display
-                await DB.put("messages", sentMsg, this.my.aesKey);
-                this._appendMsg(sentMsg);
-
-                // Update last message in sidebar
-                const contact = this.contacts.find(c => c.userId === peerId);
-                if (contact) {
-                    contact.lastMessage = {
-                        content: isImage ? (_i18n.t('pchat.file.prefixImage') + ' ' + file.name) : (_i18n.t('pchat.file.prefixFile') + ' ' + file.name),
-                        ts: now,
-                        fromId: this.my.id,
-                    };
-                    this.saveContact(contact);
-                }
-                this._renderContacts();
-
-                // Compute integrity hash (SHA-256 of raw bytes)
-                const fileHash = this._hashBase64(base64);
-
-                // Send header
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * chunkSize;
+                const end = Math.min(start + chunkSize, base64Data.length);
                 conn.send({
-                    type: "file-header",
-                    fileId,
-                    name: file.name,
-                    mime: file.type,
-                    size: file.size,
-                    totalChunks,
-                    isImage,
-                    base64Len: base64.length,
-                    hash: fileHash,
+                    type: "file-chunk", fileId, index: i,
+                    data: base64Data.slice(start, end),
                 });
+            }
 
-                // Send chunks
-                for (let i = 0; i < totalChunks; i++) {
+            conn.send({ type: "file-footer", fileId });
+            console.log(`[File] Sent ${file.name}, waiting ack...`);
+
+            const ackReceived = await new Promise((ackResolve) => {
+                const handler = (data) => {
+                    if (data.type === "file-ack" && data.fileId === fileId) {
+                        clearTimeout(timer);
+                        conn.off("data", handler);
+                        ackResolve(true);
+                    }
+                };
+                const timer = setTimeout(() => {
+                    conn.off("data", handler);
+                    console.warn(`[File] Ack timeout for ${file.name}`);
+                    ackResolve(false);
+                }, 120000); // 2 min for large files
+                conn.on("data", handler);
+            });
+
+            if (ackReceived) {
+                console.log(`[File] Ack received: ${file.name}`);
+            }
+            return base64Data;
+        };
+
+        // ---- Store message in DB (with optional encryption skip) ----
+        const storeMsg = async (base64Data, skipEncryption) => {
+            const now = Date.now();
+            const id = `msg_${peerId}_${now}_${Math.random().toString(36).slice(2,6)}`;
+            let thumbData = null;
+            let storedFileId = null;
+            let msgFileData = base64Data;
+
+            if (isImage) {
+                thumbData = await DB.generateThumbnail(base64Data, file.type, 200);
+                if (skipEncryption) {
+                    // Store raw in files store
+                    await DB.putFileRaw(fileId, base64Data, file.type);
+                } else {
+                    await DB.putFile(fileId, base64Data, file.type, this.my.aesKey);
+                }
+                storedFileId = fileId;
+                msgFileData = thumbData || base64Data;
+            }
+
+            const sentMsg = {
+                id, peerId, ts: now, direction: "sent",
+                fromId: this.my.id,
+                type: isImage ? "image" : "file",
+                fileName: file.name, mimeType: file.type, fileSize: file.size,
+                fileId: storedFileId,
+                fileData: msgFileData,
+            };
+
+            if (skipEncryption) {
+                await DB.putRaw("messages", sentMsg);
+            } else {
+                await DB.put("messages", sentMsg, this.my.aesKey);
+            }
+            this._appendMsg(sentMsg);
+
+            const contact = this.contacts.find(c => c.userId === peerId);
+            if (contact) {
+                contact.lastMessage = {
+                    content: (isImage ? _i18n.t('pchat.file.prefixImage') : _i18n.t('pchat.file.prefixFile')) + ' ' + file.name,
+                    ts: now, fromId: this.my.id,
+                };
+                this.saveContact(contact);
+            }
+            this._renderContacts();
+        };
+
+        // ======== Main flow ========
+        if (file.size > DIRECT_FILE) {
+            // >20MB: direct transfer via file.slice(), never store in DB
+            console.log(`[File] DIRECT transfer (${(file.size/1024/1024).toFixed(1)}MB), streaming in 10MB segments, no DB`);
+            const segSize = 10 * 1024 * 1024; // 10MB per segment
+            let offset = 0;
+            let allBase64 = '';
+
+            conn.send({
+                type: "file-header",
+                fileId, name: file.name, mime: file.type,
+                size: file.size, totalChunks: -1, isImage: false,
+                base64Len: -1, hash: '',
+                directTransfer: true,
+            });
+
+            while (offset < file.size) {
+                const seg = file.slice(offset, offset + segSize);
+                const segBuf = await new Promise((resolve, reject) => {
+                    const r = new FileReader();
+                    r.onload = (e) => resolve(e.target.result);
+                    r.onerror = (e) => reject(e);
+                    r.readAsArrayBuffer(seg);
+                });
+                const segBase64 = arrayBufferToBase64(segBuf);
+                allBase64 += segBase64;
+
+                const segChunks = Math.ceil(segBase64.length / chunkSize);
+                for (let i = 0; i < segChunks; i++) {
                     const start = i * chunkSize;
-                    const end = Math.min(start + chunkSize, base64.length);
                     conn.send({
-                        type: "file-chunk",
-                        fileId,
-                        index: i,
-                        data: base64.slice(start, end),
+                        type: "file-chunk", fileId,
+                        index: -1,
+                        data: segBase64.slice(start, start + chunkSize),
                     });
                 }
+                offset += segSize;
+                const pct = Math.min(100, Math.round(offset / file.size * 100));
+                console.log(`[File] Progress: ${pct}% (${(offset/1024/1024).toFixed(1)}MB / ${(file.size/1024/1024).toFixed(1)}MB)`);
+            }
 
-                // Send footer
-                conn.send({
-                    type: "file-footer",
-                    fileId,
-                });
+            const fileHash = this._hashBase64(allBase64);
+            conn.send({
+                type: "file-footer", fileId,
+                hash: fileHash, base64Len: allBase64.length,
+            });
 
-                console.log(`[File] Waiting for ack: ${file.name}`);
+            // Store metadata-only message (no fileData — receiver gets it from OPFS)
+            const now = Date.now();
+            const id = `msg_${peerId}_${now}_${Math.random().toString(36).slice(2,6)}`;
+            const sentMsg = {
+                id, peerId, ts: now, direction: "sent",
+                fromId: this.my.id,
+                type: "direct-file",
+                fileName: file.name, mimeType: file.type, fileSize: file.size,
+                fileId,
+            };
+            await DB.putRaw("messages", sentMsg);
+            this._appendMsg(sentMsg);
 
-                // Wait for file-ack from receiver (with 60s timeout) for backpressure
-                const ackReceived = await new Promise((ackResolve) => {
-                    const handler = (data) => {
-                        if (data.type === "file-ack" && data.fileId === fileId) {
-                            clearTimeout(timer);
-                            conn.off("data", handler);
-                            ackResolve(true);
-                        }
-                    };
-                    const timer = setTimeout(() => {
-                        conn.off("data", handler);
-                        console.warn(`[File] Ack timeout for ${file.name}`);
-                        ackResolve(false);
-                    }, 60000);
-                    conn.on("data", handler);
-                });
+            const contact = this.contacts.find(c => c.userId === peerId);
+            if (contact) {
+                contact.lastMessage = {
+                    content: _i18n.t('pchat.file.prefixFile') + ' ' + file.name,
+                    ts: now, fromId: this.my.id,
+                };
+                this.saveContact(contact);
+            }
+            this._renderContacts();
+            console.log(`[File] DIRECT transfer sent: ${file.name}`);
+            return;
+        }
 
-                if (ackReceived) {
-                    console.log(`[File] Ack received: ${file.name}`);
-                } else {
-                    console.warn(`[File] No ack for ${file.name}, continuing anyway`);
+        if (file.size > LARGE_FILE) {
+            // >2MB: ArrayBuffer (no base64 doubling), skip encryption
+            console.log(`[File] Large file (${(file.size/1024/1024).toFixed(1)}MB), using ArrayBuffer, skipping encryption`);
+            const buffer = await new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = (e) => {
+                    if (!e.target.result) return reject(new Error('Read failed'));
+                    resolve(e.target.result);
+                };
+                r.onerror = (e) => reject(e);
+                r.readAsArrayBuffer(file);
+            });
+            const base64 = arrayBufferToBase64(buffer);
+            console.log(`[File] Read complete, base64 length=${base64.length}`);
+            await sendChunks(base64, file.size);
+            await storeMsg(base64, true);
+            console.log(`[File] Done: ${file.name}`);
+            return;
+        }
+
+        // ≤2MB: legacy base64 approach with encryption
+        console.log(`[File] Small file (${(file.size/1024).toFixed(1)}KB), base64 + encryption`);
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const result = e.target.result;
+                if (!result || typeof result !== 'string') {
+                    console.error('[File] FileReader returned invalid result:', result);
+                    this.showAlert(_i18n.t('pchat.alert.fileReadFail'));
+                    resolve();
+                    return;
                 }
+                const commaIdx = result.indexOf(',');
+                const base64 = commaIdx >= 0 ? result.substring(commaIdx + 1) : result;
+                if (!base64) {
+                    console.error('[File] Empty base64 data');
+                    this.showAlert(_i18n.t('pchat.alert.fileReadFail'));
+                    resolve();
+                    return;
+                }
+                console.log(`[File] Read complete, base64 length=${base64.length}`);
+                await sendChunks(base64, file.size);
+                await storeMsg(base64, false);
+                resolve();
+            };
+            reader.onerror = (e) => {
+                console.error('[File] FileReader error:', e);
+                this.showAlert(_i18n.t('pchat.alert.fileReadFail'));
                 resolve();
             };
             reader.readAsDataURL(file);
@@ -2863,6 +3124,11 @@ const ChatApp = {
             const icon = this._getFileIcon(msg.fileName);
             const sizeStr = this._formatFileSize(msg.fileSize);
             innerContent = `<div class="file-attachment" onclick="ChatApp.downloadAttachment('${msg.id}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || _i18n.t('pchat.file.unknown')).replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr}</div></div></div>`;
+        } else if (msg.type === "direct-file") {
+            // Direct transfer: file stored in OPFS, not IndexedDB
+            const icon = this._getFileIcon(msg.fileName);
+            const sizeStr = this._formatFileSize(msg.fileSize);
+            innerContent = `<div class="file-attachment direct-transfer" onclick="ChatApp.downloadDirectFile('${msg.fileId}','${(msg.fileName || 'download').replace(/'/g,"\\'")}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || _i18n.t('pchat.file.unknown')).replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr} · 直传 · 不入库</div></div></div>`;
         } else if (msg.type === "voice" && msg.content) {
             const dur = msg.duration || 0;
             const durStr = dur > 0 ? `${Math.floor(dur)}s` : _i18n.t('pchat.msg.voice');
@@ -3010,6 +3276,18 @@ const ChatApp = {
         const a = document.createElement('a');
         a.href = url; a.download = msg.fileName || 'download'; a.click();
         URL.revokeObjectURL(url);
+    },
+
+    // Download a direct-transfer file from OPFS
+    async downloadDirectFile(fileId, fileName) {
+        const url = await DB.readDirectFile(fileId);
+        if (!url) {
+            this.showAlert(_i18n.t('pchat.alert.downloadExpired'));
+            return;
+        }
+        const a = document.createElement('a');
+        a.href = url; a.download = fileName || 'download'; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
 
     _base64ToBlob(base64, mime) {
@@ -3297,6 +3575,10 @@ const ChatApp = {
         // Delete associated file from files store if image
         if (msg.type === "image" && msg.fileId) {
             await DB.deleteFile(msg.fileId);
+        }
+        // Delete OPFS file if direct transfer
+        if (msg.type === "direct-file" && msg.fileId) {
+            await DB.deleteDirectFile(msg.fileId);
         }
         try {
             const tx = DB.db.transaction("messages", "readwrite");
