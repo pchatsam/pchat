@@ -503,6 +503,7 @@ const DB = {
 
     // ---- OPFS direct file storage (for large files > 20MB, bypasses IndexedDB) ----
     _opfsRoot: null,
+    _directWriters: {},
     async _getOprfsRoot() {
         if (!this._opfsRoot) {
             this._opfsRoot = await navigator.storage.getDirectory();
@@ -515,26 +516,47 @@ const DB = {
         const root = await this._getOprfsRoot();
         const handle = await root.getFileHandle(`pchat-${fileId}`, { create: true });
         const writable = await handle.createWritable({ keepExistingData: false });
-        DB._directWriters = DB._directWriters || {};
-        DB._directWriters[fileId] = { writable, handle, fileName };
+        DB._directWriters[fileId] = { writable, handle, fileName, buffer: [], bufferedSize: 0 };
         return true;
     },
 
-    // Write a chunk to an open direct file (base64 string)
+    // Write a chunk to buffer, flush every ~1MB to avoid thousands of tiny OPFS writes
     async writeDirectChunk(fileId, base64Chunk) {
-        const entry = DB._directWriters && DB._directWriters[fileId];
+        const entry = DB._directWriters[fileId];
         if (!entry) return false;
-        const binary = atob(base64Chunk);
+        if (!entry.buffer) { entry.buffer = []; entry.bufferedSize = 0; }
+        entry.buffer.push(base64Chunk);
+        entry.bufferedSize += base64Chunk.length;
+        // Flush when buffer exceeds ~1MB (base64 chars ≈ bytes)
+        if (entry.bufferedSize > 1024 * 1024) {
+            await DB._flushDirectBuffer(fileId);
+        }
+        return true;
+    },
+
+    // Flush buffered chunks to OPFS as one write
+    async _flushDirectBuffer(fileId) {
+        const entry = DB._directWriters[fileId];
+        if (!entry || !entry.buffer || entry.buffer.length === 0) return;
+        // Atomically swap buffer — new chunks go to fresh array
+        const chunks = entry.buffer;
+        entry.buffer = [];
+        entry.bufferedSize = 0;
+        const combined = chunks.join('');
+        const binary = atob(combined);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         await entry.writable.write(bytes);
-        return true;
     },
 
-    // Close direct file stream, return file metadata
+    // Close direct file stream, flush remaining buffer first
     async closeDirectFile(fileId) {
-        const entry = DB._directWriters && DB._directWriters[fileId];
+        const entry = DB._directWriters[fileId];
         if (!entry) return null;
+        // Flush any remaining buffered chunks
+        if (entry.buffer && entry.buffer.length > 0) {
+            await DB._flushDirectBuffer(fileId);
+        }
         await entry.writable.close();
         const name = entry.fileName;
         delete DB._directWriters[fileId];
@@ -2357,8 +2379,10 @@ const ChatApp = {
             info.expectedHash = '';
             info.totalChunks = -1;
             info.chunkCount = 0;
+            info.totalBase64Received = 0;
             console.log(`[File] DIRECT header: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB), streaming to OPFS`);
             DB.openDirectFile(d.fileId, d.name).catch(e => console.error('[OPFS] openDirectFile failed:', e));
+            ChatApp._insertTransferCard(d.fileId, d.name, d.size, false);
         } else {
             info.parts = new Array(d.totalChunks);
             info.totalChunks = d.totalChunks;
@@ -2380,6 +2404,10 @@ const ChatApp = {
             // Direct transfer: write chunk to OPFS immediately
             DB.writeDirectChunk(d.fileId, d.data).catch(e => console.error('[OPFS] writeDirectChunk failed:', e));
             info.chunkCount++;
+            info.totalBase64Received = (info.totalBase64Received || 0) + (d.data ? d.data.length : 0);
+            // Estimate progress: base64 is ~4/3 of raw bytes, so raw ≈ base64 * 0.75
+            const estPct = info.size > 0 ? Math.min(99, Math.round(info.totalBase64Received * 0.75 / info.size * 100)) : 0;
+            ChatApp._updateTransferProgress(d.fileId, estPct, null);
             return;
         }
 
@@ -2400,6 +2428,8 @@ const ChatApp = {
             await DB.closeDirectFile(d.fileId);
             delete ft.pending[d.fileId];
 
+            ChatApp._finishTransferCard(d.fileId, d.fileId, info.name, false);
+
             const now = Date.now();
             const id = `msg_${peerId}_${now}_${Math.random().toString(36).slice(2,6)}`;
             const msg = {
@@ -2410,10 +2440,8 @@ const ChatApp = {
                 fileId: d.fileId,
             };
             await DB.putRaw("messages", msg);
+            // Don't _appendMsg — the transfer progress card IS the message
 
-            if (this.activeConv && this.activeConv.id === peerId) {
-                this._appendMsg(msg);
-            }
             const contact = this.contacts.find(c => c.userId === peerId);
             if (contact) {
                 contact.lastMessage = {
@@ -2884,6 +2912,8 @@ const ChatApp = {
                 directTransfer: true,
             });
 
+            this._insertTransferCard(fileId, file.name, file.size, true);
+
             while (offset < file.size) {
                 const seg = file.slice(offset, offset + segSize);
                 // Use readAsDataURL on slice — native base64 encoding, no JS loop
@@ -2913,6 +2943,7 @@ const ChatApp = {
                 offset += segSize;
                 const pct = Math.min(100, Math.round(offset / file.size * 100));
                 console.log(`[File] Progress: ${pct}% (${(offset/1024/1024).toFixed(1)}MB / ${(file.size/1024/1024).toFixed(1)}MB)`);
+                this._updateTransferProgress(fileId, pct, null, fileId, file.name);
             }
 
             // Footer: no hash for direct transfer (memory-intensive, not needed by receiver)
@@ -2920,6 +2951,8 @@ const ChatApp = {
                 type: "file-footer", fileId,
                 hash: '', base64Len: totalBase64Len,
             });
+
+            this._finishTransferCard(fileId, fileId, file.name, true);
 
             // Store metadata-only message (no fileData — receiver gets it from OPFS)
             const now = Date.now();
@@ -2932,7 +2965,7 @@ const ChatApp = {
                 fileId,
             };
             await DB.putRaw("messages", sentMsg);
-            this._appendMsg(sentMsg);
+            // Don't _appendMsg — the transfer progress card IS the message
 
             const contact = this.contacts.find(c => c.userId === peerId);
             if (contact) {
@@ -3173,6 +3206,58 @@ const ChatApp = {
         wrapper.innerHTML = `<div class="${senderClass}">${senderName}</div><div class="message ${bubbleClass}">${deleteBtn}${innerContent}${receiptHtml}<div class="time">${time}</div></div>`;
         list.appendChild(wrapper);
         this._scroll();
+    },
+
+    // ---- Transfer progress UI ----
+    _insertTransferCard(transferId, fileName, fileSize, isSender) {
+        const list = document.getElementById("message-list");
+        if (!list) return;
+        const icon = this._getFileIcon(fileName);
+        const sizeStr = this._formatFileSize(fileSize);
+        const status = isSender ? '发送中...' : '接收中...';
+        const card = document.createElement("div");
+        card.className = "message-row";
+        card.id = `transfer-${transferId}`;
+        card.innerHTML = `<div class="sender-avatar">${isSender ? _i18n.t('pchat.msg.self') : ''}</div>
+            <div class="message ${isSender ? 'sent' : 'received'}">
+                <div class="transfer-progress-card" id="transfer-card-${transferId}">
+                    <div class="tp-header"><span class="tp-icon">${icon}</span><span class="tp-name">${fileName.replace(/</g,'&lt;')}</span></div>
+                    <div class="tp-bar-wrap"><div class="tp-bar-fill" id="transfer-bar-${transferId}" style="width:0%"></div></div>
+                    <div class="tp-status"><span id="transfer-pct-${transferId}">0%</span> · <span id="transfer-status-${transferId}">${status}</span><span class="tp-size">${sizeStr}</span></div>
+                </div>
+            </div>`;
+        list.appendChild(card);
+        this._scroll();
+        return card;
+    },
+
+    _updateTransferProgress(transferId, pct, status, fileId, fileName) {
+        const bar = document.getElementById(`transfer-bar-${transferId}`);
+        const pctEl = document.getElementById(`transfer-pct-${transferId}`);
+        const stEl = document.getElementById(`transfer-status-${transferId}`);
+        if (bar) bar.style.width = `${Math.min(100, Math.round(pct))}%`;
+        if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+        if (stEl && status) stEl.textContent = status;
+        this._scroll();
+    },
+
+    _finishTransferCard(transferId, fileId, fileName, isSender) {
+        const bar = document.getElementById(`transfer-bar-${transferId}`);
+        const pctEl = document.getElementById(`transfer-pct-${transferId}`);
+        const stEl = document.getElementById(`transfer-status-${transferId}`);
+        const card = document.getElementById(`transfer-card-${transferId}`);
+        if (bar) bar.style.width = '100%';
+        if (pctEl) pctEl.textContent = '100%';
+        if (isSender) {
+            if (stEl) stEl.textContent = '✓ 已发送';
+        } else if (card && fileId) {
+            // Receiver: add download button
+            const safeName = (fileName || 'download').replace(/'/g, "\\'");
+            card.innerHTML = card.innerHTML.replace(
+                /<div class="tp-status">.*<\/div>/,
+                `<div class="tp-status"><span>100%</span> · <span>✓ 已完成</span><button class="tp-done-btn" onclick="event.stopPropagation();ChatApp.downloadDirectFile('${fileId}','${safeName}')">下载</button></div>`
+            );
+        }
     },
 
     _getFileIcon(fileName) {
