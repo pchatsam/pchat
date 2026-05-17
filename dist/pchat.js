@@ -817,7 +817,7 @@ const PeerConn = {
                                 const rawReceived = info.totalRawReceived;
                                 info.chunkCount = (info.chunkCount || 0) + 1;
                                 info.totalRawReceived = (info.totalRawReceived || 0) + (arr.byteLength || arr.length);
-                                const pct = info.size > 0 ? Math.min(99, Math.round(rawReceived / info.size * 100)) : 0;
+                                const pct = info.size > 0 ? Math.min(99.9, (rawReceived / info.size * 100)).toFixed(1) : '0';
                                 if (info.chunkCount % 100 === 0) {
                                     console.log(`[BinaryDC] ${info.chunkCount} chunks, ${(rawReceived/1024/1024).toFixed(1)}MB, ${pct}%`);
                                 }
@@ -2953,7 +2953,7 @@ const ChatApp = {
         const DIRECT_FILE = 20 * 1024 * 1024; // 20MB: direct transfer, no DB
         const conn = state.conn;
         const isImage = file.type.startsWith("image/");
-        const chunkSize = file.size > DIRECT_FILE ? 65536 : 16384;  // 64KB for direct (smaller=safer with PeerJS binary DC) // 256KB for direct, 16KB for small
+        const chunkSize = 262144;  // 256KB for direct transfer // 256KB for direct, 16KB for small
         const fileId = `file_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 
         // Helper: ArrayBuffer → base64
@@ -3114,9 +3114,9 @@ const ChatApp = {
                     }
                     offset += segSize;
                     totalSent = offset;
-                    const pct = Math.min(99, Math.round(offset / file.size * 100));
+                    const pct = (offset / file.size * 100).toFixed(1);
                     console.log(`[File] Sent ${(offset/1024/1024).toFixed(0)}MB (${pct}%)`);
-                    this._updateTransferProgress(fileId, pct, `发送中 ${pct}%`);
+                    this._updateTransferProgress(fileId, parseFloat(pct), `发送中 ${pct}%`);
                 }
                 await new Promise(r => setTimeout(r, 200));
             } catch(e) {
