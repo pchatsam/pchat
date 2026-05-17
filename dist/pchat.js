@@ -800,10 +800,17 @@ const PeerConn = {
             if (conn.label && conn.label.startsWith('file-')) {
                 const fileId = conn.label.slice(5); // 'file-xxx' → 'xxx'
                 console.log('[PeerConn] Binary file channel from', conn.peer, 'fileId:', fileId);
-                conn.on('data', (chunk) => {
-                    if (chunk instanceof ArrayBuffer || chunk instanceof Uint8Array) {
-                        DB.bufferRawChunk(fileId, chunk).catch(e => console.error('[OPFS] bufferRawChunk:', e));
-                        // Track progress from DB entry (survives before-header arrival)
+                let _firstChunk = true;
+                conn.on('data', async (chunk) => {
+                    if (_firstChunk) {
+                        _firstChunk = false;
+                        console.log('[BinaryDC] First chunk received, type:', typeof chunk, 'constructor:', chunk?.constructor?.name, 'byteLength:', chunk?.byteLength, 'length:', chunk?.length);
+                    }
+                    let raw = chunk;
+                    if (chunk instanceof Blob) raw = await chunk.arrayBuffer();
+                    if (raw && (raw.byteLength > 0 || raw.length > 0)) {
+                        DB.bufferRawChunk(fileId, raw).catch(e => console.error('[OPFS] bufferRawChunk:', e));
+                        // Track progress from DB entry
                         const entry = DB._directWriters[fileId];
                         if (entry) {
                             const rawReceived = entry.rawTotal;
@@ -4576,6 +4583,14 @@ const ChatApp = {
         if (event) event.stopPropagation();
         const iv = this.imageViewer; if (!iv.url) return;
         const a = document.createElement('a'); a.href = iv.url; a.download = 'image_' + Date.now(); a.click();
+    },
+
+    logout() {
+        if (confirm('确定退出？')) {
+            PeerConn.disconnect();
+            location.hash = "";
+            location.reload();
+        }
     },
 
     _scroll() { const el = document.getElementById("message-list"); if (el) el.scrollTop = el.scrollHeight; },
