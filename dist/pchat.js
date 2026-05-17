@@ -591,6 +591,10 @@ const DB = {
         const blob = new Blob(chunks);
         const buf = await blob.arrayBuffer();
         await entry.writable.write(buf);
+        // Track written bytes for progress comparison
+        const ft = ChatApp.fileTransfer;
+        const info = ft.pending[fileId];
+        if (info) info._written = (info._written || 0) + buf.byteLength;
         entry._flushing = false;
         if (entry.rawChunks && entry.rawChunks.length > 0) {
             DB._flushRawBuffer(fileId);
@@ -817,14 +821,14 @@ const PeerConn = {
                                 const rawReceived = info.totalRawReceived;
                                 info.chunkCount = (info.chunkCount || 0) + 1;
                                 info.totalRawReceived = (info.totalRawReceived || 0) + (arr.byteLength || arr.length);
-                                const pct = info.size > 0 ? Math.min(99.9, (rawReceived / info.size * 100)).toFixed(1) : '0';
+                                const netPct = info.size > 0 ? (info.totalRawReceived / info.size * 100) : 0;
+                                info._written = info._written || 0;
+                                const pct = netPct;
                                 if (info.chunkCount % 100 === 0) {
-                                    console.log(`[BinaryDC] ${info.chunkCount} chunks, ${(rawReceived/1024/1024).toFixed(1)}MB, ${pct}%`);
+                                    const writePct = info._written > 0 ? (info._written / info.size * 100).toFixed(1) : '0.0';
+                                    console.log(`[BinaryDC] #${info.chunkCount} net=${netPct.toFixed(1)}% write=${writePct}% (${(rawReceived/1024/1024).toFixed(0)}MB/${(info._written/1024/1024).toFixed(0)}MB)`);
                                 }
                                 _chunkCount++;
-                                if (_chunkCount % 100 === 0) {
-                                    console.log(`[BinaryDC] ${_chunkCount} chunks, ${(rawReceived/1024/1024).toFixed(1)}MB, ${pct}%`);
-                                }
                                 ChatApp._updateTransferProgress(fileId, pct, null);
                                 // Finalize when all data received AND footer arrived
                                 if (info.footerReceived && rawReceived >= info.size) {
@@ -2519,6 +2523,7 @@ const ChatApp = {
             info.chunkCount = 0;
             info.totalBase64Received = 0;
             info.totalRawReceived = 0;
+            info._written = 0;
             info.lastAckBytes = 0;
             console.log(`[File] DIRECT header: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB)`);
             DB.openDirectFile(d.fileId, d.name).catch(e => console.error('[OPFS] openDirectFile failed:', e));
