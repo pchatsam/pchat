@@ -384,6 +384,12 @@ const DB = {
                 const results = [];
                 for (const it of req.result) {
                     try {
+                        // Raw format (no encryption, for direct-file messages)
+                        if (it.data) {
+                            try { results.push(JSON.parse(it.data)); }
+                            catch { results.push({ ...it, _raw: it.data }); }
+                            continue;
+                        }
                         results.push(JSON.parse(await Crypto.decryptAes(key, it.encrypted)));
                     } catch (e) {
                         // console.warn(`[DB] decrypt failed in ${name}:`, it.id, e.message);
@@ -414,6 +420,12 @@ const DB = {
                 const results = [];
                 for (const it of req.result) {
                     try {
+                        // Raw format (no encryption, for direct-file messages)
+                        if (it.data) {
+                            try { results.push(JSON.parse(it.data)); }
+                            catch { results.push({ ...it, id: it.id, peerId: it.peerId, _raw: it.data }); }
+                            continue;
+                        }
                         const parsed = JSON.parse(await Crypto.decryptAes(aesKey, it.encrypted));
                         results.push(parsed);
                     } catch (e) {
@@ -435,6 +447,12 @@ const DB = {
                         const allResults = [];
                         for (const it of allReq.result) {
                             try {
+                                // Raw format (no encryption)
+                                if (it.data) {
+                                    try { allResults.push(JSON.parse(it.data)); }
+                                    catch { allResults.push({ ...it, id: it.id, peerId: it.peerId, _raw: it.data }); }
+                                    continue;
+                                }
                                 const parsed = JSON.parse(await Crypto.decryptAes(aesKey, it.encrypted));
                                 if (parsed.peerId === peerId) allResults.push(parsed);
                             } catch (e) { /* skip undecryptable */ }
@@ -527,8 +545,8 @@ const DB = {
         if (!entry.buffer) { entry.buffer = []; entry.bufferedSize = 0; }
         entry.buffer.push(base64Chunk);
         entry.bufferedSize += base64Chunk.length;
-        // Flush when buffer exceeds ~1MB (base64 chars ≈ bytes)
-        if (entry.bufferedSize > 1024 * 1024) {
+        // Flush when buffer exceeds ~10MB (matching sender segment size)
+        if (entry.bufferedSize > 10 * 1024 * 1024) {
             await DB._flushDirectBuffer(fileId);
         }
         return true;
@@ -2405,9 +2423,20 @@ const ChatApp = {
             DB.writeDirectChunk(d.fileId, d.data).catch(e => console.error('[OPFS] writeDirectChunk failed:', e));
             info.chunkCount++;
             info.totalBase64Received = (info.totalBase64Received || 0) + (d.data ? d.data.length : 0);
-            // Estimate progress: base64 is ~4/3 of raw bytes, so raw ≈ base64 * 0.75
+            // Estimate progress: base64 is ~4/3 of raw bytes
             const estPct = info.size > 0 ? Math.min(99, Math.round(info.totalBase64Received * 0.75 / info.size * 100)) : 0;
             ChatApp._updateTransferProgress(d.fileId, estPct, null);
+
+            // Send intermediate ack every ~10MB received (raw estimate)
+            const rawReceived = Math.round(info.totalBase64Received * 0.75);
+            const lastAckAt = info.lastAckBytes || 0;
+            if (rawReceived - lastAckAt >= 10 * 1024 * 1024) {
+                info.lastAckBytes = rawReceived;
+                const ackPeer = PeerConn.peers[info.peerId];
+                if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
+                    ackPeer.conn.send({ type: "file-ack", fileId: d.fileId, progress: Math.round(rawReceived / info.size * 100) });
+                }
+            }
             return;
         }
 
@@ -2450,6 +2479,12 @@ const ChatApp = {
                 };
                 this.saveContact(contact);
                 this._renderContacts();
+            }
+
+            // Send ack back to sender
+            const ackPeer = PeerConn.peers[peerId];
+            if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
+                ackPeer.conn.send({ type: "file-ack", fileId: d.fileId });
             }
             return;
         }
@@ -2952,6 +2987,35 @@ const ChatApp = {
                 hash: '', base64Len: totalBase64Len,
             });
 
+            // Wait for receiver ack before marking complete
+            this._updateTransferProgress(fileId, 100, '等待对方确认...');
+            let lastAckPct = 0;
+            const ackOk = await new Promise((ackResolve) => {
+                const handler = (data) => {
+                    if (data.type === "file-ack" && data.fileId === fileId) {
+                        // Intermediate ack: show receiver progress
+                        if (data.progress != null && data.progress < 100) {
+                            lastAckPct = data.progress;
+                            ChatApp._updateTransferProgress(fileId, 100, `对方已接收 ${data.progress}%`);
+                            return; // keep waiting for final ack
+                        }
+                        // Final ack (no progress field, or progress == 100)
+                        clearTimeout(timer);
+                        conn.off("data", handler);
+                        ackResolve(true);
+                    }
+                };
+                const timer = setTimeout(() => {
+                    conn.off("data", handler);
+                    console.warn(`[File] Ack timeout for ${file.name}`);
+                    ackResolve(false);
+                }, 300000); // 5 min for large files
+                conn.on("data", handler);
+            });
+
+            if (ackOk) {
+                console.log(`[File] Ack received: ${file.name}`);
+            }
             this._finishTransferCard(fileId, fileId, file.name, true);
 
             // Store metadata-only message (no fileData — receiver gets it from OPFS)
