@@ -1,4 +1,4 @@
-/* PChat v20260517.3 — Dark Theme */
+/* PChat v20260517.4 — Dark Theme */
 :root {
     --bg: #0f0f1a;
     --bg2: #1a1a2e;
@@ -267,6 +267,8 @@ body {
 /* Direct transfer badge */
 .message .file-attachment.direct-transfer{border:1px dashed var(--green);background:rgba(78,204,163,.06);}
 .message .file-attachment.direct-transfer .file-size{color:var(--green);}
+.message .file-attachment.direct-transfer.sent{border-color:var(--text3);background:transparent;cursor:default;}
+.message .file-attachment.direct-transfer.sent .file-size{color:var(--text3);}
 
 /* Transfer progress card */
 .transfer-progress-card{

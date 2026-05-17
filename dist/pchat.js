@@ -3231,7 +3231,12 @@ const ChatApp = {
             // Direct transfer: file stored in OPFS, not IndexedDB
             const icon = this._getFileIcon(msg.fileName);
             const sizeStr = this._formatFileSize(msg.fileSize);
-            innerContent = `<div class="file-attachment direct-transfer" onclick="ChatApp.downloadDirectFile('${msg.fileId}','${(msg.fileName || 'download').replace(/'/g,"\\'")}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || _i18n.t('pchat.file.unknown')).replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr} · 直传 · 不入库</div></div></div>`;
+            if (sent) {
+                innerContent = `<div class="file-attachment direct-transfer sent"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || '').replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr} · 直传 · 已发送 ✓</div></div></div>`;
+            } else {
+                const safeName = (msg.fileName || 'download').replace(/'/g,"\\'");
+                innerContent = `<div class="file-attachment direct-transfer" onclick="event.stopPropagation();ChatApp.downloadDirectFile('${msg.fileId}','${safeName}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || '').replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr} · 直传</div><button class="tp-done-btn" style="margin-top:4px;" onclick="event.stopPropagation();ChatApp.downloadDirectFile('${msg.fileId}','${safeName}')">下载</button></div></div>`;
+            }
         } else if (msg.type === "voice" && msg.content) {
             const dur = msg.duration || 0;
             const durStr = dur > 0 ? `${Math.floor(dur)}s` : _i18n.t('pchat.msg.voice');
