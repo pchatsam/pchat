@@ -557,7 +557,7 @@ const DB = {
         entry.buffer.push(base64Chunk);
         entry.bufferedSize += base64Chunk.length;
         // Flush when buffer exceeds ~10MB (matching sender segment size)
-        if (entry.bufferedSize > 10 * 1024 * 1024) {
+        if (entry.bufferedSize > 50 * 1024 * 1024) {
             await DB._flushDirectBuffer(fileId);
         }
         return true;
@@ -574,7 +574,7 @@ const DB = {
         if (!entry.rawChunks) { entry.rawChunks = []; entry.rawTotal = 0; }
         entry.rawChunks.push(chunk);
         entry.rawTotal += chunk.byteLength || chunk.length;
-        if (entry.rawTotal > 10 * 1024 * 1024) {
+        if (entry.rawTotal > 50 * 1024 * 1024) {
             await DB._flushRawBuffer(fileId);
         }
     },
