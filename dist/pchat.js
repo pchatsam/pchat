@@ -35,7 +35,6 @@ _i18n.dict = {
     'pchat.time.justNow':                { zh: '刚刚', en: 'just now', ja: 'たった今', de: 'gerade eben', fr: 'à l\'instant', es: 'ahora', pt: 'agora', he: 'עכשיו', ko: '방금', it: 'adesso' },
     'pchat.time.minutesAgo':             { zh: '分钟前', en: 'min ago', ja: '分前', de: 'Min. her', fr: 'min avant', es: 'min antes', pt: 'min atrás', he: 'דק קודם', ko: '분 전', it: 'min fa' },
     'pchat.time.today':                  { zh: '今天', en: 'Today', ja: '今日', de: 'Heute', fr: 'Aujourd\'hui', es: 'Hoy', pt: 'Hoje', he: 'היום', ko: '오늘', it: 'Oggi' },
-    'pchat.register.inviteFrom':         { zh: '通过邀请注册（ID: {id}）', en: 'Register via invite (ID: {id})', ja: '招待で登録(ID: {id})', de: 'Registrierung per Einladung (ID: {id})', fr: 'Inscription par invitation (ID: {id})', es: 'Registro por invitación (ID: {id})', pt: 'Registrar por convite (ID: {id})', he: 'הרשמה בהזמנה (מזהה: {id})', ko: '초대로 등록(ID: {id})', it: 'Registrazione per invito (ID: {id})' },
     'pchat.loading.genKey':              { zh: '生成密钥...', en: 'Generating key...', ja: '鍵を生成中...', de: 'Schlüssel wird erstellt...', fr: 'Génération de clé...', es: 'Generando clave...', pt: 'Gerando chave...', he: 'מייצר מפתח...', ko: '키 생성 중...', it: 'Generazione chiave...' },
     'pchat.loading.deriveVerifyKey':     { zh: '派生验证密钥...', en: 'Deriving verify key...', ja: '検証鍵を派生中...', de: 'Verifizierungsschlüssel wird abgeleitet...', fr: 'Dérivation de clé de vérification...', es: 'Derivando clave de verificación...', pt: 'Derivando chave de verificação...', he: 'מפיק מפתח אימות...', ko: '검증 키 파생 중...', it: 'Derivazione chiave verifica...' },
     'pchat.loading.deriveDataKey':       { zh: '派生数据密钥...', en: 'Deriving data key...', ja: 'データ鍵を派生中...', de: 'Datenschlüssel wird abgeleitet...', fr: 'Dérivation de clé de données...', es: 'Derivando clave de datos...', pt: 'Derivando chave de dados...', he: 'מפיק מפתח נתונים...', ko: '데이터 키 파생 중...', it: 'Derivazione chiave dati...' },
@@ -833,7 +832,6 @@ const PeerConn = {
                                 }
                             }
                         }
-                    }
                 });
                 conn.on('close', () => console.log('[PeerConn] Binary file channel closed:', fileId));
                 conn.on('error', (e) => console.error('[PeerConn] Binary file channel error:', fileId, e));
@@ -3088,7 +3086,6 @@ const ChatApp = {
 
             // Send all chunks in one pass with pacing
             let totalSent = 0;
-            const segSize = 10 * 1024 * 1024;
             try {
                 while (offset < file.size) {
                     const seg = file.slice(offset, offset + segSize);
