@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./logo.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./dist/chat.css?v=20260516c">
+    <link rel="stylesheet" href="./dist/chat.css?v=20260517a">
     <!-- i18n: detect browser language and show/hide language spans -->
     <script>
     (function(){
@@ -34,8 +34,8 @@
     <!-- 注册/登录面板 -->
     <div id="setup-panel" class="panel">
         <div class="setup-box">
-            <div style="text-align:center;margin-bottom:8px;">
-                <img src="./logo.svg" alt="PChat" style="width:48px;height:48px;">
+            <div style="text-align:center;">
+                <img src="./logo.svg" alt="PChat" style="width:148px;height:148px;">
             </div>
             <h2 style="text-align:center;font-size:24px;margin:0;">P.Chat</h2>
             <p id="invite-from" style="display:none;color:#888;font-size:12px;margin-bottom:8px;text-align:center;"></p>
@@ -140,17 +140,17 @@
         <div id="sidebar">
             <div class="sidebar-header">
                 <div class="user-info">
-                    <span class="qr-icon" onclick="ChatApp.showMyQR()">▣</span>
+                    <span class="qr-icon" onclick="ChatApp.showMyQR()"><svg width="24" height="24" viewBox="0 0 32 32"><rect x="6" y="6" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10" y="10" width="6" height="6" fill="currentColor" opacity="0.6"/><rect x="16" y="10" width="6" height="6" fill="currentColor" opacity="0.3"/><rect x="10" y="16" width="6" height="6" fill="currentColor" opacity="0.3"/><rect x="16" y="16" width="6" height="6" fill="currentColor" opacity="0.6"/></svg></span>
                     <div class="user-text">
                         <span id="my-nickname" onclick="ChatApp.copyIdPrompt()" style="cursor:pointer;"></span>
                         <div class="user-id-row">
                             <span class="my-id" title="" id="my-id-display" onclick="ChatApp.copyIdPrompt()" style="cursor:pointer;"></span>
-                            <span title="复制ID" onclick="ChatApp.copyIdPrompt()" style="cursor:pointer;margin-left:6px;">❏</span>
+                            <span title="复制ID" onclick="ChatApp.copyIdPrompt()" style="cursor:pointer;margin-left:6px;display:inline-flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 32 32"><rect x="10" y="8" width="18" height="20" rx="2" fill="currentColor" stroke="currentColor" stroke-width="2"/><rect x="6" y="4" width="18" height="20" rx="2" fill="var(--bg)" stroke="currentColor" stroke-width="2"/></svg></span>
                         </div>
                     </div>
                 </div>
                 <div class="sidebar-actions">
-                    <button title="" onclick="ChatApp.showScanModal()">⛶</button>
+                    <button title="" onclick="ChatApp.showScanModal()"><svg width="28" height="28" viewBox="0 0 32 32"><polyline points="4,4 4,11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="4,4 11,4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,4 21,4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,4 28,11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="4,28 4,21" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="4,28 11,28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,28 21,28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,28 28,21" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
                 </div>
             </div>
 
@@ -166,7 +166,7 @@
 
             <!-- 好友请求卡片 (内联) -->
             <div id="friend-request-card" style="display:none;padding:10px 12px;border-bottom:1px solid #eee;background:#f0f8ff;">
-                <div style="font-size:13px;color:#333;margin-bottom:6px;">🔔 <span id="friend-request-nick"></span> (<span id="friend-request-id"></span>)
+                <div style="font-size:13px;color:#333;margin-bottom:6px;"><svg width="14" height="14" viewBox="0 0 32 32" style="vertical-align:middle;margin-right:2px"><path d="M16 4c-4 0-7 3-7 7v5l-3 4h20l-3-4v-5c0-4-3-7-7-7z" fill="none" stroke="#f39c12" stroke-width="2" stroke-linejoin="round"/><line x1="13" y1="26" x2="19" y2="26" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="26" x2="16" y2="30" stroke="#f39c12" stroke-width="1.5" stroke-linecap="round"/></svg><span id="friend-request-nick"></span> (<span id="friend-request-id"></span>)
                     <span class="zh">请求添加好友</span> 
                 </div>
                 <div style="display:flex;gap:6px;">
@@ -205,17 +205,17 @@
         <!-- 聊天区 -->
         <div id="chat-area">
             <div id="chat-placeholder">
-                <div class="icon">💬</div>
+                <div class="icon"><svg width="64" height="64" viewBox="0 0 32 32"><path d="M4 6h24a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2h-16l-8 6v-6a2 2 0 0 1-2-2v-16a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="15" r="2" fill="currentColor" opacity="0.5"/><circle cx="18" cy="15" r="2" fill="currentColor" opacity="0.5"/><circle cx="24" cy="15" r="2" fill="currentColor" opacity="0.5"/></svg></div>
                 <div>
                     <span class="zh">选择一个联系人开始聊天</span> 
                 </div>
             </div>
             <div id="chat-active" style="display:none; flex:1; flex-direction:column;">
                 <div id="chat-header">
-                    <button id="chat-back-btn" title="" onclick="ChatApp.closeChatView()">←</button>
+                    <button id="chat-back-btn" title="" onclick="ChatApp.closeChatView()"><svg width="18" height="18" viewBox="0 0 32 32"><polyline points="20,6 10,16 20,26" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     <span id="chat-title"></span>
                     <span id="chat-type"></span>
-                    <button id="call-btn" title="" onclick="ChatApp.initiateCall()">📞</button>
+                    <button id="call-btn" title="" onclick="ChatApp.initiateCall()"><svg width="20" height="20" viewBox="0 0 32 32"><path d="M7 5c-2 2-2 8 0 14s8 12 14 14c2-2 4-5 4-7l-5-5-2 2c-3-2-7-6-7-10l2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
                 </div>
                 <!-- 通话状态栏 -->
                 <div id="call-status-bar" style="display:none; align-items:center; justify-content:space-between; padding:8px 16px; background:#e8f5e9; border-bottom:1px solid #c8e6c9;">
@@ -224,15 +224,15 @@
                     </span>
                     <div style="display:flex; align-items:center; gap:12px;">
                         <span id="call-status-timer" style="font-size:14px; font-weight:500; color:#1b5e20;"></span>
-                        <button id="call-status-hangup" title="" onclick="ChatApp.hangupCall()" style="background:#ff4b4b; color:#fff; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center;">📞</button>
+                        <button id="call-status-hangup" title="" onclick="ChatApp.hangupCall()" style="background:#ff4b4b; color:#fff; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center;"><svg width="18" height="18" viewBox="0 0 32 32"><path d="M7 5c-2 2-2 8 0 14s8 12 14 14c2-2 4-5 4-7l-5-5-2 2c-3-2-7-6-7-10l2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
                     </div>
                 </div>
                 <div id="message-list"></div>
                 <div id="input-area">
                     <div class="input-tools">
-                        <button id="voice-btn" title="" onclick="ChatApp.startRecording()">🎙️</button>
-                        <button title="" onclick="document.getElementById('image-upload').click()">🖼️</button>
-                        <button title="" onclick="document.getElementById('file-upload').click()">📎</button>
+                        <button id="voice-btn" title="" onclick="ChatApp.startRecording()"><svg width="20" height="20" viewBox="0 0 32 32"><rect x="12" y="4" width="8" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16" y1="22" x2="16" y2="28" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="8" y1="28" x2="24" y2="28" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 19a10 14 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5"/></svg></button>
+                        <button title="" onclick="document.getElementById('image-upload').click()"><svg width="20" height="20" viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="12" r="3" fill="currentColor" opacity="0.5"/><polygon points="3,27 11,18 17,24 22,18 29,25 29,27" fill="currentColor" opacity="0.15"/></svg></button>
+                        <button title="" onclick="document.getElementById('file-upload').click()"><svg width="20" height="20" viewBox="0 0 32 32"><path d="M10 28V14a6 6 0 0 1 12 0v12a3 3 0 0 1-6 0V12a1.5 1.5 0 0 1 3 0v12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     </div>
                     <textarea id="message-input" placeholder="" rows="1"></textarea>
                     <button id="send-btn" onclick="ChatApp.sendMessage()">
@@ -248,15 +248,15 @@
     <!-- 语音通话 -->
     <div id="call-modal" class="modal" style="display:none;">
         <div class="call-modal-content">
-            <div class="call-avatar">👤</div>
+            <div class="call-avatar"><svg width="36" height="36" viewBox="0 0 32 32"><circle cx="16" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 30c0-6 4-10 10-10s10 4 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
             <div id="call-name" class="call-contact-name"></div>
             <div id="call-status" class="call-status"></div>
             <div id="call-timer" class="call-timer"></div>
             <div class="call-actions" id="call-actions">
-                <button id="call-reject-btn" class="call-btn reject" onclick="ChatApp.rejectCall()" title="" >📵</button>
-                <button id="call-answer-btn" class="call-btn answer" onclick="ChatApp.answerCall()" title="">📞</button>
+                <button id="call-reject-btn" class="call-btn reject" onclick="ChatApp.rejectCall()" title="" ><svg width="28" height="28" viewBox="0 0 32 32"><path d="M7 5c-2 2-2 8 0 14s8 12 14 14c2-2 4-5 4-7l-5-5-2 2c-3-2-7-6-7-10l2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+                <button id="call-answer-btn" class="call-btn answer" onclick="ChatApp.answerCall()" title=""><svg width="28" height="28" viewBox="0 0 32 32"><path d="M7 5c-2 2-2 8 0 14s8 12 14 14c2-2 4-5 4-7l-5-5-2 2c-3-2-7-6-7-10l2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
             </div>
-            <button id="call-hangup-btn" class="call-btn hangup" onclick="ChatApp.hangupCall()" title="" style="display:none;">📞</button>
+            <button id="call-hangup-btn" class="call-btn hangup" onclick="ChatApp.hangupCall()" title="" style="display:none;"><svg width="32" height="32" viewBox="0 0 32 32"><path d="M7 5c-2 2-2 8 0 14s8 12 14 14c2-2 4-5 4-7l-5-5-2 2c-3-2-7-6-7-10l2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
         </div>
     </div>
 
@@ -303,7 +303,7 @@
             <h3 style="text-align:center;margin:0 0 12px 0;">
                 <span class="zh">我的 ID 二维码</span>
             </h3>
-            <div id="qr-canvas" style="text-align:center;padding:16px;"></div>
+            <div id="qr-canvas" style="text-align:center;padding:16px;background-color:#fff;"></div>
             <div class="modal-actions">
                 <button class="accept-btn" onclick="ChatApp.closeQRModal()">
                     <span class="zh">关闭</span>
@@ -345,11 +345,11 @@
     <!-- 图片查看器 -->
     <div id="image-viewer" onclick="ChatApp.closeImageViewer(event)">
         <div id="image-viewer-toolbar">
-            <button onclick="ChatApp.zoomOut(event)" title="➖">➖</button>
-            <button onclick="ChatApp.zoomIn(event)" title="➕">➕</button>
+            <button onclick="ChatApp.zoomOut(event)" title="缩小"><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="9" y1="16" x2="23" y2="16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+            <button onclick="ChatApp.zoomIn(event)" title="放大"><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16" y1="9" x2="16" y2="23" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="9" y1="16" x2="23" y2="16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
             <button onclick="ChatApp.rotateImage(event)" title="↺">↻</button>
-            <button onclick="ChatApp.downloadImage(event)" title="⬇️">⬇️</button>
-            <button onclick="ChatApp.closeImageViewer()" title="✕" style="margin-left:auto;">✕</button>
+            <button onclick="ChatApp.downloadImage(event)" title="下载"><svg width="20" height="20" viewBox="0 0 32 32"><line x1="16" y1="4" x2="16" y2="19" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="10,13 16,21 22,13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="6" y1="27" x2="26" y2="27" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+            <button onclick="ChatApp.closeImageViewer()" title="关闭" style="margin-left:auto;"><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="10" y1="10" x2="22" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="22" y1="10" x2="10" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         </div>
         <div id="image-viewer-container">
             <img id="image-viewer-img" src="" alt="">

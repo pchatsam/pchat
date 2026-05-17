@@ -1775,7 +1775,7 @@ const ChatApp = {
                                 if (video) video.srcObject = null;
                                 if (video) video.style.display = 'none';
                                 if (status) {
-                                    status.textContent = '✓';
+                                    status.innerHTML = '<svg width="80" height="80" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="#4caf50" stroke-width="2.5"/><polyline points="10,16 14,21 23,11" fill="none" stroke="#4caf50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
                                     status.style.fontSize = '80px';
                                     status.style.color = '#4caf50';
                                 }
@@ -1803,7 +1803,7 @@ const ChatApp = {
                             }
                             if (video) { video.srcObject = null; video.style.display = 'none'; }
                             if (status) {
-                                status.textContent = '✓';
+                                status.innerHTML = '<svg width="80" height="80" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="#4caf50" stroke-width="2.5"/><polyline points="10,16 14,21 23,11" fill="none" stroke="#4caf50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
                                 status.style.fontSize = '80px';
                                 status.style.color = '#4caf50';
                             }
@@ -1832,7 +1832,7 @@ const ChatApp = {
                             video.srcObject = null;
                         }
                         if (status) {
-                            status.textContent = '✓';
+                            status.innerHTML = '<svg width="80" height="80" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="#4caf50" stroke-width="2.5"/><polyline points="10,16 14,21 23,11" fill="none" stroke="#4caf50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
                             status.style.fontSize = '80px';
                             status.style.color = '#4caf50';
                         }
@@ -2484,7 +2484,7 @@ const ChatApp = {
         
         const btn = document.getElementById("voice-btn");
         if (btn) {
-            btn.textContent = "🎙️";
+            btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 32 32"><rect x="12" y="4" width="8" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16" y1="22" x2="16" y2="28" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="8" y1="28" x2="24" y2="28" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 19a10 14 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5"/></svg>';
             btn.classList.remove("recording");
         }
     },
@@ -2811,7 +2811,7 @@ const ChatApp = {
             innerContent = `<img class="img-thumb" src="${src}" data-msg-id="${msg.id}" data-file-id="${msg.fileId || ''}" data-mime="${msg.mimeType || 'image/png'}">`;
         } else if (msg.type === "image") {
             // Image message without fileData (migration/partial state) - show placeholder
-            innerContent = `<div class="content" style="opacity:0.5;">🖼️ ${msg.fileName || '图片'}</div>`;
+            innerContent = `<div class="content" style="opacity:0.5;"><svg width="20" height="20" viewBox="0 0 32 32" style="vertical-align:middle"><rect x="3" y="5" width="26" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="12" r="3" fill="currentColor" opacity="0.5"/><polygon points="3,27 11,18 17,24 22,18 29,25 29,27" fill="currentColor" opacity="0.15"/></svg> ${msg.fileName || '图片'}</div>`;
         } else if (msg.type === "file" && msg.fileData) {
             const icon = this._getFileIcon(msg.fileName);
             const sizeStr = this._formatFileSize(msg.fileSize);
@@ -2819,12 +2819,12 @@ const ChatApp = {
         } else if (msg.type === "voice" && msg.content) {
             const dur = msg.duration || 0;
             const durStr = dur > 0 ? `${Math.floor(dur)}s` : _i18n.t('pchat.msg.voice');
-            innerContent = `<div class="voice-msg" onclick="ChatApp.playVoice('${msg.id}', this)"><span class="voice-icon">🔊</span><span class="voice-duration">${durStr}</span></div>`;
+            innerContent = `<div class="voice-msg" onclick="ChatApp.playVoice('${msg.id}', this)"><span class="voice-icon"><svg width="20" height="20" viewBox="0 0 32 32"><polygon points="8,12 4,12 4,20 8,20 14,25 14,7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M18 10a6 6 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M22 7a10 10 0 0 1 0 18" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5" stroke-linecap="round"/></svg></span><span class="voice-duration">${durStr}</span></div>`;
         } else {
             const text = msg.isHtml ? (msg.content || "") : (msg.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
             innerContent = `<div class="content">${text}</div>`;
         }
-        const deleteBtn = `<button class="msg-delete-btn" onclick="ChatApp.deleteMessage('${msg.id}', event)" title="${_i18n.t('pchat.msg.deleteTitle')}">✕</button>`;
+        const deleteBtn = `<button class="msg-delete-btn" onclick="ChatApp.deleteMessage('${msg.id}', event)" title="${_i18n.t('pchat.msg.deleteTitle')}"><svg width="14" height="14" viewBox="0 0 32 32"><line x1="10" y1="10" x2="22" y2="22" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><line x1="22" y1="10" x2="10" y2="22" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>`;
         
         // Receipt status for sent messages
         let receiptHtml = "";
@@ -2857,16 +2857,45 @@ const ChatApp = {
     },
 
     _getFileIcon(fileName) {
-        if (!fileName) return "📄";
+        if (!fileName) return '<svg width="24" height="24" viewBox="0 0 32 32"><path d="M8 2h12l8 8v18a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="none" stroke="#888" stroke-width="2" stroke-linejoin="round"/><polyline points="20,2 20,10 28,10" fill="none" stroke="#888" stroke-width="2" stroke-linejoin="round"/><line x1="10" y1="16" x2="22" y2="16" stroke="#888" stroke-width="1.5" stroke-linecap="round"/><line x1="10" y1="20" x2="18" y2="20" stroke="#888" stroke-width="1.5" stroke-linecap="round"/><line x1="10" y1="24" x2="14" y2="24" stroke="#888" stroke-width="1.5" stroke-linecap="round"/></svg>';
         const ext = fileName.split('.').pop().toLowerCase();
+        const svg = (color, paths) => `<svg width="24" height="24" viewBox="0 0 32 32"><path d="M8 2h12l8 8v18a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/><polyline points="20,2 20,10 28,10" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>${paths}</svg>`;
         const icons = {
-            'pdf': '📕', 'doc': '📘', 'docx': '📘', 'xls': '📗', 'xlsx': '📗',
-            'ppt': '📙', 'pptx': '📙', 'zip': '📦', 'rar': '📦', '7z': '📦', 'tar': '📦', 'gz': '📦',
-            'mp3': '🎵', 'wav': '🎵', 'ogg': '🎵', 'flac': '🎵', 'mp4': '🎬', 'avi': '🎬', 'mov': '🎬', 'mkv': '🎬',
-            'txt': '📝', 'log': '📝', 'js': '💻', 'py': '💻', 'java': '💻', 'cpp': '💻', 'c': '💻', 'go': '💻', 'rs': '💻',
-            'json': '📋', 'xml': '📋', 'yaml': '📋', 'yml': '📋',
+            'pdf': svg('#e74c3c', '<line x1="10" y1="18" x2="22" y2="18" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/><line x1="10" y1="22" x2="18" y2="22" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/>'),
+            'doc': svg('#3498db', '<rect x="10" y="16" width="12" height="8" rx="1" fill="none" stroke="#3498db" stroke-width="1.5"/><line x1="13" y1="16" x2="13" y2="24" stroke="#3498db" stroke-width="1"/><line x1="16" y1="16" x2="16" y2="24" stroke="#3498db" stroke-width="0.5"/>'),
+            'docx': svg('#3498db', '<rect x="10" y="16" width="12" height="8" rx="1" fill="none" stroke="#3498db" stroke-width="1.5"/><line x1="13" y1="16" x2="13" y2="24" stroke="#3498db" stroke-width="1"/><line x1="16" y1="16" x2="16" y2="24" stroke="#3498db" stroke-width="0.5"/>'),
+            'xls': svg('#2ecc71', '<rect x="8" y="14" width="16" height="12" rx="1" fill="none" stroke="#2ecc71" stroke-width="1.5"/><line x1="11" y1="18" x2="21" y2="18" stroke="#2ecc71" stroke-width="1"/><line x1="11" y1="22" x2="18" y2="22" stroke="#2ecc71" stroke-width="1"/>'),
+            'xlsx': svg('#2ecc71', '<rect x="8" y="14" width="16" height="12" rx="1" fill="none" stroke="#2ecc71" stroke-width="1.5"/><line x1="11" y1="18" x2="21" y2="18" stroke="#2ecc71" stroke-width="1"/><line x1="11" y1="22" x2="18" y2="22" stroke="#2ecc71" stroke-width="1"/>'),
+            'ppt': svg('#e67e22', '<rect x="10" y="15" width="12" height="9" rx="1" fill="none" stroke="#e67e22" stroke-width="1.5"/><polyline points="11,20 15,16 19,20 21,18" fill="none" stroke="#e67e22" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
+            'pptx': svg('#e67e22', '<rect x="10" y="15" width="12" height="9" rx="1" fill="none" stroke="#e67e22" stroke-width="1.5"/><polyline points="11,20 15,16 19,20 21,18" fill="none" stroke="#e67e22" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
+            'zip': svg('#795548', '<rect x="11" y="18" width="10" height="4" rx="1" fill="none" stroke="#795548" stroke-width="1.5"/><line x1="14" y1="16" x2="14" y2="18" stroke="#795548" stroke-width="1.5"/><line x1="18" y1="16" x2="18" y2="18" stroke="#795548" stroke-width="1.5"/>'),
+            'rar': svg('#795548', '<rect x="11" y="18" width="10" height="4" rx="1" fill="none" stroke="#795548" stroke-width="1.5"/><line x1="14" y1="16" x2="14" y2="18" stroke="#795548" stroke-width="1.5"/><line x1="18" y1="16" x2="18" y2="18" stroke="#795548" stroke-width="1.5"/>'),
+            '7z': svg('#795548', '<rect x="11" y="18" width="10" height="4" rx="1" fill="none" stroke="#795548" stroke-width="1.5"/><line x1="14" y1="16" x2="14" y2="18" stroke="#795548" stroke-width="1.5"/><line x1="18" y1="16" x2="18" y2="18" stroke="#795548" stroke-width="1.5"/>'),
+            'tar': svg('#795548', '<rect x="11" y="18" width="10" height="4" rx="1" fill="none" stroke="#795548" stroke-width="1.5"/><line x1="14" y1="16" x2="14" y2="18" stroke="#795548" stroke-width="1.5"/><line x1="18" y1="16" x2="18" y2="18" stroke="#795548" stroke-width="1.5"/>'),
+            'gz': svg('#795548', '<rect x="11" y="18" width="10" height="4" rx="1" fill="none" stroke="#795548" stroke-width="1.5"/><line x1="14" y1="16" x2="14" y2="18" stroke="#795548" stroke-width="1.5"/><line x1="18" y1="16" x2="18" y2="18" stroke="#795548" stroke-width="1.5"/>'),
+            'mp3': svg('#9b59b6', '<circle cx="12" cy="21" r="4" fill="none" stroke="#9b59b6" stroke-width="1.5"/><line x1="16" y1="21" x2="22" y2="17" stroke="#9b59b6" stroke-width="1.5" stroke-linecap="round"/>'),
+            'wav': svg('#9b59b6', '<circle cx="12" cy="21" r="4" fill="none" stroke="#9b59b6" stroke-width="1.5"/><line x1="16" y1="21" x2="22" y2="17" stroke="#9b59b6" stroke-width="1.5" stroke-linecap="round"/>'),
+            'ogg': svg('#9b59b6', '<circle cx="12" cy="21" r="4" fill="none" stroke="#9b59b6" stroke-width="1.5"/><line x1="16" y1="21" x2="22" y2="17" stroke="#9b59b6" stroke-width="1.5" stroke-linecap="round"/>'),
+            'flac': svg('#9b59b6', '<circle cx="12" cy="21" r="4" fill="none" stroke="#9b59b6" stroke-width="1.5"/><line x1="16" y1="21" x2="22" y2="17" stroke="#9b59b6" stroke-width="1.5" stroke-linecap="round"/>'),
+            'mp4': svg('#e74c3c', '<polygon points="13,17 13,25 21,21" fill="#e74c3c" opacity="0.4"/>'),
+            'avi': svg('#e74c3c', '<polygon points="13,17 13,25 21,21" fill="#e74c3c" opacity="0.4"/>'),
+            'mov': svg('#e74c3c', '<polygon points="13,17 13,25 21,21" fill="#e74c3c" opacity="0.4"/>'),
+            'mkv': svg('#e74c3c', '<polygon points="13,17 13,25 21,21" fill="#e74c3c" opacity="0.4"/>'),
+            'txt': svg('#888', '<line x1="10" y1="16" x2="22" y2="16" stroke="#888" stroke-width="1.5" stroke-linecap="round"/><line x1="10" y1="20" x2="18" y2="20" stroke="#888" stroke-width="1.5" stroke-linecap="round"/><line x1="10" y1="24" x2="14" y2="24" stroke="#888" stroke-width="1.5" stroke-linecap="round"/>'),
+            'log': svg('#888', '<line x1="10" y1="16" x2="22" y2="16" stroke="#888" stroke-width="1.5" stroke-linecap="round"/><line x1="10" y1="20" x2="18" y2="20" stroke="#888" stroke-width="1.5" stroke-linecap="round"/><line x1="10" y1="24" x2="14" y2="24" stroke="#888" stroke-width="1.5" stroke-linecap="round"/>'),
+            'js': svg('#5b8def', '<polyline points="10,18 14,22 23,14" fill="none" stroke="#5b8def" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+            'py': svg('#5b8def', '<polyline points="10,18 14,22 23,14" fill="none" stroke="#5b8def" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+            'java': svg('#5b8def', '<polyline points="10,18 14,22 23,14" fill="none" stroke="#5b8def" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+            'cpp': svg('#5b8def', '<polyline points="10,18 14,22 23,14" fill="none" stroke="#5b8def" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+            'c': svg('#5b8def', '<polyline points="10,18 14,22 23,14" fill="none" stroke="#5b8def" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+            'go': svg('#5b8def', '<polyline points="10,18 14,22 23,14" fill="none" stroke="#5b8def" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+            'rs': svg('#5b8def', '<polyline points="10,18 14,22 23,14" fill="none" stroke="#5b8def" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+            'json': svg('#f39c12', '<rect x="9" y="16" width="6" height="3" rx="1" fill="#f39c12" opacity="0.3"/><rect x="17" y="16" width="6" height="3" rx="1" fill="#f39c12" opacity="0.3"/><rect x="9" y="21" width="4" height="3" rx="1" fill="#f39c12" opacity="0.3"/>'),
+            'xml': svg('#f39c12', '<rect x="9" y="16" width="6" height="3" rx="1" fill="#f39c12" opacity="0.3"/><rect x="17" y="16" width="6" height="3" rx="1" fill="#f39c12" opacity="0.3"/><rect x="9" y="21" width="4" height="3" rx="1" fill="#f39c12" opacity="0.3"/>'),
+            'yaml': svg('#f39c12', '<rect x="9" y="16" width="6" height="3" rx="1" fill="#f39c12" opacity="0.3"/><rect x="17" y="16" width="6" height="3" rx="1" fill="#f39c12" opacity="0.3"/><rect x="9" y="21" width="4" height="3" rx="1" fill="#f39c12" opacity="0.3"/>'),
+            'yml': svg('#f39c12', '<rect x="9" y="16" width="6" height="3" rx="1" fill="#f39c12" opacity="0.3"/><rect x="17" y="16" width="6" height="3" rx="1" fill="#f39c12" opacity="0.3"/><rect x="9" y="21" width="4" height="3" rx="1" fill="#f39c12" opacity="0.3"/>'),
         };
-        return icons[ext] || '📄';
+        return icons[ext] || '<svg width="24" height="24" viewBox="0 0 32 32"><path d="M8 2h12l8 8v18a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="none" stroke="#888" stroke-width="2" stroke-linejoin="round"/><polyline points="20,2 20,10 28,10" fill="none" stroke="#888" stroke-width="2" stroke-linejoin="round"/><line x1="10" y1="16" x2="22" y2="16" stroke="#888" stroke-width="1.5" stroke-linecap="round"/><line x1="10" y1="20" x2="18" y2="20" stroke="#888" stroke-width="1.5" stroke-linecap="round"/><line x1="10" y1="24" x2="14" y2="24" stroke="#888" stroke-width="1.5" stroke-linecap="round"/></svg>';
     },
 
     _formatFileSize(bytes) {
@@ -2990,7 +3019,7 @@ const ChatApp = {
         this._updateCallModal("waiting");
         
         const btn = document.getElementById("call-btn");
-        if (btn) { btn.textContent = "📞"; btn.classList.add("active"); }
+        if (btn) { btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M7 5c-2 2-2 8 0 14s8 12 14 14c2-2 4-5 4-7l-5-5-2 2c-3-2-7-6-7-10l2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'; btn.classList.add("active"); }
     },
 
     _onIncomingPeerCall(call) {
@@ -3196,7 +3225,7 @@ const ChatApp = {
 
     _resetCallUI() {
         const btn = document.getElementById("call-btn");
-        if (btn) { btn.textContent = "📞"; btn.classList.remove("active"); }
+        if (btn) { btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M7 5c-2 2-2 8 0 14s8 12 14 14c2-2 4-5 4-7l-5-5-2 2c-3-2-7-6-7-10l2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'; btn.classList.remove("active"); }
         
         // 重置 modal 按钮状态
         const actionsEl = document.getElementById("call-actions");
@@ -3899,7 +3928,7 @@ const ChatApp = {
             const connOpen = peer && peer.connected;
             const hasPeerKey = peer && peer.peerKey;
             let icon, st;
-            if (connOpen) { icon = "🟢"; st = _i18n.t('pchat.status.online'); }
+            if (connOpen) { icon = '<svg width="12" height="12" viewBox="0 0 32 32" style="vertical-align:middle;margin-right:4px"><circle cx="16" cy="16" r="10" fill="#4ecca3"/></svg>'; st = _i18n.t('pchat.status.online'); }
             else if (c.publicKey || hasPeerKey) { icon = "⚪"; st = _i18n.t('pchat.status.offline'); }
             else { icon = "⏳"; st = _i18n.t('pchat.status.waitingKeyExchange'); }
             let lastMsgHtml = "";
@@ -3921,7 +3950,7 @@ const ChatApp = {
             const div = document.createElement("div");
             div.className = "list-item";
             div.dataset.id = g.id;
-            div.innerHTML = `<div class="avatar">👥</div><div class="info" onclick="ChatApp.openConversation('group','${g.id}')"><div class="name">${g.name}</div><div class='status'>` + _i18n.fmt('pchat.status.groupMembers', 'n', g.memberIds.length) + `<div class='status'></div>`;
+            div.innerHTML = `<div class="avatar"><svg width="24" height="24" viewBox="0 0 32 32"><circle cx="12" cy="9" r="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 26c0-4 3-7 8-7s8 3 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="23" cy="9" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M17 24c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div><div class="info" onclick="ChatApp.openConversation('group','${g.id}')"><div class="name">${g.name}</div><div class='status'>` + _i18n.fmt('pchat.status.groupMembers', 'n', g.memberIds.length) + `<div class='status'></div>`;
             list.appendChild(div);
         }
     },
