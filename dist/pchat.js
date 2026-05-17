@@ -3096,7 +3096,8 @@ const ChatApp = {
             this._insertTransferCard(fileId, file.name, file.size, true);
 
             // Send all chunks in one pass with pacing
-            let totalSent = 0;
+            let sentChunks = 0;
+            let sentBytes = 0;
             try {
                 while (offset < file.size) {
                     const seg = file.slice(offset, offset + segSize);
@@ -3107,23 +3108,17 @@ const ChatApp = {
                         r.readAsArrayBuffer(seg);
                     });
 
-                    let batchCount = 0;
                     for (let i = 0; i < segBuf.length; i += chunkSize) {
                         const end = Math.min(i + chunkSize, segBuf.length);
                         fileConn.send(segBuf.slice(i, end));
-                        batchCount++;
-                        if (batchCount >= 8) {
-                            batchCount = 0;
-                            await new Promise(r => setTimeout(r, 50));
-                        }
+                        sentChunks++;
+                        sentBytes += (end - i);
                     }
                     offset += segSize;
-                    totalSent = offset;
-                    const pct = (offset / file.size * 100).toFixed(1);
-                    console.log(`[File] Sent ${(offset/1024/1024).toFixed(0)}MB (${pct}%)`);
+                    const pct = (sentBytes / file.size * 100).toFixed(1);
+                    console.log(`[File] Chunk#${sentChunks} ${(sentBytes/1024/1024).toFixed(0)}MB (${pct}%)`);
                     this._updateTransferProgress(fileId, parseFloat(pct), `发送中 ${pct}%`);
                 }
-                await new Promise(r => setTimeout(r, 200));
             } catch(e) {
                 console.error('[File] Binary send error:', e);
                 fileConn.close();
@@ -3133,7 +3128,7 @@ const ChatApp = {
             // DON'T close binary channel yet — let receiver finish processing
             // Send footer, wait for ack, then close
             conn.send({ type: "file-footer", fileId });
-            console.log(`[File] All ${(totalSent/1024/1024).toFixed(0)}MB sent, waiting for receiver...`);
+            console.log(`[File] All ${sentChunks} chunks ${(sentBytes/1024/1024).toFixed(0)}MB sent, waiting for receiver...`);
             this._updateTransferProgress(fileId, 100, '等待对方确认...');
 
             const finalOk = await new Promise((ackResolve) => {
