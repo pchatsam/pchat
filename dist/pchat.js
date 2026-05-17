@@ -552,11 +552,43 @@ const DB = {
         return true;
     },
 
+    // Buffer raw binary chunk (no base64 — from dedicated binary DC)
+    async bufferRawChunk(fileId, chunk) {
+        const entry = DB._directWriters[fileId];
+        if (!entry) return;
+        if (!entry.rawChunks) { entry.rawChunks = []; entry.rawTotal = 0; }
+        entry.rawChunks.push(chunk);
+        entry.rawTotal += chunk.byteLength || chunk.length;
+        if (entry.rawTotal > 10 * 1024 * 1024) {
+            await DB._flushRawBuffer(fileId);
+        }
+    },
+
+    // Flush raw binary chunks to OPFS — no base64, no atob, no charCodeAt!
+    async _flushRawBuffer(fileId) {
+        const entry = DB._directWriters[fileId];
+        if (!entry || !entry.rawChunks || entry.rawChunks.length === 0) return;
+        if (entry._flushing) return;
+        entry._flushing = true;
+        const chunks = entry.rawChunks;
+        entry.rawChunks = [];
+        entry.rawTotal = 0;
+        const blob = new Blob(chunks);
+        const buf = await blob.arrayBuffer();
+        await entry.writable.write(buf);
+        entry._flushing = false;
+        if (entry.rawChunks && entry.rawChunks.length > 0) {
+            DB._flushRawBuffer(fileId);
+        }
+    },
+
     // Flush buffered chunks to OPFS — process in 256KB slices to avoid blocking main thread
     async _flushDirectBuffer(fileId) {
         const entry = DB._directWriters[fileId];
         if (!entry || !entry.buffer || entry.buffer.length === 0) return;
-        // Atomically swap buffer — new chunks go to fresh array
+        if (entry._flushing) return; // previous flush still running
+        entry._flushing = true;
+        // Atomically swap buffer
         const chunks = entry.buffer;
         entry.buffer = [];
         entry.bufferedSize = 0;
@@ -581,15 +613,23 @@ const DB = {
         }
 
         await entry.writable.write(bytes);
+        entry._flushing = false;
+        // If more chunks arrived during flush, flush again
+        if (entry.buffer && entry.buffer.length > 0) {
+            DB._flushDirectBuffer(fileId);
+        }
     },
 
     // Close direct file stream, flush remaining buffer first
     async closeDirectFile(fileId) {
         const entry = DB._directWriters[fileId];
         if (!entry) return null;
-        // Flush any remaining buffered chunks
+        // Flush any remaining buffered chunks (base64 or raw)
         if (entry.buffer && entry.buffer.length > 0) {
             await DB._flushDirectBuffer(fileId);
+        }
+        if (entry.rawChunks && entry.rawChunks.length > 0) {
+            await DB._flushRawBuffer(fileId);
         }
         await entry.writable.close();
         const name = entry.fileName;
@@ -740,6 +780,37 @@ const PeerConn = {
         });
 
         this.peer.on("connection", async (conn) => {
+            // Binary file transfer channel — handle separately
+            if (conn.label && conn.label.startsWith('file-')) {
+                const fileId = conn.label.slice(5); // 'file-xxx' → 'xxx'
+                console.log('[PeerConn] Binary file channel from', conn.peer, 'fileId:', fileId);
+                conn.on('data', (chunk) => {
+                    if (chunk instanceof ArrayBuffer || chunk instanceof Uint8Array) {
+                        DB.bufferRawChunk(fileId, chunk).catch(e => console.error('[OPFS] bufferRawChunk:', e));
+                        // Track progress and send ack every 10MB
+                        const ft = ChatApp.fileTransfer;
+                        const info = ft.pending[fileId];
+                        if (info) {
+                            info.chunkCount++;
+                            info.totalRawReceived = (info.totalRawReceived || 0) + (chunk.byteLength || chunk.length);
+                            const rawReceived = info.totalRawReceived;
+                            const pct = info.size > 0 ? Math.min(99, Math.round(rawReceived / info.size * 100)) : 0;
+                            ChatApp._updateTransferProgress(fileId, pct, null);
+                            const lastAck = info.lastAckBytes || 0;
+                            if (rawReceived - lastAck >= 10 * 1024 * 1024) {
+                                info.lastAckBytes = rawReceived;
+                                const ackPeer = PeerConn.peers[info.peerId];
+                                if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
+                                    ackPeer.conn.send({ type: "file-ack", fileId, progress: pct });
+                                }
+                            }
+                        }
+                    }
+                });
+                conn.on('close', () => console.log('[PeerConn] Binary file channel closed:', fileId));
+                conn.on('error', (e) => console.error('[PeerConn] Binary file channel error:', fileId, e));
+                return;
+            }
             console.log("[PeerConn] Incoming connection from", conn.peer);
             let myKey = null;
             const contact = ChatApp.contacts.find(c => c.userId === conn.peer);
@@ -2408,13 +2479,16 @@ const ChatApp = {
         };
 
         if (d.directTransfer) {
-            // Direct transfer: open OPFS file for streaming
-            info.expectedBase64Len = -1; // will be set in footer
+            info.expectedBase64Len = -1;
             info.expectedHash = '';
             info.totalChunks = -1;
             info.chunkCount = 0;
             info.totalBase64Received = 0;
-            console.log(`[File] DIRECT header: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB), streaming to OPFS`);
+            info.totalRawReceived = 0;
+            info.binaryChannel = !!d.binaryChannel;
+            info.lastAckBytes = 0;
+            const mode = d.binaryChannel ? 'binary DC' : 'base64 DC';
+            console.log(`[File] DIRECT header: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB), ${mode}`);
             DB.openDirectFile(d.fileId, d.name).catch(e => console.error('[OPFS] openDirectFile failed:', e));
             ChatApp._insertTransferCard(d.fileId, d.name, d.size, false);
         } else {
@@ -2468,8 +2542,12 @@ const ChatApp = {
         if (!info) return;
 
         if (info.directTransfer) {
-            // Direct transfer: close OPFS, store metadata-only message
+            // Direct transfer: flush + close OPFS, store metadata
             console.log(`[File] DIRECT footer for ${info.name}, closing OPFS`);
+            if (info.binaryChannel) {
+                // Flush any remaining raw buffer
+                await DB._flushRawBuffer(d.fileId);
+            }
             await DB.closeDirectFile(d.fileId);
             delete ft.pending[d.fileId];
 
@@ -2949,52 +3027,55 @@ const ChatApp = {
 
         // ======== Main flow ========
         if (file.size > DIRECT_FILE) {
-            // >20MB: direct transfer via file.slice(), never store in DB
-            console.log(`[File] DIRECT transfer (${(file.size/1024/1024).toFixed(1)}MB), streaming in 10MB segments, no DB`);
-            const segSize = 10 * 1024 * 1024; // 10MB per segment
+            // >20MB: dedicated binary data channel — zero encoding overhead
+            console.log(`[File] DIRECT transfer (${(file.size/1024/1024).toFixed(1)}MB), binary DC, 10MB segments`);
+            const segSize = 10 * 1024 * 1024;
             let offset = 0;
-            let totalBase64Len = 0;
 
+            // Open dedicated binary data channel
+            const fileConn = PeerConn.peer.connect(peerId, {
+                label: 'file-' + fileId,
+                serialization: 'binary',
+                reliable: true,
+            });
+            await new Promise((resolve, reject) => {
+                fileConn.on('open', resolve);
+                fileConn.on('error', reject);
+                setTimeout(() => reject(new Error('Binary channel timeout')), 15000);
+            });
+            console.log('[File] Binary DC opened');
+
+            // Send header on main JSON channel
             conn.send({
                 type: "file-header",
                 fileId, name: file.name, mime: file.type,
                 size: file.size, totalChunks: -1, isImage: false,
-                base64Len: -1, hash: '',
-                directTransfer: true,
+                directTransfer: true, binaryChannel: true,
             });
 
             this._insertTransferCard(fileId, file.name, file.size, true);
 
             while (offset < file.size) {
                 const seg = file.slice(offset, offset + segSize);
-                const segBase64 = await new Promise((resolve, reject) => {
+                const segBuf = await new Promise((resolve, reject) => {
                     const r = new FileReader();
-                    r.onload = (e) => {
-                        const result = e.target.result;
-                        if (!result) return reject(new Error('Read failed'));
-                        const idx = result.indexOf(',');
-                        resolve(idx >= 0 ? result.substring(idx + 1) : result);
-                    };
+                    r.onload = (e) => resolve(new Uint8Array(e.target.result));
                     r.onerror = reject;
-                    r.readAsDataURL(seg);
+                    r.readAsArrayBuffer(seg);
                 });
 
-                totalBase64Len += segBase64.length;
-                const segChunks = Math.ceil(segBase64.length / chunkSize);
-                for (let i = 0; i < segChunks; i++) {
-                    const start = i * chunkSize;
-                    conn.send({
-                        type: "file-chunk", fileId,
-                        index: -1,
-                        data: segBase64.slice(start, start + chunkSize),
-                    });
+                // Send raw bytes directly on binary channel — no JSON, no base64
+                for (let i = 0; i < segBuf.length; i += chunkSize) {
+                    const end = Math.min(i + chunkSize, segBuf.length);
+                    fileConn.send(segBuf.slice(i, end));
                 }
+
                 offset += segSize;
                 const sentPct = Math.min(99, Math.round(offset / file.size * 100));
                 console.log(`[File] Sent ${sentPct}%, waiting for receiver ack...`);
                 this._updateTransferProgress(fileId, sentPct, `等待对方确认 (${sentPct}%)`);
 
-                // Wait for receiver ack for this segment (with 2min timeout)
+                // Wait for receiver ack on main channel
                 const segAckOk = await new Promise((segResolve) => {
                     const handler = (data) => {
                         if (data.type === "file-ack" && data.fileId === fileId) {
@@ -3007,22 +3088,20 @@ const ChatApp = {
                     };
                     const segTimer = setTimeout(() => {
                         conn.off("data", handler);
-                        console.warn(`[File] Segment ack timeout for ${file.name}`);
                         segResolve(false);
                     }, 120000);
                     conn.on("data", handler);
                 });
                 if (!segAckOk) {
                     console.error(`[File] Segment ack failed, aborting`);
+                    fileConn.close();
                     return;
                 }
             }
 
-            // Footer
-            conn.send({
-                type: "file-footer", fileId,
-                hash: '', base64Len: totalBase64Len,
-            });
+            // Footer on main channel
+            conn.send({ type: "file-footer", fileId });
+            fileConn.close();
 
             // Wait for final ack
             this._updateTransferProgress(fileId, 100, '等待对方确认...');
@@ -3307,6 +3386,7 @@ const ChatApp = {
 
     // ---- Transfer progress UI ----
     _insertTransferCard(transferId, fileName, fileSize, isSender) {
+        try {
         const list = document.getElementById("message-list");
         if (!list) return;
         const icon = this._getFileIcon(fileName);
@@ -3326,6 +3406,7 @@ const ChatApp = {
         list.appendChild(card);
         this._scroll();
         return card;
+        } catch(e) { console.error('[Transfer] insertTransferCard error:', e); return null; }
     },
 
     _updateTransferProgress(transferId, pct, status, fileId, fileName) {
@@ -3335,25 +3416,29 @@ const ChatApp = {
         if (bar) bar.style.width = `${Math.min(100, Math.round(pct))}%`;
         if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
         if (stEl && status) stEl.textContent = status;
-        this._scroll();
+        try { this._scroll(); } catch(e) {}
     },
 
     _finishTransferCard(transferId, fileId, fileName, isSender) {
-        const bar = document.getElementById(`transfer-bar-${transferId}`);
-        const pctEl = document.getElementById(`transfer-pct-${transferId}`);
-        const stEl = document.getElementById(`transfer-status-${transferId}`);
-        const card = document.getElementById(`transfer-card-${transferId}`);
-        if (bar) bar.style.width = '100%';
-        if (pctEl) pctEl.textContent = '100%';
-        if (isSender) {
-            if (stEl) stEl.textContent = '✓ 已发送';
-        } else if (card && fileId) {
+        try {
+            const bar = document.getElementById(`transfer-bar-${transferId}`);
+            const pctEl = document.getElementById(`transfer-pct-${transferId}`);
+            const stEl = document.getElementById(`transfer-status-${transferId}`);
+            const card = document.getElementById(`transfer-card-${transferId}`);
+            if (bar) bar.style.width = '100%';
+            if (pctEl) pctEl.textContent = '100%';
+            if (isSender) {
+                if (stEl) stEl.textContent = '✓ 已发送';
+            } else if (card && fileId) {
             // Receiver: add download button
             const safeName = (fileName || 'download').replace(/'/g, "\\'");
             card.innerHTML = card.innerHTML.replace(
                 /<div class="tp-status">.*<\/div>/,
                 `<div class="tp-status"><span>100%</span> · <span>✓ 已完成</span><button class="tp-done-btn" onclick="event.stopPropagation();ChatApp.downloadDirectFile('${fileId}','${safeName}')">下载</button></div>`
             );
+        }
+        } catch(e) {
+            console.error('[Transfer] finishTransferCard error:', e);
         }
     },
 
