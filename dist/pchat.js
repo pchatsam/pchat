@@ -4586,11 +4586,7 @@ const ChatApp = {
     },
 
     logout() {
-        if (confirm('确定退出？')) {
-            PeerConn.disconnect();
-            location.hash = "";
-            location.reload();
-        }
+        location.reload();
     },
 
     _scroll() { const el = document.getElementById("message-list"); if (el) el.scrollTop = el.scrollHeight; },
