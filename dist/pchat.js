@@ -926,6 +926,7 @@ const ChatApp = {
     },
 
     // ---- Popup helpers ----
+    _navStack: [],
     _pendingFriendRequest: null,
 
     _initBackButton() {
