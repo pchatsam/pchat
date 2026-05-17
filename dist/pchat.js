@@ -2874,7 +2874,7 @@ const ChatApp = {
             console.log(`[File] DIRECT transfer (${(file.size/1024/1024).toFixed(1)}MB), streaming in 10MB segments, no DB`);
             const segSize = 10 * 1024 * 1024; // 10MB per segment
             let offset = 0;
-            let allBase64 = '';
+            let totalBase64Len = 0;
 
             conn.send({
                 type: "file-header",
@@ -2886,15 +2886,20 @@ const ChatApp = {
 
             while (offset < file.size) {
                 const seg = file.slice(offset, offset + segSize);
-                const segBuf = await new Promise((resolve, reject) => {
+                // Use readAsDataURL on slice — native base64 encoding, no JS loop
+                const segBase64 = await new Promise((resolve, reject) => {
                     const r = new FileReader();
-                    r.onload = (e) => resolve(e.target.result);
-                    r.onerror = (e) => reject(e);
-                    r.readAsArrayBuffer(seg);
+                    r.onload = (e) => {
+                        const result = e.target.result;
+                        if (!result) return reject(new Error('Read failed'));
+                        const idx = result.indexOf(',');
+                        resolve(idx >= 0 ? result.substring(idx + 1) : result);
+                    };
+                    r.onerror = reject;
+                    r.readAsDataURL(seg);
                 });
-                const segBase64 = arrayBufferToBase64(segBuf);
-                allBase64 += segBase64;
 
+                totalBase64Len += segBase64.length;
                 const segChunks = Math.ceil(segBase64.length / chunkSize);
                 for (let i = 0; i < segChunks; i++) {
                     const start = i * chunkSize;
@@ -2904,15 +2909,16 @@ const ChatApp = {
                         data: segBase64.slice(start, start + chunkSize),
                     });
                 }
+                // segBase64 released after loop — no accumulation
                 offset += segSize;
                 const pct = Math.min(100, Math.round(offset / file.size * 100));
                 console.log(`[File] Progress: ${pct}% (${(offset/1024/1024).toFixed(1)}MB / ${(file.size/1024/1024).toFixed(1)}MB)`);
             }
 
-            const fileHash = this._hashBase64(allBase64);
+            // Footer: no hash for direct transfer (memory-intensive, not needed by receiver)
             conn.send({
                 type: "file-footer", fileId,
-                hash: fileHash, base64Len: allBase64.length,
+                hash: '', base64Len: totalBase64Len,
             });
 
             // Store metadata-only message (no fileData — receiver gets it from OPFS)
