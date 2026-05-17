@@ -800,42 +800,34 @@ const PeerConn = {
             if (conn.label && conn.label.startsWith('file-')) {
                 const fileId = conn.label.slice(5); // 'file-xxx' → 'xxx'
                 console.log('[PeerConn] Binary file channel from', conn.peer, 'fileId:', fileId);
-                let _firstChunk = true;
+                let _chunkCount = 0;
                 conn.on('data', async (chunk) => {
-                    if (_firstChunk) {
-                        _firstChunk = false;
-                        console.log('[BinaryDC] First chunk received, type:', typeof chunk, 'constructor:', chunk?.constructor?.name, 'byteLength:', chunk?.byteLength, 'length:', chunk?.length);
-                    }
                     let raw = chunk;
                     if (chunk instanceof Blob) raw = await chunk.arrayBuffer();
-                    if (raw && (raw.byteLength > 0 || raw.length > 0)) {
-                        DB.bufferRawChunk(fileId, raw).catch(e => console.error('[OPFS] bufferRawChunk:', e));
+                    const arr = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+                    if (_chunkCount === 0) {
+                        console.log('[BinaryDC] First chunk, dataLen:', arr.byteLength);
+                    }
+                        DB.bufferRawChunk(fileId, arr).catch(e => console.error('[OPFS] bufferRawChunk:', e));
                         // Track progress from DB entry
                         const entry = DB._directWriters[fileId];
                         if (entry) {
                             const ft = ChatApp.fileTransfer;
                             const info = ft.pending[fileId];
                             if (info) {
-                                const rawReceived = info.totalRawReceived || entry.rawTotal;
+                                const rawReceived = info.totalRawReceived;
                                 info.chunkCount = (info.chunkCount || 0) + 1;
-                                info.totalRawReceived = (info.totalRawReceived || 0) + (chunk.byteLength || chunk.length);
+                                info.totalRawReceived = (info.totalRawReceived || 0) + (arr.byteLength || arr.length);
                                 const pct = info.size > 0 ? Math.min(99, Math.round(rawReceived / info.size * 100)) : 0;
                                 if (info.chunkCount % 100 === 0) {
                                     console.log(`[BinaryDC] ${info.chunkCount} chunks, ${(rawReceived/1024/1024).toFixed(1)}MB, ${pct}%`);
                                 }
-                                ChatApp._updateTransferProgress(fileId, pct, null);
-                                const lastAck = info.lastAckBytes || 0;
-                                if (rawReceived - lastAck >= 10 * 1024 * 1024) {
-                                    info.lastAckBytes = rawReceived;
-                                    info._ackCount = (info._ackCount || 0) + 1;
-                                    console.log(`[BinaryDC] ACK #${info._ackCount} raw=${(rawReceived/1024/1024).toFixed(1)}MB pct=${pct}%`);
-                                    const ackPeer = PeerConn.peers[info.peerId];
-                                    if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
-                                        ackPeer.conn.send({ type: "file-ack", fileId, progress: pct });
-                                    } else {
-                                        console.warn('[BinaryDC] No peer conn for ack!');
-                                    }
+                                _chunkCount++;
+                                if (_chunkCount % 100 === 0) {
+                                    console.log(`[BinaryDC] ${_chunkCount} chunks, ${(rawReceived/1024/1024).toFixed(1)}MB, ${pct}%`);
                                 }
+                                ChatApp._updateTransferProgress(fileId, pct, null);
+                                // Finalize when all data received AND footer arrived
                                 if (info.footerReceived && rawReceived >= info.size) {
                                     ChatApp._finalizeDirectReceive(fileId);
                                 }
@@ -3094,17 +3086,19 @@ const ChatApp = {
 
             this._insertTransferCard(fileId, file.name, file.size, true);
 
-            while (offset < file.size) {
-                const seg = file.slice(offset, offset + segSize);
-                const segBuf = await new Promise((resolve, reject) => {
-                    const r = new FileReader();
-                    r.onload = (e) => resolve(new Uint8Array(e.target.result));
-                    r.onerror = reject;
-                    r.readAsArrayBuffer(seg);
-                });
+            // Send all chunks in one pass with pacing
+            let totalSent = 0;
+            const segSize = 10 * 1024 * 1024;
+            try {
+                while (offset < file.size) {
+                    const seg = file.slice(offset, offset + segSize);
+                    const segBuf = await new Promise((resolve, reject) => {
+                        const r = new FileReader();
+                        r.onload = (e) => resolve(new Uint8Array(e.target.result));
+                        r.onerror = reject;
+                        r.readAsArrayBuffer(seg);
+                    });
 
-                // Send raw bytes with pacing — 16 chunks then yield 100ms
-                try {
                     let batchCount = 0;
                     for (let i = 0; i < segBuf.length; i += chunkSize) {
                         const end = Math.min(i + chunkSize, segBuf.length);
@@ -3112,74 +3106,47 @@ const ChatApp = {
                         batchCount++;
                         if (batchCount >= 16) {
                             batchCount = 0;
-                            await new Promise(r => setTimeout(r, 50)); // let DC buffer drain
+                            await new Promise(r => setTimeout(r, 50));
                         }
                     }
-                    // Final drain
-                    await new Promise(r => setTimeout(r, 200));
-                } catch(e) {
-                    console.error('[File] Binary send error:', e);
-                    fileConn.close();
-                    return;
+                    offset += segSize;
+                    totalSent = offset;
+                    const pct = Math.min(99, Math.round(offset / file.size * 100));
+                    console.log(`[File] Sent ${(offset/1024/1024).toFixed(0)}MB (${pct}%)`);
+                    this._updateTransferProgress(fileId, pct, `发送中 ${pct}%`);
                 }
-
-                offset += segSize;
-                const isLast = offset >= file.size;
-                const sentPct = isLast ? 100 : Math.min(99, Math.round(offset / file.size * 100));
-                console.log(`[File] Sent ${sentPct}%${isLast ? ' (last segment)' : ', waiting for ack...'}`);
-                this._updateTransferProgress(fileId, sentPct, `等待对方确认 (${sentPct}%)`);
-
-                // Wait for ack on non-final segments; last segment ack comes with footer
-                if (!isLast) {
-                    const segAckOk = await new Promise((segResolve) => {
-                        const handler = (data) => {
-                            if (data.type === "file-ack" && data.fileId === fileId) {
-                                console.log(`[File] ACK #${data.progress}%`);
-                                clearTimeout(segTimer);
-                                conn.off("data", handler);
-                                const ackPct = data.progress != null ? data.progress : 100;
-                                ChatApp._updateTransferProgress(fileId, ackPct, `对方已接收 ${ackPct}%`);
-                                segResolve(true);
-                            }
-                        };
-                        const segTimer = setTimeout(() => {
-                            conn.off("data", handler);
-                            segResolve(false);
-                        }, 120000);
-                        conn.on("data", handler);
-                    });
-                    if (!segAckOk) {
-                        console.error(`[File] Segment ack failed, aborting`);
-                        fileConn.close();
-                        return;
-                    }
-                }
+                await new Promise(r => setTimeout(r, 200));
+            } catch(e) {
+                console.error('[File] Binary send error:', e);
+                fileConn.close();
+                return;
             }
 
-            // Close binary channel first — guarantees all chunks delivered
+            // Close binary channel, send footer, wait for single final ack
             fileConn.close();
-            // Then send footer on main channel
             conn.send({ type: "file-footer", fileId });
-
-            // Wait for final ack
+            console.log(`[File] All ${(totalSent/1024/1024).toFixed(0)}MB sent, waiting for receiver...`);
             this._updateTransferProgress(fileId, 100, '等待对方确认...');
+
             const finalOk = await new Promise((ackResolve) => {
                 const handler = (data) => {
                     if (data.type === "file-ack" && data.fileId === fileId) {
                         clearTimeout(timer);
                         conn.off("data", handler);
+                        const ackPct = data.progress != null ? data.progress : 100;
+                        ChatApp._updateTransferProgress(fileId, ackPct, `对方已接收 ${ackPct}%`);
                         ackResolve(true);
                     }
                 };
                 const timer = setTimeout(() => {
                     conn.off("data", handler);
                     ackResolve(false);
-                }, 120000);
+                }, 600000); // 10 min timeout
                 conn.on("data", handler);
             });
 
             if (finalOk) {
-                console.log(`[File] Final ack received: ${file.name}`);
+                console.log(`[File] Ack received: ${file.name}`);
             }
             this._finishTransferCard(fileId, fileId, file.name, true);
 
