@@ -363,14 +363,13 @@ body {
 .setup-box .account-delete-btn:hover{background:rgba(231,76,60,.15);}
 
 /* ===== Corner buttons ===== */
-.corner-btn{
-    position:absolute;top:12px;padding:6px 14px;font-size:13px;font-weight:500;
-    color:var(--text2);background:var(--bg2);border:1px solid var(--border);
-    border-radius:8px;cursor:pointer;white-space:nowrap;transition:border-color .15s;
+#transfer-out-btn,#new-account-btn{
+    position:absolute;top:12px;padding:0;font-size:14px;font-weight:500;
+    background:transparent;cursor:pointer;white-space:nowrap;transition:border-color .15s;
 }
-.corner-btn:hover{border-color:var(--green);}
-.corner-btn-left{left:12px;}
-.corner-btn-right{right:12px;}
+#transfer-out-btn:hover,#new-account-btn:hover{border-color:var(--green);}
+#transfer-out-btn{left:28px;color:#5b8def;border:0;}
+#new-account-btn{right:28px;color:var(--green);border:0;}
 
 /* ===== HTML Content ===== */
 .message .content{word-wrap:break-word;overflow-wrap:break-word;}
