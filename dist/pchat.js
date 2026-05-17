@@ -813,12 +813,12 @@ const PeerConn = {
                         // Track progress from DB entry
                         const entry = DB._directWriters[fileId];
                         if (entry) {
-                            const rawReceived = entry.rawTotal;
+                            const rawReceived = info.totalRawReceived || entry.rawTotal;
                             const ft = ChatApp.fileTransfer;
                             const info = ft.pending[fileId];
                             if (info) {
                                 info.chunkCount = (info.chunkCount || 0) + 1;
-                                info.totalRawReceived = rawReceived;
+                                info.totalRawReceived = (info.totalRawReceived || 0) + (chunk.byteLength || chunk.length);
                                 const pct = info.size > 0 ? Math.min(99, Math.round(rawReceived / info.size * 100)) : 0;
                                 if (info.chunkCount % 100 === 0) {
                                     console.log(`[BinaryDC] ${info.chunkCount} chunks, ${(rawReceived/1024/1024).toFixed(1)}MB, ${pct}%`);
@@ -2581,9 +2581,6 @@ const ChatApp = {
             console.log(`[File] DIRECT footer for ${info.name}`);
             if (info.binaryChannel) {
                 info.footerReceived = true;
-                // Sync totalRawReceived from DB entry (chunks may have arrived before header)
-                const entry = DB._directWriters[d.fileId];
-                if (entry) info.totalRawReceived = entry.rawTotal;
                 console.log(`[File] Footer check: rawReceived=${info.totalRawReceived}, fileSize=${info.size}`);
                 if (info.totalRawReceived >= info.size) {
                     await ChatApp._finalizeDirectReceive(d.fileId);
