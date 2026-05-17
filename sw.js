@@ -1,6 +1,6 @@
 // PChat Service Worker — offline cache
 const BASE = self.location.pathname.replace(/\/[^/]*$/, ''); // base path, e.g. /pchat or ''
-const CACHE = 'pchat-v202605172';
+const CACHE = 'pchat-v202605173';
 const FILES = [
   BASE + '/',
   BASE + '/index.html',
@@ -37,6 +37,14 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
+    fetch(e.request).then(response => {
+      // Network success: update cache with fresh copy
+      const clone = response.clone();
+      caches.open(CACHE).then(c => c.put(e.request, clone));
+      return response;
+    }).catch(() => {
+      // Network fail: fallback to cache
+      return caches.match(e.request);
+    })
   );
 });
