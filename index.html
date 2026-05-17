@@ -78,6 +78,10 @@
                 </div>
                 <p id="login-loading-text" style="color:#888;font-size:12px;margin-top:8px;"></p>
             </div>
+            <div style="text-align:center;padding:16px 0 8px;margin-top:auto;">
+                <span id="app-version" style="font-size:11px;color:#666;"></span>
+                <button onclick="location.reload()" title="刷新" style="background:none;border:none;cursor:pointer;color:#888;padding:4px;vertical-align:middle;margin-left:4px;"><svg width="24" height="24" viewBox="0 0 32 32"><path d="M24 21a10 10 0 0 1-18.3 5M8 11a10 10 0 0 1 18.3-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="24,8 28,8 28,4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,24 4,24 4,28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
         </div>
     </div>
 
@@ -364,6 +368,7 @@
     <script>
         const PCHAT_VERSION = '20260517.1';
         console.log('[PChat] Version: ' + PCHAT_VERSION);
+        document.getElementById('app-version').textContent = 'v' + PCHAT_VERSION;
     </script>
     <script>
         if ('serviceWorker' in navigator) {
