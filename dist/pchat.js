@@ -534,7 +534,19 @@ const DB = {
         const root = await this._getOprfsRoot();
         const handle = await root.getFileHandle(`pchat-${fileId}`, { create: true });
         const writable = await handle.createWritable({ keepExistingData: false });
-        DB._directWriters[fileId] = { writable, handle, fileName, buffer: [], bufferedSize: 0 };
+        // Preserve any chunks that arrived before header (lazy entry)
+        const existing = DB._directWriters[fileId];
+        DB._directWriters[fileId] = {
+            writable, handle, fileName,
+            buffer: existing?.buffer || [],
+            bufferedSize: existing?.bufferedSize || 0,
+            rawChunks: existing?.rawChunks || [],
+            rawTotal: existing?.rawTotal || 0,
+        };
+        // If lazy chunks were buffered, flush them now
+        if (existing?.rawChunks?.length > 0) {
+            DB._flushRawBuffer(fileId).catch(e => console.error('[OPFS] lazy flush failed:', e));
+        }
         return true;
     },
 
@@ -553,9 +565,13 @@ const DB = {
     },
 
     // Buffer raw binary chunk (no base64 — from dedicated binary DC)
-    async bufferRawChunk(fileId, chunk) {
-        const entry = DB._directWriters[fileId];
-        if (!entry) return;
+    // Lazily creates entry if header hasn't arrived yet
+    async bufferRawChunk(fileId, chunk, fileName) {
+        let entry = DB._directWriters[fileId];
+        if (!entry) {
+            // Binary data arrived before file-header — create entry lazily
+            DB._directWriters[fileId] = entry = { rawChunks: [], rawTotal: 0, fileName: fileName || fileId };
+        }
         if (!entry.rawChunks) { entry.rawChunks = []; entry.rawTotal = 0; }
         entry.rawChunks.push(chunk);
         entry.rawTotal += chunk.byteLength || chunk.length;
@@ -787,26 +803,27 @@ const PeerConn = {
                 conn.on('data', (chunk) => {
                     if (chunk instanceof ArrayBuffer || chunk instanceof Uint8Array) {
                         DB.bufferRawChunk(fileId, chunk).catch(e => console.error('[OPFS] bufferRawChunk:', e));
-                        const ft = ChatApp.fileTransfer;
-                        const info = ft.pending[fileId];
-                        if (info) {
-                            info.chunkCount++;
-                            info.totalRawReceived = (info.totalRawReceived || 0) + (chunk.byteLength || chunk.length);
-                            const rawReceived = info.totalRawReceived;
-                            const pct = info.size > 0 ? Math.min(99, Math.round(rawReceived / info.size * 100)) : 0;
-                            ChatApp._updateTransferProgress(fileId, pct, null);
-                            // Send ack every 10MB
-                            const lastAck = info.lastAckBytes || 0;
-                            if (rawReceived - lastAck >= 10 * 1024 * 1024) {
-                                info.lastAckBytes = rawReceived;
-                                const ackPeer = PeerConn.peers[info.peerId];
-                                if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
-                                    ackPeer.conn.send({ type: "file-ack", fileId, progress: pct });
+                        // Track progress from DB entry (survives before-header arrival)
+                        const entry = DB._directWriters[fileId];
+                        if (entry) {
+                            const rawReceived = entry.rawTotal;
+                            const ft = ChatApp.fileTransfer;
+                            const info = ft.pending[fileId];
+                            if (info) {
+                                info.totalRawReceived = rawReceived;
+                                const pct = info.size > 0 ? Math.min(99, Math.round(rawReceived / info.size * 100)) : 0;
+                                ChatApp._updateTransferProgress(fileId, pct, null);
+                                const lastAck = info.lastAckBytes || 0;
+                                if (rawReceived - lastAck >= 10 * 1024 * 1024) {
+                                    info.lastAckBytes = rawReceived;
+                                    const ackPeer = PeerConn.peers[info.peerId];
+                                    if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
+                                        ackPeer.conn.send({ type: "file-ack", fileId, progress: pct });
+                                    }
                                 }
-                            }
-                            // If footer already received and all data arrived, finalize
-                            if (info.footerReceived && rawReceived >= info.size) {
-                                ChatApp._finalizeDirectReceive(fileId);
+                                if (info.footerReceived && rawReceived >= info.size) {
+                                    ChatApp._finalizeDirectReceive(fileId);
+                                }
                             }
                         }
                     }
@@ -2549,7 +2566,10 @@ const ChatApp = {
             console.log(`[File] DIRECT footer for ${info.name}`);
             if (info.binaryChannel) {
                 info.footerReceived = true;
-                // Check if all data already received
+                // Sync totalRawReceived from DB entry (chunks may have arrived before header)
+                const entry = DB._directWriters[d.fileId];
+                if (entry) info.totalRawReceived = entry.rawTotal;
+                console.log(`[File] Footer check: rawReceived=${info.totalRawReceived}, fileSize=${info.size}`);
                 if (info.totalRawReceived >= info.size) {
                     await ChatApp._finalizeDirectReceive(d.fileId);
                 }
