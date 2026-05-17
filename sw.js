@@ -1,6 +1,6 @@
 // PChat Service Worker — offline cache
 const BASE = self.location.pathname.replace(/\/[^/]*$/, ''); // base path, e.g. /pchat or ''
-const CACHE = 'pchat-v2026051722';
+const CACHE = 'pchat-v2026051723';
 const FILES = [
   BASE + '/',
   BASE + '/index.html',

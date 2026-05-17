@@ -813,10 +813,10 @@ const PeerConn = {
                         // Track progress from DB entry
                         const entry = DB._directWriters[fileId];
                         if (entry) {
-                            const rawReceived = info.totalRawReceived || entry.rawTotal;
                             const ft = ChatApp.fileTransfer;
                             const info = ft.pending[fileId];
                             if (info) {
+                                const rawReceived = info.totalRawReceived || entry.rawTotal;
                                 info.chunkCount = (info.chunkCount || 0) + 1;
                                 info.totalRawReceived = (info.totalRawReceived || 0) + (chunk.byteLength || chunk.length);
                                 const pct = info.size > 0 ? Math.min(99, Math.round(rawReceived / info.size * 100)) : 0;
