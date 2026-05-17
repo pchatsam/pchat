@@ -833,7 +833,15 @@ const PeerConn = {
                             }
                         }
                 });
-                conn.on('close', () => console.log('[PeerConn] Binary file channel closed:', fileId));
+                conn.on('close', async () => {
+                    console.log('[PeerConn] Binary file channel closed:', fileId);
+                    // Safety net: if data complete + footer received but not finalized yet
+                    const ft = ChatApp.fileTransfer;
+                    const info = ft.pending[fileId];
+                    if (info && info.footerReceived && info.totalRawReceived >= info.size) {
+                        await ChatApp._finalizeDirectReceive(fileId);
+                    }
+                });
                 conn.on('error', (e) => console.error('[PeerConn] Binary file channel error:', fileId, e));
                 return;
             }
@@ -2511,10 +2519,8 @@ const ChatApp = {
             info.chunkCount = 0;
             info.totalBase64Received = 0;
             info.totalRawReceived = 0;
-            info.binaryChannel = !!d.binaryChannel;
             info.lastAckBytes = 0;
-            const mode = d.binaryChannel ? 'binary DC' : 'base64 DC';
-            console.log(`[File] DIRECT header: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB), ${mode}`);
+            console.log(`[File] DIRECT header: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB)`);
             DB.openDirectFile(d.fileId, d.name).catch(e => console.error('[OPFS] openDirectFile failed:', e));
             ChatApp._insertTransferCard(d.fileId, d.name, d.size, false);
         } else {
@@ -2947,7 +2953,7 @@ const ChatApp = {
         const DIRECT_FILE = 20 * 1024 * 1024; // 20MB: direct transfer, no DB
         const conn = state.conn;
         const isImage = file.type.startsWith("image/");
-        const chunkSize = file.size > DIRECT_FILE ? 262144 : 16384; // 256KB for direct, 16KB for small
+        const chunkSize = file.size > DIRECT_FILE ? 65536 : 16384;  // 64KB for direct (smaller=safer with PeerJS binary DC) // 256KB for direct, 16KB for small
         const fileId = `file_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 
         // Helper: ArrayBuffer → base64
@@ -3099,11 +3105,11 @@ const ChatApp = {
                     let batchCount = 0;
                     for (let i = 0; i < segBuf.length; i += chunkSize) {
                         const end = Math.min(i + chunkSize, segBuf.length);
-                        fileConn.send(segBuf.slice(i, end).buffer);
+                        fileConn.send(segBuf.slice(i, end));  // Uint8Array directly
                         batchCount++;
-                        if (batchCount >= 16) {
+                        if (batchCount >= 8) {
                             batchCount = 0;
-                            await new Promise(r => setTimeout(r, 50));
+                            await new Promise(r => setTimeout(r, 100));
                         }
                     }
                     offset += segSize;
@@ -3119,8 +3125,8 @@ const ChatApp = {
                 return;
             }
 
-            // Close binary channel, send footer, wait for single final ack
-            fileConn.close();
+            // DON'T close binary channel yet — let receiver finish processing
+            // Send footer, wait for ack, then close
             conn.send({ type: "file-footer", fileId });
             console.log(`[File] All ${(totalSent/1024/1024).toFixed(0)}MB sent, waiting for receiver...`);
             this._updateTransferProgress(fileId, 100, '等待对方确认...');
@@ -3138,10 +3144,11 @@ const ChatApp = {
                 const timer = setTimeout(() => {
                     conn.off("data", handler);
                     ackResolve(false);
-                }, 600000); // 10 min timeout
+                }, 600000);
                 conn.on("data", handler);
             });
 
+            fileConn.close();  // close only after receiver confirms
             if (finalOk) {
                 console.log(`[File] Ack received: ${file.name}`);
             }
