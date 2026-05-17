@@ -829,6 +829,13 @@ const PeerConn = {
                                     console.log(`[BinaryDC] #${info.chunkCount} net=${netPct.toFixed(1)}% write=${writePct}% (${(rawReceived/1024/1024).toFixed(0)}MB/${(info._written/1024/1024).toFixed(0)}MB)`);
                                 }
                                 _chunkCount++;
+                                // Mini-ack every 10 chunks for sender flow control
+                                if (info.chunkCount % 10 === 0) {
+                                    const ackPeer = PeerConn.peers[info.peerId];
+                                    if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
+                                        ackPeer.conn.send({ type: 'file-ack', fileId, progress: Math.round(netPct) });
+                                    }
+                                }
                                 ChatApp._updateTransferProgress(fileId, pct, null);
                                 // Finalize when all data received AND footer arrived
                                 if (info.footerReceived && rawReceived >= info.size) {
@@ -3113,6 +3120,13 @@ const ChatApp = {
                         fileConn.send(segBuf.slice(i, end));
                         sentChunks++;
                         sentBytes += (end - i);
+                        if (sentChunks % 10 === 0) {
+                            await new Promise(r => {
+                                const ah = (d) => { if (d.type==='file-ack'&&d.fileId===fileId) { conn.off('data',ah); r(); } };
+                                conn.on('data', ah);
+                                setTimeout(() => { conn.off('data',ah); r(); }, 5000);
+                            });
+                        }
                     }
                     offset += segSize;
                     const pct = (sentBytes / file.size * 100).toFixed(1);
