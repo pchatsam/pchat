@@ -2967,7 +2967,6 @@ const ChatApp = {
 
             while (offset < file.size) {
                 const seg = file.slice(offset, offset + segSize);
-                // Use readAsDataURL on slice — native base64 encoding, no JS loop
                 const segBase64 = await new Promise((resolve, reject) => {
                     const r = new FileReader();
                     r.onload = (e) => {
@@ -2990,32 +2989,46 @@ const ChatApp = {
                         data: segBase64.slice(start, start + chunkSize),
                     });
                 }
-                // segBase64 released after loop — no accumulation
                 offset += segSize;
-                const pct = Math.min(100, Math.round(offset / file.size * 100));
-                console.log(`[File] Progress: ${pct}% (${(offset/1024/1024).toFixed(1)}MB / ${(file.size/1024/1024).toFixed(1)}MB)`);
-                this._updateTransferProgress(fileId, pct, null, fileId, file.name);
+                const sentPct = Math.min(99, Math.round(offset / file.size * 100));
+                console.log(`[File] Sent ${sentPct}%, waiting for receiver ack...`);
+                this._updateTransferProgress(fileId, sentPct, `等待对方确认 (${sentPct}%)`);
+
+                // Wait for receiver ack for this segment (with 2min timeout)
+                const segAckOk = await new Promise((segResolve) => {
+                    const handler = (data) => {
+                        if (data.type === "file-ack" && data.fileId === fileId) {
+                            clearTimeout(segTimer);
+                            conn.off("data", handler);
+                            const ackPct = data.progress != null ? data.progress : 100;
+                            ChatApp._updateTransferProgress(fileId, ackPct, `对方已接收 ${ackPct}%`);
+                            segResolve(true);
+                        }
+                    };
+                    const segTimer = setTimeout(() => {
+                        conn.off("data", handler);
+                        console.warn(`[File] Segment ack timeout for ${file.name}`);
+                        segResolve(false);
+                    }, 120000);
+                    conn.on("data", handler);
+                });
+                if (!segAckOk) {
+                    console.error(`[File] Segment ack failed, aborting`);
+                    return;
+                }
             }
 
-            // Footer: no hash for direct transfer (memory-intensive, not needed by receiver)
+            // Footer
             conn.send({
                 type: "file-footer", fileId,
                 hash: '', base64Len: totalBase64Len,
             });
 
-            // Wait for receiver ack before marking complete
+            // Wait for final ack
             this._updateTransferProgress(fileId, 100, '等待对方确认...');
-            let lastAckPct = 0;
-            const ackOk = await new Promise((ackResolve) => {
+            const finalOk = await new Promise((ackResolve) => {
                 const handler = (data) => {
                     if (data.type === "file-ack" && data.fileId === fileId) {
-                        // Intermediate ack: show receiver progress
-                        if (data.progress != null && data.progress < 100) {
-                            lastAckPct = data.progress;
-                            ChatApp._updateTransferProgress(fileId, 100, `对方已接收 ${data.progress}%`);
-                            return; // keep waiting for final ack
-                        }
-                        // Final ack (no progress field, or progress == 100)
                         clearTimeout(timer);
                         conn.off("data", handler);
                         ackResolve(true);
@@ -3023,14 +3036,13 @@ const ChatApp = {
                 };
                 const timer = setTimeout(() => {
                     conn.off("data", handler);
-                    console.warn(`[File] Ack timeout for ${file.name}`);
                     ackResolve(false);
-                }, 300000); // 5 min for large files
+                }, 120000);
                 conn.on("data", handler);
             });
 
-            if (ackOk) {
-                console.log(`[File] Ack received: ${file.name}`);
+            if (finalOk) {
+                console.log(`[File] Final ack received: ${file.name}`);
             }
             this._finishTransferCard(fileId, fileId, file.name, true);
 
