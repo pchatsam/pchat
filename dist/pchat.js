@@ -928,16 +928,47 @@ const ChatApp = {
     // ---- Popup helpers ----
     _pendingFriendRequest: null,
 
+    _initBackButton() {
+        const self = this;
+        self._navPopping = false;
+        window.addEventListener('popstate', function(e) {
+            if (self._navPopping) {
+                self._navPopping = false;
+                return;
+            }
+            if (self._navStack.length > 0) {
+                const item = self._navStack.pop();
+                if (item.close) item.close();
+            }
+        });
+    },
+
+    _pushNav(closeFn) {
+        this._navStack.push({ close: closeFn });
+        history.pushState({ nav: this._navStack.length }, '');
+    },
+
+    _popNav() {
+        if (this._navStack.length > 0) {
+            this._navStack.pop();
+            this._navPopping = true;
+            history.back();
+        }
+    },
+
     showAlert(text) {
         document.getElementById('alert-text').textContent = text;
         this._show('alert-modal');
+        this._pushNav(() => this._closeAlertModal());
     },
 
     _closeAlert() {
+        this._popNav();
         this._hide('alert-modal');
     },
 
     _closeAlertModal() {
+        this._popNav();
         this._hide('alert-modal');
     },
 
@@ -967,13 +998,14 @@ const ChatApp = {
         if (okBtn && newOkBtn) okBtn.parentNode.replaceChild(newOkBtn, okBtn);
 
         this._show("delete-confirm-modal");
+        this._pushNav(() => this._hide("delete-confirm-modal"));
 
         const finalCancel = document.getElementById("delete-confirm-cancel");
         const finalOk = document.getElementById("delete-confirm-ok");
         const finalPw = document.getElementById("delete-confirm-password");
 
         if (finalCancel) {
-            finalCancel.onclick = () => this._hide("delete-confirm-modal");
+            finalCancel.onclick = () => { this._popNav(); this._hide("delete-confirm-modal"); };
         }
         if (finalOk) {
             finalOk.onclick = () => this._handleDeleteConfirm();
@@ -1186,6 +1218,8 @@ const ChatApp = {
             console.warn('[PChat] Style check failed:', e);
         }
 
+        this._initBackButton();
+
         _i18n.applyUI();
 
         // Parse invite link from URL hash
@@ -1230,6 +1264,8 @@ const ChatApp = {
                     };
                     div.querySelector(".account-delete-btn").onclick = (e) => {
                         e.stopPropagation();
+                        const pwFormDel = document.getElementById("login-password-panel");
+                        if (pwFormDel) pwFormDel.style.display = "none";
                         this._showDeleteConfirm(acc.userId);
                     };
                     accountList.appendChild(div);
@@ -1351,6 +1387,7 @@ const ChatApp = {
         this._hide("invite-info");
         var deleteBtn = document.getElementById("delete-account-btn");
         if (deleteBtn) deleteBtn.style.display = "none";
+        this._navStack = [];
         this._show("main-panel");
 
         document.getElementById("my-nickname").textContent = nick;
@@ -1427,6 +1464,7 @@ const ChatApp = {
             if (btn) { btn.textContent = origText; btn.disabled = false; }
 
             this._hide("setup-panel");
+            this._navStack = [];
             this._show("main-panel");
 
             document.getElementById("my-nickname").textContent = this.my.nickname;
@@ -1725,9 +1763,11 @@ const ChatApp = {
             });
         }
         this._show('qr-modal');
+        this._pushNav(() => this.closeQRModal());
     },
 
     closeQRModal() {
+        this._popNav();
         this._hide('qr-modal');
     },
 
@@ -1737,6 +1777,7 @@ const ChatApp = {
 
     async showScanModal() {
         this._show('scan-modal');
+        this._pushNav(() => this.closeScanModal());
         const video = document.getElementById('scan-video');
         const canvas = document.getElementById('scan-canvas');
         const ctx = canvas.getContext('2d');
@@ -1858,6 +1899,7 @@ const ChatApp = {
     },
 
     closeScanModal() {
+        this._popNav();
         this._hide('scan-modal');
         if (this.scanStream) {
             this.scanStream.getTracks().forEach(t => t.stop());
@@ -1874,6 +1916,7 @@ const ChatApp = {
     // ---- Create group modal ----
     showCreateGroupModal() {
         this._show("create-room-modal");
+        this._pushNav(() => this.closeModals());
         const list = document.getElementById("member-checklist");
         list.innerHTML = "";
         for (const c of this.contacts) {
@@ -1884,6 +1927,7 @@ const ChatApp = {
     },
 
     closeModals() {
+        this._popNav();
         this._hide("create-room-modal");
     },
 
@@ -2692,6 +2736,7 @@ const ChatApp = {
     // ---- Open conversation ----
     openConversation(type, id) {
         console.log(`[Chat] Opening conversation: ${type} ${id}`);
+        this._pushNav(() => this.closeChatView());
         this.activeConv = { type, id };
         document.getElementById("chat-placeholder").style.display = "none";
         document.getElementById("chat-active").style.display = "flex";
@@ -2730,6 +2775,7 @@ const ChatApp = {
 
     // ---- Close chat view (mobile back) ----
     closeChatView() {
+        this._popNav();
         document.getElementById("sidebar").classList.remove("hidden");
         document.getElementById("chat-active").style.display = "none";
         document.getElementById("chat-placeholder").style.display = "flex";
@@ -3013,6 +3059,7 @@ const ChatApp = {
         if (modal) {
             document.getElementById("call-name").textContent = name;
             modal.style.display = "flex";
+            this._pushNav(() => this.hangupCall());
         }
         
         // 显示等待接听状态
@@ -3040,6 +3087,7 @@ const ChatApp = {
         document.getElementById('call-status').textContent = _i18n.t('pchat.call.incoming');
         document.getElementById("call-timer").textContent = "";
         modal.style.display = "flex";
+        this._pushNav(() => this.hangupCall());
         
         // 接收方：显示接听 + 挂断按钮
         const actionsEl = document.getElementById("call-actions");
@@ -3095,6 +3143,7 @@ const ChatApp = {
     },
 
     _hideCallModal() {
+        this._popNav();
         const modal = document.getElementById("call-modal");
         if (modal) modal.style.display = "none";
         this.incomingCallPeerId = null;
@@ -3276,6 +3325,7 @@ const ChatApp = {
         img.style.transition = 'none';
         if (img2) { img2.removeAttribute('src'); img2.style.visibility = 'hidden'; img2.style.transition = 'none'; img2.style.transform = 'translate(-50%,-50%) scale(1)'; }
         document.getElementById("image-viewer").classList.add("show");
+        this._pushNav(() => this.closeImageViewer());
         this._showToolbar();
         this._resetToolbarTimer();
 
@@ -3886,6 +3936,7 @@ const ChatApp = {
     },
 
     closeImageViewer(event) {
+        this._popNav();
         if (event) {
             if (event.target.id !== "image-viewer" && event.target.id !== "image-viewer-container" && event.target.tagName !== "BUTTON" && !event.target.closest('#image-viewer-toolbar')) return;
             event.stopPropagation();
@@ -4034,9 +4085,12 @@ const ChatApp = {
 
     // ---- UI: Show Transfer Out Modal ----
     showTransferOut() {
+        const pwForm = document.getElementById("login-password-panel");
+        if (pwForm) pwForm.style.display = "none";
         const modal = document.getElementById("transfer-out-panel");
         if (modal) modal.classList.add("show");
         if (modal) modal.style.display = "flex";
+        this._pushNav(() => this.hideTransferOut());
 
         const container = document.getElementById("transfer-out-account-select");
         if (!container) return;
@@ -4077,6 +4131,7 @@ const ChatApp = {
     },
 
     hideTransferOut() {
+        this._popNav();
         const modal = document.getElementById("transfer-out-panel");
         if (modal) modal.classList.remove("show");
         if (modal) modal.style.display = "none";
@@ -4106,9 +4161,11 @@ const ChatApp = {
         document.getElementById("transfer-in-status").textContent = "";
         document.getElementById("transfer-in-id-input").value = "";
         document.getElementById("transfer-in-progress").style.display = "none";
+        this._pushNav(() => this.hideTransferIn());
     },
 
     hideTransferIn() {
+        this._popNav();
         const modal = document.getElementById("transfer-in-panel");
         if (modal) modal.classList.remove("show");
         if (modal) modal.style.display = "none";
@@ -4130,6 +4187,21 @@ const ChatApp = {
         if (transferBtn) transferBtn.style.display = "none";
         const newAccBtn = document.getElementById("new-account-btn");
         if (newAccBtn) newAccBtn.style.display = "none";
+        this._pushNav(() => this._backFromNewAccount());
+    },
+
+    _backFromNewAccount() {
+        // Reverse showNewAccount: show account list, hide register form
+        const accountList = document.getElementById("account-select-panel");
+        if (accountList) accountList.style.display = "block";
+        const pwForm = document.getElementById("login-password-panel");
+        if (pwForm) pwForm.style.display = "none";
+        const inviteInfo = document.getElementById("invite-info");
+        if (inviteInfo) inviteInfo.style.display = "none";
+        const transferBtn = document.getElementById("transfer-out-btn");
+        if (transferBtn) transferBtn.style.display = "block";
+        const newAccBtn = document.getElementById("new-account-btn");
+        if (newAccBtn) newAccBtn.style.display = "block";
     },
 
     showTransferInScan() {
