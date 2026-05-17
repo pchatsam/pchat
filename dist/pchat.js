@@ -3102,16 +3102,11 @@ const ChatApp = {
                         r.readAsArrayBuffer(seg);
                     });
 
-                    let batchCount = 0;
                     for (let i = 0; i < segBuf.length; i += chunkSize) {
                         const end = Math.min(i + chunkSize, segBuf.length);
-                        fileConn.send(segBuf.slice(i, end));  // Uint8Array directly
-                        batchCount++;
-                        if (batchCount >= 8) {
-                            batchCount = 0;
-                            await new Promise(r => setTimeout(r, 100));
-                        }
+                        fileConn.send(segBuf.slice(i, end));
                     }
+                    await new Promise(r => setTimeout(r, 50));
                     offset += segSize;
                     totalSent = offset;
                     const pct = (offset / file.size * 100).toFixed(1);
