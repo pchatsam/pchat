@@ -827,9 +827,13 @@ const PeerConn = {
                                 const lastAck = info.lastAckBytes || 0;
                                 if (rawReceived - lastAck >= 10 * 1024 * 1024) {
                                     info.lastAckBytes = rawReceived;
+                                    info._ackCount = (info._ackCount || 0) + 1;
+                                    console.log(`[BinaryDC] ACK #${info._ackCount} raw=${(rawReceived/1024/1024).toFixed(1)}MB pct=${pct}%`);
                                     const ackPeer = PeerConn.peers[info.peerId];
                                     if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
                                         ackPeer.conn.send({ type: "file-ack", fileId, progress: pct });
+                                    } else {
+                                        console.warn('[BinaryDC] No peer conn for ack!');
                                     }
                                 }
                                 if (info.footerReceived && rawReceived >= info.size) {
@@ -3102,12 +3106,20 @@ const ChatApp = {
                     r.readAsArrayBuffer(seg);
                 });
 
-                // Send raw bytes directly on binary channel — no JSON, no base64
+                // Send raw bytes with pacing — 16 chunks then yield 100ms
                 try {
+                    let batchCount = 0;
                     for (let i = 0; i < segBuf.length; i += chunkSize) {
                         const end = Math.min(i + chunkSize, segBuf.length);
-                        fileConn.send(segBuf.slice(i, end));
+                        fileConn.send(segBuf.slice(i, end).buffer);
+                        batchCount++;
+                        if (batchCount >= 16) {
+                            batchCount = 0;
+                            await new Promise(r => setTimeout(r, 50)); // let DC buffer drain
+                        }
                     }
+                    // Final drain
+                    await new Promise(r => setTimeout(r, 200));
                 } catch(e) {
                     console.error('[File] Binary send error:', e);
                     fileConn.close();
@@ -3125,6 +3137,7 @@ const ChatApp = {
                     const segAckOk = await new Promise((segResolve) => {
                         const handler = (data) => {
                             if (data.type === "file-ack" && data.fileId === fileId) {
+                                console.log(`[File] ACK #${data.progress}%`);
                                 clearTimeout(segTimer);
                                 conn.off("data", handler);
                                 const ackPct = data.progress != null ? data.progress : 100;
