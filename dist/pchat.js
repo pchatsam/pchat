@@ -817,8 +817,12 @@ const PeerConn = {
                             const ft = ChatApp.fileTransfer;
                             const info = ft.pending[fileId];
                             if (info) {
+                                info.chunkCount = (info.chunkCount || 0) + 1;
                                 info.totalRawReceived = rawReceived;
                                 const pct = info.size > 0 ? Math.min(99, Math.round(rawReceived / info.size * 100)) : 0;
+                                if (info.chunkCount % 100 === 0) {
+                                    console.log(`[BinaryDC] ${info.chunkCount} chunks, ${(rawReceived/1024/1024).toFixed(1)}MB, ${pct}%`);
+                                }
                                 ChatApp._updateTransferProgress(fileId, pct, null);
                                 const lastAck = info.lastAckBytes || 0;
                                 if (rawReceived - lastAck >= 10 * 1024 * 1024) {
@@ -3099,9 +3103,15 @@ const ChatApp = {
                 });
 
                 // Send raw bytes directly on binary channel — no JSON, no base64
-                for (let i = 0; i < segBuf.length; i += chunkSize) {
-                    const end = Math.min(i + chunkSize, segBuf.length);
-                    fileConn.send(segBuf.slice(i, end));
+                try {
+                    for (let i = 0; i < segBuf.length; i += chunkSize) {
+                        const end = Math.min(i + chunkSize, segBuf.length);
+                        fileConn.send(segBuf.slice(i, end));
+                    }
+                } catch(e) {
+                    console.error('[File] Binary send error:', e);
+                    fileConn.close();
+                    return;
                 }
 
                 offset += segSize;
