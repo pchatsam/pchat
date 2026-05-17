@@ -787,7 +787,6 @@ const PeerConn = {
                 conn.on('data', (chunk) => {
                     if (chunk instanceof ArrayBuffer || chunk instanceof Uint8Array) {
                         DB.bufferRawChunk(fileId, chunk).catch(e => console.error('[OPFS] bufferRawChunk:', e));
-                        // Track progress and send ack every 10MB
                         const ft = ChatApp.fileTransfer;
                         const info = ft.pending[fileId];
                         if (info) {
@@ -796,6 +795,7 @@ const PeerConn = {
                             const rawReceived = info.totalRawReceived;
                             const pct = info.size > 0 ? Math.min(99, Math.round(rawReceived / info.size * 100)) : 0;
                             ChatApp._updateTransferProgress(fileId, pct, null);
+                            // Send ack every 10MB
                             const lastAck = info.lastAckBytes || 0;
                             if (rawReceived - lastAck >= 10 * 1024 * 1024) {
                                 info.lastAckBytes = rawReceived;
@@ -804,38 +804,14 @@ const PeerConn = {
                                     ackPeer.conn.send({ type: "file-ack", fileId, progress: pct });
                                 }
                             }
+                            // If footer already received and all data arrived, finalize
+                            if (info.footerReceived && rawReceived >= info.size) {
+                                ChatApp._finalizeDirectReceive(fileId);
+                            }
                         }
                     }
                 });
-                conn.on('close', async () => {
-                    console.log('[PeerConn] Binary file channel closed:', fileId);
-                    // Finalize: flush + close OPFS + send final ack
-                    const ft = ChatApp.fileTransfer;
-                    const info = ft.pending[fileId];
-                    if (info && info.footerReceived) {
-                        await DB._flushRawBuffer(fileId);
-                        await DB.closeDirectFile(fileId);
-                        delete ft.pending[fileId];
-                        ChatApp._finishTransferCard(fileId, fileId, info.name, false);
-                        const now = Date.now();
-                        const msg = {
-                            id: `msg_${info.peerId}_${now}_${Math.random().toString(36).slice(2,6)}`,
-                            peerId: info.peerId, ts: now, direction: "received", fromId: info.peerId,
-                            type: "direct-file", fileName: info.name, mimeType: info.mime, fileSize: info.size, fileId,
-                        };
-                        await DB.putRaw("messages", msg);
-                        const ackPeer = PeerConn.peers[info.peerId];
-                        if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
-                            ackPeer.conn.send({ type: "file-ack", fileId });
-                        }
-                        const contact = ChatApp.contacts.find(c => c.userId === info.peerId);
-                        if (contact) {
-                            contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + info.name, ts: now, fromId: info.peerId };
-                            ChatApp.saveContact(contact);
-                            ChatApp._renderContacts();
-                        }
-                    }
-                });
+                conn.on('close', () => console.log('[PeerConn] Binary file channel closed:', fileId));
                 conn.on('error', (e) => console.error('[PeerConn] Binary file channel error:', fileId, e));
                 return;
             }
@@ -2572,8 +2548,11 @@ const ChatApp = {
         if (info.directTransfer) {
             console.log(`[File] DIRECT footer for ${info.name}`);
             if (info.binaryChannel) {
-                // Binary: wait for channel close to finalize (all chunks arrive first)
                 info.footerReceived = true;
+                // Check if all data already received
+                if (info.totalRawReceived >= info.size) {
+                    await ChatApp._finalizeDirectReceive(d.fileId);
+                }
                 return;
             }
             // Legacy base64 direct transfer
@@ -3130,9 +3109,10 @@ const ChatApp = {
                 }
             }
 
-            // Footer on main channel
+            // Close binary channel first — guarantees all chunks delivered
+            fileConn.close();
+            // Then send footer on main channel
             conn.send({ type: "file-footer", fileId });
-            // Don't close binary channel yet — receiver needs it for final flush
 
             // Wait for final ack
             this._updateTransferProgress(fileId, 100, '等待对方确认...');
@@ -3154,7 +3134,6 @@ const ChatApp = {
             if (finalOk) {
                 console.log(`[File] Final ack received: ${file.name}`);
             }
-            fileConn.close();
             this._finishTransferCard(fileId, fileId, file.name, true);
 
             // Store metadata-only message (no fileData — receiver gets it from OPFS)
@@ -3471,6 +3450,35 @@ const ChatApp = {
         }
         } catch(e) {
             console.error('[Transfer] finishTransferCard error:', e);
+        }
+    },
+
+
+    async _finalizeDirectReceive(fileId) {
+        const ft = this.fileTransfer;
+        const info = ft.pending[fileId];
+        if (!info) return;
+        console.log(`[File] Finalizing direct receive: ${info.name}`);
+        await DB._flushRawBuffer(fileId);
+        await DB.closeDirectFile(fileId);
+        delete ft.pending[fileId];
+        this._finishTransferCard(fileId, fileId, info.name, false);
+        const now = Date.now();
+        const msg = {
+            id: `msg_${info.peerId}_${now}_${Math.random().toString(36).slice(2,6)}`,
+            peerId: info.peerId, ts: now, direction: "received", fromId: info.peerId,
+            type: "direct-file", fileName: info.name, mimeType: info.mime, fileSize: info.size, fileId,
+        };
+        await DB.putRaw("messages", msg);
+        const ackPeer = PeerConn.peers[info.peerId];
+        if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
+            ackPeer.conn.send({ type: "file-ack", fileId });
+        }
+        const contact = this.contacts.find(c => c.userId === info.peerId);
+        if (contact) {
+            contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + info.name, ts: now, fromId: info.peerId };
+            this.saveContact(contact);
+            this._renderContacts();
         }
     },
 
