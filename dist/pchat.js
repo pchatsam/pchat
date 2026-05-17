@@ -552,7 +552,7 @@ const DB = {
         return true;
     },
 
-    // Flush buffered chunks to OPFS as one write
+    // Flush buffered chunks to OPFS — process in 256KB slices to avoid blocking main thread
     async _flushDirectBuffer(fileId) {
         const entry = DB._directWriters[fileId];
         if (!entry || !entry.buffer || entry.buffer.length === 0) return;
@@ -561,9 +561,25 @@ const DB = {
         entry.buffer = [];
         entry.bufferedSize = 0;
         const combined = chunks.join('');
-        const binary = atob(combined);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+        // Decode base64 → binary in 256KB slices with event-loop yields
+        const SLICE = 256 * 1024; // 256KB base64 per slice → ~192KB raw
+        const totalRaw = Math.ceil(combined.length * 3 / 4);
+        const bytes = new Uint8Array(totalRaw);
+        let srcOff = 0, dstOff = 0;
+
+        while (srcOff < combined.length) {
+            const seg = combined.slice(srcOff, srcOff + SLICE);
+            const raw = atob(seg);
+            for (let i = 0; i < raw.length; i++) bytes[dstOff + i] = raw.charCodeAt(i);
+            srcOff += SLICE;
+            dstOff += raw.length;
+            // Yield to event loop so data channel messages can be delivered
+            if (srcOff < combined.length) {
+                await new Promise(r => setTimeout(r, 0));
+            }
+        }
+
         await entry.writable.write(bytes);
     },
 
