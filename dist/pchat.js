@@ -807,7 +807,35 @@ const PeerConn = {
                         }
                     }
                 });
-                conn.on('close', () => console.log('[PeerConn] Binary file channel closed:', fileId));
+                conn.on('close', async () => {
+                    console.log('[PeerConn] Binary file channel closed:', fileId);
+                    // Finalize: flush + close OPFS + send final ack
+                    const ft = ChatApp.fileTransfer;
+                    const info = ft.pending[fileId];
+                    if (info && info.footerReceived) {
+                        await DB._flushRawBuffer(fileId);
+                        await DB.closeDirectFile(fileId);
+                        delete ft.pending[fileId];
+                        ChatApp._finishTransferCard(fileId, fileId, info.name, false);
+                        const now = Date.now();
+                        const msg = {
+                            id: `msg_${info.peerId}_${now}_${Math.random().toString(36).slice(2,6)}`,
+                            peerId: info.peerId, ts: now, direction: "received", fromId: info.peerId,
+                            type: "direct-file", fileName: info.name, mimeType: info.mime, fileSize: info.size, fileId,
+                        };
+                        await DB.putRaw("messages", msg);
+                        const ackPeer = PeerConn.peers[info.peerId];
+                        if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
+                            ackPeer.conn.send({ type: "file-ack", fileId });
+                        }
+                        const contact = ChatApp.contacts.find(c => c.userId === info.peerId);
+                        if (contact) {
+                            contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + info.name, ts: now, fromId: info.peerId };
+                            ChatApp.saveContact(contact);
+                            ChatApp._renderContacts();
+                        }
+                    }
+                });
                 conn.on('error', (e) => console.error('[PeerConn] Binary file channel error:', fileId, e));
                 return;
             }
@@ -2542,12 +2570,14 @@ const ChatApp = {
         if (!info) return;
 
         if (info.directTransfer) {
-            // Direct transfer: flush + close OPFS, store metadata
-            console.log(`[File] DIRECT footer for ${info.name}, closing OPFS`);
+            console.log(`[File] DIRECT footer for ${info.name}`);
             if (info.binaryChannel) {
-                // Flush any remaining raw buffer
-                await DB._flushRawBuffer(d.fileId);
+                // Binary: wait for channel close to finalize (all chunks arrive first)
+                info.footerReceived = true;
+                return;
             }
+            // Legacy base64 direct transfer
+            console.log(`[File] DIRECT footer for ${info.name}, closing OPFS`);
             await DB.closeDirectFile(d.fileId);
             delete ft.pending[d.fileId];
 
@@ -2563,7 +2593,6 @@ const ChatApp = {
                 fileId: d.fileId,
             };
             await DB.putRaw("messages", msg);
-            // Don't _appendMsg — the transfer progress card IS the message
 
             const contact = this.contacts.find(c => c.userId === peerId);
             if (contact) {
@@ -2575,7 +2604,6 @@ const ChatApp = {
                 this._renderContacts();
             }
 
-            // Send ack back to sender
             const ackPeer = PeerConn.peers[peerId];
             if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
                 ackPeer.conn.send({ type: "file-ack", fileId: d.fileId });
@@ -3071,37 +3099,40 @@ const ChatApp = {
                 }
 
                 offset += segSize;
-                const sentPct = Math.min(99, Math.round(offset / file.size * 100));
-                console.log(`[File] Sent ${sentPct}%, waiting for receiver ack...`);
+                const isLast = offset >= file.size;
+                const sentPct = isLast ? 100 : Math.min(99, Math.round(offset / file.size * 100));
+                console.log(`[File] Sent ${sentPct}%${isLast ? ' (last segment)' : ', waiting for ack...'}`);
                 this._updateTransferProgress(fileId, sentPct, `等待对方确认 (${sentPct}%)`);
 
-                // Wait for receiver ack on main channel
-                const segAckOk = await new Promise((segResolve) => {
-                    const handler = (data) => {
-                        if (data.type === "file-ack" && data.fileId === fileId) {
-                            clearTimeout(segTimer);
+                // Wait for ack on non-final segments; last segment ack comes with footer
+                if (!isLast) {
+                    const segAckOk = await new Promise((segResolve) => {
+                        const handler = (data) => {
+                            if (data.type === "file-ack" && data.fileId === fileId) {
+                                clearTimeout(segTimer);
+                                conn.off("data", handler);
+                                const ackPct = data.progress != null ? data.progress : 100;
+                                ChatApp._updateTransferProgress(fileId, ackPct, `对方已接收 ${ackPct}%`);
+                                segResolve(true);
+                            }
+                        };
+                        const segTimer = setTimeout(() => {
                             conn.off("data", handler);
-                            const ackPct = data.progress != null ? data.progress : 100;
-                            ChatApp._updateTransferProgress(fileId, ackPct, `对方已接收 ${ackPct}%`);
-                            segResolve(true);
-                        }
-                    };
-                    const segTimer = setTimeout(() => {
-                        conn.off("data", handler);
-                        segResolve(false);
-                    }, 120000);
-                    conn.on("data", handler);
-                });
-                if (!segAckOk) {
-                    console.error(`[File] Segment ack failed, aborting`);
-                    fileConn.close();
-                    return;
+                            segResolve(false);
+                        }, 120000);
+                        conn.on("data", handler);
+                    });
+                    if (!segAckOk) {
+                        console.error(`[File] Segment ack failed, aborting`);
+                        fileConn.close();
+                        return;
+                    }
                 }
             }
 
             // Footer on main channel
             conn.send({ type: "file-footer", fileId });
-            fileConn.close();
+            // Don't close binary channel yet — receiver needs it for final flush
 
             // Wait for final ack
             this._updateTransferProgress(fileId, 100, '等待对方确认...');
@@ -3123,6 +3154,7 @@ const ChatApp = {
             if (finalOk) {
                 console.log(`[File] Final ack received: ${file.name}`);
             }
+            fileConn.close();
             this._finishTransferCard(fileId, fileId, file.name, true);
 
             // Store metadata-only message (no fileData — receiver gets it from OPFS)
