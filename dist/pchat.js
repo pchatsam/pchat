@@ -681,6 +681,16 @@ const DB = {
         }
     },
 
+    // Get size of partially-received file (for resume after page refresh)
+    async getReceiveFileSize(fileId) {
+        try {
+            const root = await this._getOprfsRoot();
+            const handle = await root.getFileHandle(`pchat-${fileId}`);
+            const file = await handle.getFile();
+            return file.size;
+        } catch(e) { return 0; }
+    },
+
     // ---- Outgoing file storage (OPFS, for resume after refresh) ----
     async saveOutgoingFile(fileId, blob) {
         const root = await this._getOprfsRoot();
@@ -1360,12 +1370,18 @@ const ChatApp = {
     _binarySendChannels: {},
     // Pending sends persisted to localStorage: {fileId: {name, size, mime, peerId, progress, ts}}
     _pendingSends: {},
+    _pendingReceives: {},  // {fileId: {name, size, peerId, ts}} for resume after refresh
 
     _loadPendingSends() {
         try {
             const raw = localStorage.getItem('pchat_pending_sends');
             if (raw) this._pendingSends = JSON.parse(raw);
         } catch(e) { this._pendingSends = {}; }
+        // Also load pending receives (for resume after refresh)
+        try {
+            const raw2 = localStorage.getItem('pchat_pending_receives');
+            if (raw2) this._pendingReceives = JSON.parse(raw2);
+        } catch(e) { this._pendingReceives = {}; }
     },
     _savePendingSends() {
         localStorage.setItem('pchat_pending_sends', JSON.stringify(this._pendingSends));
@@ -3137,14 +3153,17 @@ const ChatApp = {
     },
 
     // ---- Receiver asks sender to resume incomplete Binary DC transfer ----
-    _requestFileResume(peerId) {
+    async _requestFileResume(peerId) {
         const ft = this.fileTransfer;
         const state = PeerConn.peers[peerId];
         if (!state || !state.conn || !state.conn.open) return;
         for (const [fid, info] of Object.entries(ft.pending)) {
             if (info.peerId !== peerId) continue;
-            const received = info.totalRawReceived || 0;
-            console.log(`[File] Requesting resume for ${info.name}: ${(received/1024/1024).toFixed(1)}MB / ${(info.size/1024/1024).toFixed(1)}MB`);
+            // Use max of in-memory count and OPFS persisted bytes (handles page refresh)
+            const netReceived = info.totalRawReceived || 0;
+            const opfsSize = await DB.getReceiveFileSize(fid);
+            const received = Math.max(netReceived, opfsSize);
+            console.log(`[File] Requesting resume for ${info.name}: received=${(received/1024/1024).toFixed(1)}MB (net=${(netReceived/1024/1024).toFixed(1)}MB, opfs=${(opfsSize/1024/1024).toFixed(1)}MB) / ${(info.size/1024/1024).toFixed(1)}MB`);
             state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, totalSize: info.size });
         }
     },
