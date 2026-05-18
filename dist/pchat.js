@@ -848,8 +848,8 @@ const PeerConn = {
                                         ChatApp._updateSidebarTransfer(info.peerId, `📥 ${ar.name.substring(0, 15)}${ar.name.length > 15 ? '...' : ''} ${p}%`);
                                     }
                                 }
-                                // Finalize when all data received AND footer arrived
-                                if (info.footerReceived && rawReceived >= info.size) {
+                                // Finalize when all data received
+                                if (info.totalRawReceived >= info.size) {
                                     ChatApp._finalizeDirectReceive(fileId);
                                 }
                             }
@@ -857,10 +857,10 @@ const PeerConn = {
                 });
                 conn.on('close', async () => {
                     console.log('[PeerConn] Binary file channel closed:', fileId);
-                    // Safety net: if data complete + footer received but not finalized yet
+                    // Safety net: if data complete but not finalized yet
                     const ft = ChatApp.fileTransfer;
                     const info = ft.pending[fileId];
-                    if (info && info.footerReceived && info.totalRawReceived >= info.size) {
+                    if (info && info.totalRawReceived >= info.size) {
                         await ChatApp._finalizeDirectReceive(fileId);
                     }
                 });
@@ -2621,9 +2621,128 @@ const ChatApp = {
                 this._updateSidebarTransfer(info.peerId, `📥 ${ar.name.substring(0, 15)}${ar.name.length > 15 ? '...' : ''} ${pct}%`);
             }
         }
+
+        // All chunks received → finalize (no footer needed)
+        if (info.totalChunks > 0 && info.chunkCount >= info.totalChunks) {
+            this._finalizeChunkedReceive(d.fileId);
+        }
     },
 
-    // ---- File receive: footer (all chunks assembled) ----
+    // ---- File receive: all chunks arrived → assemble, validate, store, ack ----
+    async _finalizeChunkedReceive(fileId) {
+        const ft = this.fileTransfer;
+        const info = ft.pending[fileId];
+        if (!info || info._finalized) return;
+        info._finalized = true;  // prevent double-trigger from footer safety net
+
+        if (info.chunkCount < info.totalChunks) {
+            console.warn("[File] Finalize called before all chunks, missing chunks");
+            return;
+        }
+
+        console.log(`[File] All chunks received for ${info.name}, assembling...`);
+        const fullBase64 = info.parts.join('');
+
+        // Integrity check: total bytes match declared size
+        // base64 is ~4/3 of raw bytes, so raw size ≈ fullBase64.length * 0.75
+        const estimatedRaw = Math.round(fullBase64.length * 0.75);
+        if (info.expectedBase64Len && fullBase64.length !== info.expectedBase64Len) {
+            console.error(`[File] Length mismatch: expected ${info.expectedBase64Len}, got ${fullBase64.length}`);
+            delete ft.pending[fileId];
+            ChatApp.showAlert(_i18n.t('pchat.file.incomplete'));
+            return;
+        }
+        console.log(`[File] Size check OK: ${fullBase64.length} bytes base64 (≈${(estimatedRaw/1024).toFixed(0)}KB raw, declared ${info.size}B)`);
+
+        // Integrity check: hash
+        if (info.expectedHash) {
+            try {
+                const computedHash = ChatApp._hashBase64(fullBase64);
+                if (computedHash !== info.expectedHash) {
+                    console.error(`[File] Hash mismatch`);
+                    delete ft.pending[fileId];
+                    ChatApp.showAlert(_i18n.t('pchat.file.checksumFail'));
+                    return;
+                }
+                console.log(`[File] Hash check OK`);
+            } catch (e) {
+                console.warn("[File] Hash check failed:", e);
+            }
+        }
+
+        delete ft.pending[fileId];
+
+        const peerId = info.peerId;
+        const now = Date.now();
+        const id = `msg_${peerId}_${now}_${Date.now()}`;
+
+        // For images: generate thumbnail, store full in files store
+        let storedData = fullBase64;
+        let storedFileId = null;
+        if (info.isImage) {
+            storedFileId = fileId;
+            const thumb = await DB.generateThumbnail(fullBase64, info.mime, 200);
+            storedData = thumb || fullBase64;
+            console.log('[File] Storing file aesKey fingerprint:', this.my.aesKey.substring(0, 16) + '...');
+            await DB.putFile(fileId, fullBase64, info.mime, this.my.aesKey);
+            console.log('[File] File stored, fileId:', fileId, 'dataLen:', fullBase64.length);
+        }
+
+        const msg = {
+            id,
+            peerId,
+            ts: now,
+            direction: "received",
+            fromId: peerId,
+            type: info.isImage ? "image" : "file",
+            fileName: info.name,
+            mimeType: info.mime,
+            fileSize: info.size,
+            fileId: storedFileId,
+            fileData: storedData,
+        };
+
+        await DB.put("messages", msg, this.my.aesKey);
+        console.log('[File] Message stored, msgId:', id);
+
+        // Replace progress card with message bubble
+        const progressRow = document.getElementById(`transfer-${fileId}`);
+        if (progressRow) progressRow.remove();
+        delete this._transferThrottle[fileId];
+        delete this._transferSpeedCalcAt[fileId];
+        delete this._transferStartTimes[fileId];
+        delete this._transferSizes?.[fileId];
+        delete this._activeReceives[peerId];
+        this._renderContacts();
+        if (this.activeConv && this.activeConv.id === peerId) {
+            this._appendMsg(msg);
+        }
+
+        const contact = this.contacts.find(c => c.userId === peerId);
+        if (contact) {
+            contact.lastMessage = {
+                content: info.isImage ? (_i18n.t('pchat.file.prefixImage') + ' ' + info.name) : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name),
+                ts: now,
+                fromId: peerId,
+            };
+            this.saveContact(contact);
+        }
+        if (!(this.activeConv && this.activeConv.id === peerId)) {
+            this.unreadCount[peerId] = (this.unreadCount[peerId] || 0) + 1;
+        }
+        this._renderContacts();
+
+        // Send completion ack to sender
+        const ackPeer = PeerConn.peers[peerId];
+        if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
+            ackPeer.conn.send({ type: "file-ack", fileId });
+            console.log(`[File] Completion ack sent for ${info.name}`);
+        } else {
+            console.warn(`[File] Cannot send ack — peer ${peerId} not connected`);
+        }
+    },
+
+    // ---- File receive: footer (safety net for legacy senders) ----
     async _onFileFooter(peerId, d) {
         const ft = this.fileTransfer;
         const info = ft.pending[d.fileId];
@@ -2632,8 +2751,7 @@ const ChatApp = {
         if (info.directTransfer) {
             console.log(`[File] DIRECT footer for ${info.name}`);
             if (info.binaryChannel) {
-                info.footerReceived = true;
-                console.log(`[File] Footer check: rawReceived=${info.totalRawReceived}, fileSize=${info.size}`);
+                console.log(`[File] Footer check: totalRawReceived=${info.totalRawReceived}, fileSize=${info.size}`);
                 if (info.totalRawReceived >= info.size) {
                     await ChatApp._finalizeDirectReceive(d.fileId);
                 }
@@ -2685,106 +2803,10 @@ const ChatApp = {
             return;
         }
 
-        if (info.chunkCount < info.totalChunks) {
-            console.warn("[File] Footer before all chunks, missing chunks");
-            return;
-        }
-
-        console.log(`[File] Footer received for ${info.name}, assembling...`);
-        const fullBase64 = info.parts.join('');
-
-        // Integrity check: base64 length
-        if (info.expectedBase64Len && fullBase64.length !== info.expectedBase64Len) {
-            console.error(`[File] Length mismatch: expected ${info.expectedBase64Len}, got ${fullBase64.length}`);
-            delete ft.pending[d.fileId];
-            ChatApp.showAlert(_i18n.t('pchat.file.incomplete'));
-            return;
-        }
-
-        // Integrity check: hash
-        if (info.expectedHash) {
-            try {
-                const computedHash = ChatApp._hashBase64(fullBase64);
-                if (computedHash !== info.expectedHash) {
-                    console.error(`[File] Hash mismatch`);
-                    delete ft.pending[d.fileId];
-                    ChatApp.showAlert(_i18n.t('pchat.file.checksumFail'));
-                    return;
-                }
-            } catch (e) {
-                console.warn("[File] Hash check failed:", e);
-            }
-        }
-
-        delete ft.pending[d.fileId];
-
-        const now = Date.now();
-        const id = `msg_${peerId}_${now}_${Date.now()}`;
-
-        // For images: generate thumbnail, store full in files store
-        let storedData = fullBase64;
-        let storedFileId = null;
-        if (info.isImage) {
-            storedFileId = d.fileId;
-            const thumb = await DB.generateThumbnail(fullBase64, info.mime, 200);
-            storedData = thumb || fullBase64;
-            // Store full image in files store
-            console.log('[File] Storing file aesKey fingerprint:', this.my.aesKey.substring(0, 16) + '...');
-            await DB.putFile(d.fileId, fullBase64, info.mime, this.my.aesKey);
-            console.log('[File] File stored, fileId:', d.fileId, 'dataLen:', fullBase64.length);
-        }
-
-        const msg = {
-            id,
-            peerId,
-            ts: now,
-            direction: "received",
-            fromId: peerId,
-            type: info.isImage ? "image" : "file",
-            fileName: info.name,
-            mimeType: info.mime,
-            fileSize: info.size,
-            fileId: storedFileId,
-            fileData: storedData,
-        };
-
-        // Store in DB
-        console.log('[File] Storing message aesKey fingerprint:', this.my.aesKey.substring(0, 16) + '...');
-        await DB.put("messages", msg, this.my.aesKey);
-        console.log('[File] Message stored, msgId:', id, 'hasFileData:', !!msg.fileData, 'fileDataLen:', (msg.fileData || '').length);
-
-        // Remove transfer progress card, replace with proper message bubble
-        const progressRow = document.getElementById(`transfer-${d.fileId}`);
-        if (progressRow) progressRow.remove();
-        delete this._transferThrottle[d.fileId];
-        delete this._transferSpeedCalcAt[d.fileId];
-        delete this._transferStartTimes[d.fileId];
-        delete this._transferSizes?.[d.fileId];
-        delete this._activeReceives[peerId];
-        this._renderContacts();
-
-        if (this.activeConv && this.activeConv.id === peerId) {
-            this._appendMsg(msg);
-        }
-
-        const contact = this.contacts.find(c => c.userId === peerId);
-        if (contact) {
-            contact.lastMessage = {
-                content: info.isImage ? (_i18n.t('pchat.file.prefixImage') + ' ' + info.name) : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name),
-                ts: now,
-                fromId: peerId,
-            };
-            this.saveContact(contact);
-        }
-        if (!(this.activeConv && this.activeConv.id === peerId)) {
-            this.unreadCount[peerId] = (this.unreadCount[peerId] || 0) + 1;
-        }
-        this._renderContacts();
-
-        // Send ack back to sender so it can proceed to next file (backpressure)
-        const ackState = PeerConn.peers[peerId];
-        if (ackState && ackState.conn && ackState.conn.open) {
-            ackState.conn.send({ type: "file-ack", fileId: d.fileId });
+        // Traditional chunked path: safety net (chunk-based completion handles the normal case)
+        if (!info._finalized) {
+            console.log(`[File] Footer safety net for ${info.name}, chunkCount=${info.chunkCount}/${info.totalChunks}`);
+            await this._finalizeChunkedReceive(d.fileId);
         }
     },
 
