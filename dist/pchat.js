@@ -837,6 +837,17 @@ const PeerConn = {
                                     }
                                 }
                                 ChatApp._updateTransferProgress(fileId, pct, null);
+                                // Update sidebar progress (throttled: every 500ms or every 100th chunk)
+                                const ar = ChatApp._activeReceives[info.peerId];
+                                if (ar) {
+                                    const now = Date.now();
+                                    if (!ar._lastSidebarUpdate || now - ar._lastSidebarUpdate >= 500 || info.chunkCount % 100 === 0) {
+                                        ar._lastSidebarUpdate = now;
+                                        const p = Math.round(netPct);
+                                        ar.pct = p;
+                                        ChatApp._updateSidebarTransfer(info.peerId, `📥 ${ar.name.substring(0, 15)}${ar.name.length > 15 ? '...' : ''} ${p}%`);
+                                    }
+                                }
                                 // Finalize when all data received AND footer arrived
                                 if (info.footerReceived && rawReceived >= info.size) {
                                     ChatApp._finalizeDirectReceive(fileId);
@@ -1161,6 +1172,8 @@ const ChatApp = {
     fileTransfer: {
         pending: {},
     },
+    // Active receives for sidebar progress (peerId → {fileId, name, size, pct})
+    _activeReceives: {},
     call: {
         active: false,
         peerId: null,
@@ -2526,6 +2539,7 @@ const ChatApp = {
         };
 
         if (d.directTransfer) {
+            info.binaryChannel = !!d.binaryChannel;
             info.expectedBase64Len = -1;
             info.expectedHash = '';
             info.totalChunks = -1;
@@ -2536,7 +2550,9 @@ const ChatApp = {
             info.lastAckBytes = 0;
             console.log(`[File] DIRECT header: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB)`);
             DB.openDirectFile(d.fileId, d.name).catch(e => console.error('[OPFS] openDirectFile failed:', e));
-            ChatApp._insertTransferCard(d.fileId, d.name, d.size, false);
+            if (this.activeConv && this.activeConv.id === peerId) {
+                ChatApp._insertTransferCard(d.fileId, d.name, d.size, false);
+            }
         } else {
             info.parts = new Array(d.totalChunks);
             info.totalChunks = d.totalChunks;
@@ -2544,8 +2560,16 @@ const ChatApp = {
             info.expectedBase64Len = d.base64Len || 0;
             info.expectedHash = d.hash || "";
             console.log(`[File] Header received: ${d.name} (${d.size}B, ${d.totalChunks} chunks, hash=${d.hash ? d.hash.slice(0,8)+'...' : 'none'})`);
+            // Show progress card if user is already in this chat
+            if (this.activeConv && this.activeConv.id === peerId) {
+                ChatApp._insertTransferCard(d.fileId, d.name, d.size, false);
+            }
         }
         ft.pending[d.fileId] = info;
+
+        // Track active receive for sidebar progress
+        this._activeReceives[peerId] = { fileId: d.fileId, name: d.name, size: d.size, pct: 0 };
+        this._renderContacts();
     },
 
     // ---- File receive: chunk ----
@@ -2563,6 +2587,10 @@ const ChatApp = {
             const estPct = info.size > 0 ? Math.min(99, Math.round(info.totalBase64Received * 0.75 / info.size * 100)) : 0;
             ChatApp._updateTransferProgress(d.fileId, estPct, null);
 
+            // Update sidebar progress (throttled by _updateTransferProgress's 100ms)
+            const ar = ChatApp._activeReceives[info.peerId];
+            if (ar) { ar.pct = estPct; ChatApp._updateSidebarTransfer(info.peerId, `📥 ${ar.name.substring(0, 15)}${ar.name.length > 15 ? '...' : ''} ${estPct}%`); }
+
             // Send intermediate ack every ~10MB received (raw estimate)
             const rawReceived = Math.round(info.totalBase64Received * 0.75);
             const lastAckAt = info.lastAckBytes || 0;
@@ -2579,6 +2607,18 @@ const ChatApp = {
         if (info.parts[d.index]) return; // duplicate
         info.parts[d.index] = d.data;
         info.chunkCount++;
+
+        // Update sidebar progress (throttled: every 500ms or every 10th chunk)
+        const ar = this._activeReceives[info.peerId];
+        if (ar && info.totalChunks > 0) {
+            const pct = Math.round(info.chunkCount / info.totalChunks * 99);
+            const now = Date.now();
+            if (!ar._lastSidebarUpdate || now - ar._lastSidebarUpdate >= 500 || info.chunkCount % 10 === 0) {
+                ar._lastSidebarUpdate = now;
+                ar.pct = pct;
+                this._updateSidebarTransfer(info.peerId, `📥 ${ar.name.substring(0, 15)}${ar.name.length > 15 ? '...' : ''} ${pct}%`);
+            }
+        }
     },
 
     // ---- File receive: footer (all chunks assembled) ----
@@ -2620,6 +2660,8 @@ const ChatApp = {
             delete this._transferSpeedCalcAt[d.fileId];
             delete this._transferStartTimes[d.fileId];
             delete this._transferSizes?.[d.fileId];
+            delete this._activeReceives[peerId];
+            this._renderContacts();
             if (this.activeConv && this.activeConv.id === peerId) {
                 this._appendMsg(msg);
             }
@@ -2716,6 +2758,8 @@ const ChatApp = {
         delete this._transferSpeedCalcAt[d.fileId];
         delete this._transferStartTimes[d.fileId];
         delete this._transferSizes?.[d.fileId];
+        delete this._activeReceives[peerId];
+        this._renderContacts();
 
         if (this.activeConv && this.activeConv.id === peerId) {
             this._appendMsg(msg);
@@ -3360,6 +3404,26 @@ const ChatApp = {
             }
         };
         for (const m of conv) this._appendMsg(m);
+
+        // Insert progress cards for any active file transfers from this peer
+        const ft = this.fileTransfer;
+        for (const [fid, info] of Object.entries(ft.pending)) {
+            if (info.peerId !== peerId) continue;
+            // Only show card if transfer is still in progress (not yet stored as message)
+            const alreadyStored = conv.some(m =>
+                (m.type === 'direct-file' || m.type === 'file' || m.type === 'image') &&
+                m.fileId === fid
+            );
+            if (alreadyStored) continue;
+
+            // Create progress card
+            const pct = info.directTransfer
+                ? (info.totalRawReceived > 0 ? Math.round(info.totalRawReceived / info.size * 100) : info.chunkCount > 0 ? Math.round(info.totalBase64Received * 0.75 / info.size * 100) : 0)
+                : (info.totalChunks > 0 ? Math.round(info.chunkCount / info.totalChunks * 100) : 0);
+            this._insertTransferCard(fid, info.name, info.size, false);
+            this._updateTransferProgress(fid, Math.min(pct, 99), null);
+        }
+
         this._scroll();
     },
 
@@ -3598,6 +3662,9 @@ const ChatApp = {
         }
         const row = document.getElementById(`transfer-${d.fileId}`);
         if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
+        // Clean up sidebar transfer progress
+        delete this._activeReceives[peerId];
+        this._renderContacts();
     },
 
     async _finalizeDirectReceive(fileId) {
@@ -3624,6 +3691,7 @@ const ChatApp = {
         delete this._transferSpeedCalcAt[fileId];
         delete this._transferStartTimes[fileId];
         delete this._transferSizes?.[fileId];
+        delete this._activeReceives[info.peerId];
         if (this.activeConv && this.activeConv.id === info.peerId) {
             this._appendMsg(msg);
         }
@@ -4723,6 +4791,19 @@ const ChatApp = {
     _scroll() { const el = document.getElementById("message-list"); if (el) el.scrollTop = el.scrollHeight; },
 
     // ---- Render lists ----
+    // Update sidebar transfer progress for a specific contact (no full re-render)
+    _updateSidebarTransfer(peerId, text) {
+        const item = document.querySelector(`.list-item[data-id="${peerId}"]`);
+        if (!item) return;
+        let lastMsg = item.querySelector('.last-msg');
+        if (!lastMsg) {
+            lastMsg = document.createElement('div');
+            lastMsg.className = 'last-msg';
+            item.querySelector('.info').appendChild(lastMsg);
+        }
+        lastMsg.innerHTML = `<span style="color:var(--accent)">${text}</span>`;
+    },
+
     _renderContacts() {
         const list = document.getElementById("contact-list");
         list.innerHTML = "";
@@ -4741,7 +4822,11 @@ const ChatApp = {
             else if (c.publicKey || hasPeerKey) { icon = "⚪"; st = _i18n.t('pchat.status.offline'); }
             else { icon = "⏳"; st = _i18n.t('pchat.status.waitingKeyExchange'); }
             let lastMsgHtml = "";
-            if (c.lastMessage) {
+            // Show transfer progress if active receive
+            const ar = this._activeReceives[c.userId];
+            if (ar) {
+                lastMsgHtml = `<div class="last-msg"><span style="color:var(--accent)">📥 ${ar.name.substring(0, 15)}${ar.name.length > 15 ? '...' : ''} ${ar.pct}%</span></div>`;
+            } else if (c.lastMessage) {
                 const lm = c.lastMessage;
                 const sender = lm.fromId === this.my.id ? _i18n.t('pchat.msg.selfPrefix') : (c.nickname + ':');
                 const time = this._formatTime(lm.ts);
