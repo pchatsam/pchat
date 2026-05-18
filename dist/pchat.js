@@ -562,7 +562,7 @@ const DB = {
         let entry = DB._directWriters[fileId];
         if (!entry) {
             // Binary data arrived before file-header — create entry lazily
-            DB._directWriters[fileId] = entry = { rawChunks: [], rawTotal: 0, fileName: fileName || fileId };
+            DB._directWriters[fileId] = entry = { rawChunks: [], rawTotal: 0, fileName: fileName || fileId, segmentCount: 0 };
         }
         if (!entry.rawChunks) { entry.rawChunks = []; entry.rawTotal = 0; }
         entry.rawChunks.push(chunk);
@@ -585,12 +585,12 @@ const DB = {
         const buf = await blob.arrayBuffer();
         // Write as temp segment file (complete file, not streaming)
         const root = await this._getOprfsRoot();
-        const segName = `pchat-${fileId}-${entry.segmentCount}`;
+        const segName = `pchat-${fileId}-${entry.segmentCount || 0}`;
         const segHandle = await root.getFileHandle(segName, { create: true });
         const segWritable = await segHandle.createWritable();
         await segWritable.write(buf);
         await segWritable.close();
-        entry.segmentCount++;
+        entry.segmentCount = (entry.segmentCount || 0) + 1;
         console.log(`[OPFS] Segment ${segName}: ${(buf.byteLength/1024/1024).toFixed(1)}MB (total segments: ${entry.segmentCount})`);
         // Track written bytes
         const ft = ChatApp.fileTransfer;
@@ -3221,21 +3221,22 @@ const ChatApp = {
         for (const [fid, pr] of Object.entries(this._pendingReceives)) {
             console.log(`[File] _pendingReceives entry: fid=${fid}, pr.peerId=${pr.peerId}, looking for peerId=${peerId}, match=${pr.peerId === peerId}`);
             if (pr.peerId !== peerId) continue;
-            if (ft.pending[fid]) continue;  // already handled above
+            if (ft.pending[fid]) continue;
             const opfsSize = await DB.getReceiveFileSize(fid);
             console.log(`[File] _pendingReceives opfsSize=${opfsSize} for fid=${fid}`);
-            if (opfsSize === 0) { delete this._pendingReceives[fid]; this._savePendingReceives(); continue; }
-            console.log(`[File] Resume after refresh: ${pr.name}, opfs=${(opfsSize/1024/1024).toFixed(1)}MB / ${(pr.size/1024/1024).toFixed(1)}MB`);
+            // Always request resume — opfsSize=0 means start from beginning
+            const received = Math.max(opfsSize, 0);
+            console.log(`[File] Resume after refresh: ${pr.name}, opfs=${(opfsSize/1024/1024).toFixed(1)}MB / ${(pr.size/1024/1024).toFixed(1)}MB, resumeFrom=${(received/1024/1024).toFixed(1)}MB`);
             // Reconstruct minimal info so subsequent chunks get progress UI
-            const info = { peerId, name: pr.name, size: pr.size, directTransfer: true, binaryChannel: true, totalRawReceived: opfsSize, totalChunks: -1, chunkCount: 0, _written: opfsSize };
+            const info = { peerId, name: pr.name, size: pr.size, directTransfer: true, binaryChannel: true, totalRawReceived: received, totalChunks: -1, chunkCount: 0, _written: received };
             ft.pending[fid] = info;
-            this._activeReceives[peerId] = { fileId: fid, name: pr.name, size: pr.size, pct: Math.round(opfsSize / pr.size * 100) };
+            this._activeReceives[peerId] = { fileId: fid, name: pr.name, size: pr.size, pct: Math.round(received / pr.size * 100) };
             this._renderContacts();
             if (this.activeConv && this.activeConv.id === peerId) {
                 this._insertTransferCard(fid, pr.name, pr.size, false);
-                this._updateTransferProgress(fid, Math.round(opfsSize / pr.size * 100), null);
+                this._updateTransferProgress(fid, Math.round(received / pr.size * 100), null);
             }
-            state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: opfsSize, totalSize: pr.size });
+            state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, totalSize: pr.size });
         }
     },
 
