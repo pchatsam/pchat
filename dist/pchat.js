@@ -1439,6 +1439,25 @@ const ChatApp = {
     _savePendingReceives() {
         localStorage.setItem('pchat_pending_receives', JSON.stringify(this._pendingReceives));
     },
+
+    async clearOPFS() {
+        if (!confirm('清空所有 OPFS 缓存？正在进行中的传输会中断。')) return;
+        try {
+            const root = await DB._getOprfsRoot();
+            const names = [];
+            for await (const [name] of root.entries()) { names.push(name); }
+            for (const name of names) {
+                try { await root.removeEntry(name, { recursive: true }); } catch(e) {}
+            }
+        } catch(e) {
+            console.warn('[OPFS] List failed:', e.message);
+        }
+        this._pendingSends = {}; this._savePendingSends();
+        this._pendingReceives = {}; this._savePendingReceives();
+        for (const k of Object.keys(DB._directWriters)) delete DB._directWriters[k];
+        this.showAlert('OPFS 已清空');
+    },
+
     call: {
         active: false,
         peerId: null,
