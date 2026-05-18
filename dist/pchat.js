@@ -2804,6 +2804,11 @@ const ChatApp = {
     // ---- File receive: header ----
     _onFileHeader(peerId, d) {
         const ft = this.fileTransfer;
+        // If already resumed from refresh, skip header (stale re-delivery)
+        if (ft.pending[d.fileId]) {
+            console.log(`[File] Header skipped (already resumed): ${d.name}, fileId=${d.fileId}`);
+            return;
+        }
         const info = {
             peerId,
             name: d.name,
