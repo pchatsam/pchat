@@ -3179,6 +3179,7 @@ const ChatApp = {
         }
         // Also check _pendingReceives for transfers that survived page refresh
         for (const [fid, pr] of Object.entries(this._pendingReceives)) {
+            console.log(`[File] _pendingReceives entry: fid=${fid}, pr.peerId=${pr.peerId}, looking for peerId=${peerId}, match=${pr.peerId === peerId}`);
             if (pr.peerId !== peerId) continue;
             if (ft.pending[fid]) continue;  // already handled above
             const opfsSize = await DB.getReceiveFileSize(fid);
