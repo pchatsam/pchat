@@ -3185,7 +3185,6 @@ const ChatApp = {
             if (finalOk) {
                 console.log(`[File] Ack received: ${file.name}`);
             }
-            this._finishTransferCard(fileId, fileId, file.name, true);
 
             // Store metadata-only message (no fileData — receiver gets it from OPFS)
             const now = Date.now();
@@ -3198,7 +3197,15 @@ const ChatApp = {
                 fileId,
             };
             await DB.putRaw("messages", sentMsg);
-            // Don't _appendMsg — the transfer progress card IS the message
+
+            // Replace progress card with proper message bubble (same as re-entry)
+            const progressRow = document.getElementById(`transfer-${fileId}`);
+            if (progressRow) progressRow.remove();
+            delete this._transferThrottle[fileId];
+            delete this._transferSpeedCalcAt[fileId];
+            delete this._transferStartTimes[fileId];
+            delete this._transferSizes?.[fileId];
+            this._appendMsg(sentMsg);
 
             const contact = this.contacts.find(c => c.userId === peerId);
             if (contact) {
