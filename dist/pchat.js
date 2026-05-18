@@ -1356,6 +1356,8 @@ const ChatApp = {
     _activeReceives: {},
     // Active sends for sidebar + re-entry progress (peerId → {fileId, name, size, pct})
     _activeSends: {},
+    // Active Binary DC send channels for cancellation (fileId → DataConnection)
+    _binarySendChannels: {},
     // Pending sends persisted to localStorage: {fileId: {name, size, mime, peerId, progress, ts}}
     _pendingSends: {},
 
@@ -3163,6 +3165,7 @@ const ChatApp = {
         const offset = data.receivedBytes || 0;
         const chunkSize = 262144;
         const fileConn = PeerConn.peer.connect(peerId, { label: 'file-' + fid, serialization: 'binary', reliable: true });
+        this._binarySendChannels[fid] = fileConn;
         await new Promise((resolve, reject) => {
             fileConn.on('open', resolve); fileConn.on('error', reject);
             setTimeout(() => reject(new Error('Timeout')), 15000);
@@ -3181,6 +3184,7 @@ const ChatApp = {
         }
         state.conn.send({ type: "file-footer", fileId: fid });
         fileConn.close();
+        delete this._binarySendChannels[fid];
 
         const acked = await new Promise((r) => {
             const h = (d) => { if (d.type==="file-ack"&&d.fileId===fid) { clearTimeout(t); state.conn.off("data",h); r(true); } };
@@ -3487,6 +3491,7 @@ const ChatApp = {
             const fileConn = PeerConn.peer.connect(peerId, {
                 label: 'file-' + fileId, serialization: 'binary', reliable: true,
             });
+            this._binarySendChannels[fileId] = fileConn;
             await new Promise((resolve, reject) => {
                 fileConn.on('open', resolve); fileConn.on('error', reject);
                 setTimeout(() => reject(new Error('Binary channel timeout')), 15000);
@@ -3521,6 +3526,7 @@ const ChatApp = {
             } catch(e) {
                 console.error('[File] Binary send error:', e);
                 fileConn.close();
+                delete this._binarySendChannels[fileId];
                 delete this._activeSends[peerId];
                 this._renderContacts();
                 return;
@@ -3539,6 +3545,7 @@ const ChatApp = {
             });
 
             fileConn.close();
+            delete this._binarySendChannels[fileId];
             if (finalOk) console.log(`[File] Ack received: ${file.name}`);
 
             const now = Date.now();
@@ -3909,38 +3916,56 @@ const ChatApp = {
 
     async cancelTransfer(fileId) {
         console.log('[Transfer] Cancel:', fileId);
+        // ---- Sender side: close Binary DC + clean OPFS + tracking ----
+        const fileConn = this._binarySendChannels[fileId];
+        if (fileConn) {
+            try { fileConn.close(); } catch(e) {}
+            delete this._binarySendChannels[fileId];
+        }
+        const ps = this._pendingSends[fileId];
+        if (ps) {
+            console.log('[Transfer] Cleaning up pending send:', ps.name);
+            delete this._pendingSends[fileId];
+            this._savePendingSends();
+            DB.deleteOutgoingFile(fileId).catch(() => {});
+        }
+        const peerId = ps?.peerId || this.activeConv?.id || '';
+        delete this._activeSends[peerId];
+
+        // ---- Receiver side: cancel + clean OPFS receive ----
         const ft = this.fileTransfer;
         const info = ft.pending[fileId];
         if (info) {
-            // Send cancel to peer
             const peer = PeerConn.peers[info.peerId];
             if (peer && peer.conn && peer.conn.open) {
                 peer.conn.send({ type: 'file-cancel', fileId });
             }
-            // Cleanup OPFS
             await DB._flushRawBuffer(fileId).catch(() => {});
             await DB.closeDirectFile(fileId).catch(() => {});
             await DB.deleteDirectFile(fileId).catch(() => {});
             delete ft.pending[fileId];
+            delete this._activeReceives[info.peerId];
         }
-        // Remove progress card
+
+        // ---- Remove progress card + throttle state ----
         const row = document.getElementById(`transfer-${fileId}`);
         if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
-        // Clean up throttle state
         delete this._transferThrottle[fileId];
         delete this._transferSpeedCalcAt[fileId];
         delete this._transferStartTimes[fileId];
         delete this._transferSizes?.[fileId];
-        // Delete stored message
-        const msgs = await DB.listMessagesByPeer(this.activeConv?.id || '', this.my.aesKey);
+
+        // ---- Delete DB messages (both sent:false chunked, and receive-side direct-file) ----
+        const msgs = await DB.listMessagesByPeer(peerId, this.my.aesKey);
         for (const m of msgs) {
-            if (m.type === 'direct-file' && m.fileId === fileId) {
+            if ((m.type === 'direct-file' || m.type === 'file' || m.type === 'image') && m.fileId === fileId) {
                 const tx = DB.db.transaction('messages', 'readwrite');
                 tx.objectStore('messages').delete(m.id);
                 await new Promise(r => { tx.oncomplete = r; });
                 break;
             }
         }
+        this._renderContacts();
     },
 
     _onFileCancel(peerId, d) {
