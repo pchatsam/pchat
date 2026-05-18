@@ -1027,6 +1027,15 @@ const PeerConn = {
             this.flushPending(peerId);
             // Request resume for any incomplete file transfers
             ChatApp._requestFileResume(peerId);
+            // Resume voice call if it was in reconnect mode
+            if (ChatApp.call._reconnecting) {
+                console.log("[Call] Reconnecting call to", peerId);
+                ChatApp.call._reconnecting = false;
+                if (ChatApp.call.direction === "sent") {
+                    PeerConn.call(peerId);
+                }
+                // received calls: caller will re-initiate
+            }
         });
 
         conn.on("error", (err) => {
@@ -1256,7 +1265,7 @@ const PeerConn = {
     // Flush pending messages (text, voice, files)
     async flushPending(peerId) {
         const msgs = await ChatApp.getMessages(peerId);
-        const pending = msgs.filter(m => m.direction === "sent" && !m.sent);
+        const pending = msgs.filter(m => m.direction === "sent" && !m.sent && m.type !== "call-log");
         const state = this.peers[peerId];
         if (!state || !state.conn || !state.conn.open) return;
         console.log(`[PeerConn] Flushing ${pending.length} pending messages to ${peerId}`);
@@ -4152,7 +4161,12 @@ const ChatApp = {
                 }, 1000);
             }
         });
-        call.on("close", () => { this._onCallEnd(); });
+        call.on("close", () => {
+            // If DC is still alive, call was hung up normally. If DC is dead, enter reconnect.
+            const state = PeerConn.peers[peerId];
+            const dcAlive = state && state.conn && state.conn.open;
+            this._onCallEnd(!dcAlive);
+        });
         call.on("error", (err) => { console.error("[Call] error:", err); this.hangupCall(); });
         
         const contact = this.contacts.find(ct => ct.userId === peerId);
@@ -4267,7 +4281,11 @@ const ChatApp = {
                 if (c.audio) { c.audio.pause(); c.audio.srcObject = null; }
                 c.audio = new Audio(); c.audio.srcObject = remoteStream; c.audio.play();
             });
-            call.on("close", () => { this._onCallEnd(); });
+            call.on("close", () => {
+                const state2 = PeerConn.peers[peerId];
+                const dcAlive2 = state2 && state2.conn && state2.conn.open;
+                this._onCallEnd(!dcAlive2);
+            });
             call.on("error", (err) => { console.error("[Call] error:", err); this.hangupCall(); });
             const contact = this.contacts.find(ct => ct.userId === peerId);
             const name = contact ? (contact.nickname || peerId) : peerId;
@@ -4302,10 +4320,31 @@ const ChatApp = {
         console.log("[Call] Hangup");
         this._onCallEnd();
     },
-    
+
+    _updateCallStatus(text, animating) {
+        const el = document.getElementById("call-status");
+        if (el) {
+            el.textContent = text;
+            el.className = animating ? 'call-reconnecting' : '';
+        }
+    },
+
     // 通话结束统一处理
-    async _onCallEnd() {
+    async _onCallEnd(reconnecting) {
         const c = this.call;
+        
+        if (reconnecting && c.active) {
+            // DC dropped but call was active — show reconnecting, keep UI
+            console.log("[Call] Entering reconnect mode");
+            c._reconnecting = true;
+            this._updateCallStatus(_i18n.t('pchat.status.reconnecting'), true);
+            return;
+        }
+        
+        if (c._reconnecting) {
+            // Call was in reconnect mode but now truly ended
+            c._reconnecting = false;
+        }
         
         // 计算通话时长并记录
         if (c.startTime) {
@@ -4338,7 +4377,8 @@ const ChatApp = {
             ts: now,
             direction: direction || "received",
             fromId: peerId,
-            type: "call-log"
+            type: "call-log",
+            sent: true  // call records are local, never forwarded
         };
         
         await DB.put("messages", msg, this.my.aesKey);
