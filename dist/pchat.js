@@ -3264,6 +3264,7 @@ const ChatApp = {
                 if (!document.getElementById(`transfer-${fid}`)) {
                     this._insertTransferCard(fid, pr.name, pr.size, false);
                 }
+                this._transferResumeBaseBytes[fid] = received;
                 this._updateTransferProgress(fid, Math.round(received / pr.size * 100), null);
             }
             state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, totalSize: pr.size });
@@ -3877,6 +3878,7 @@ const ChatApp = {
                 : (info.totalChunks > 0 ? Math.round(info.chunkCount / info.totalChunks * 100) : 0);
             if (!document.getElementById(`transfer-${fid}`)) {
                 this._insertTransferCard(fid, info.name, info.size, false);
+                this._transferResumeBaseBytes[fid] = Math.round(Math.min(pct, 99) / 100 * info.size);
                 this._updateTransferProgress(fid, Math.min(pct, 99), null);
             }
         }
@@ -3891,6 +3893,7 @@ const ChatApp = {
                 if (!document.getElementById(`transfer-${as.fileId}`)) {
                     this._insertTransferCard(as.fileId, as.name, as.size, true);
                 }
+                this._transferResumeBaseBytes[as.fileId] = Math.round(as.pct / 100 * as.size);
                 if (as.pct < 100) {
                     this._updateTransferProgress(as.fileId, as.pct, `发送中 ${as.pct}%`);
                 } else {
@@ -4032,6 +4035,7 @@ const ChatApp = {
 
     _transferThrottle: {},
     _transferSpeedCalcAt: {},
+    _transferResumeBaseBytes: {},
     _updateTransferProgress(transferId, pct, status, fileId, fileName) {
         // Throttle: max 1 DOM update per 100ms per transfer
         // Always allow: status changes (e.g. "等待对方确认") and completion (≥99%)
