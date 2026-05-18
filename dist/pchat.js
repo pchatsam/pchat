@@ -3458,7 +3458,17 @@ const ChatApp = {
         } catch(e) { console.error('[Transfer] insertTransferCard error:', e); return null; }
     },
 
+    _transferThrottle: {},
+    _transferSpeedCalcAt: {},
     _updateTransferProgress(transferId, pct, status, fileId, fileName) {
+        // Throttle: max 1 DOM update per 100ms per transfer
+        // Always allow: status changes (e.g. "等待对方确认") and completion (≥99%)
+        const now = Date.now();
+        const last = this._transferThrottle[transferId] || 0;
+        const isComplete = parseFloat(pct) >= 99;
+        if (!isComplete && !status && now - last < 100) return;
+        this._transferThrottle[transferId] = now;
+
         const bar = document.getElementById(`transfer-bar-${transferId}`);
         const pctEl = document.getElementById(`transfer-pct-${transferId}`);
         const stEl = document.getElementById(`transfer-status-${transferId}`);
@@ -3466,18 +3476,22 @@ const ChatApp = {
         if (bar) bar.style.width = `${Math.min(100, Math.round(pct))}%`;
         if (pctEl) pctEl.textContent = `${Number(pct).toFixed(1)}%`;
         if (stEl && status) stEl.textContent = status;
-        // Speed & ETA
+        // Speed & ETA — recalc every ~500ms to avoid jitter
         if (spdEl && this._transferStartTimes[transferId]) {
-            const elapsed = (Date.now() - this._transferStartTimes[transferId]) / 1000;
-            const pctNum = parseFloat(pct);
-            if (elapsed > 1 && pctNum > 0) {
-                const totalSize = this._transferSizes?.[transferId] || 0;
-                const bytesDone = totalSize * pctNum / 100;
-                const speed = bytesDone / elapsed;
-                const spdStr = speed > 1024*1024 ? `${(speed/1024/1024).toFixed(1)} MB/s` : `${(speed/1024).toFixed(0)} KB/s`;
-                const remaining = pctNum > 0 ? (100 - pctNum) / pctNum * elapsed : 0;
-                const etaStr = remaining > 3600 ? `${Math.round(remaining/3600)}h${Math.round(remaining%3600/60)}m` : remaining > 60 ? `${Math.round(remaining/60)}分` : `${Math.round(remaining)}秒`;
-                spdEl.textContent = pctNum < 99 ? `${spdStr} · 剩余${etaStr}` : '';
+            const lastSpeedCalc = this._transferSpeedCalcAt[transferId] || 0;
+            if (now - lastSpeedCalc >= 500) {
+                this._transferSpeedCalcAt[transferId] = now;
+                const elapsed = (now - this._transferStartTimes[transferId]) / 1000;
+                const pctNum = parseFloat(pct);
+                if (elapsed > 1 && pctNum > 0) {
+                    const totalSize = this._transferSizes?.[transferId] || 0;
+                    const bytesDone = totalSize * pctNum / 100;
+                    const speed = bytesDone / elapsed;
+                    const spdStr = speed > 1024*1024 ? `${(speed/1024/1024).toFixed(1)} MB/s` : `${(speed/1024).toFixed(0)} KB/s`;
+                    const remaining = pctNum > 0 ? (100 - pctNum) / pctNum * elapsed : 0;
+                    const etaStr = remaining > 3600 ? `${Math.round(remaining/3600)}h${Math.round(remaining%3600/60)}m` : remaining > 60 ? `${Math.round(remaining/60)}分` : `${Math.round(remaining)}秒`;
+                    spdEl.textContent = pctNum < 99 ? `${spdStr} · 剩余${etaStr}` : '';
+                }
             }
         }
         try { this._scroll(); } catch(e) {}
@@ -3504,6 +3518,11 @@ const ChatApp = {
         } catch(e) {
             console.error('[Transfer] finishTransferCard error:', e);
         }
+        // Clean up throttle state for this transfer
+        delete this._transferThrottle[transferId];
+        delete this._transferSpeedCalcAt[transferId];
+        delete this._transferStartTimes[transferId];
+        delete this._transferSizes?.[transferId];
     },
 
 
@@ -3526,6 +3545,11 @@ const ChatApp = {
         // Remove progress card
         const row = document.getElementById(`transfer-${fileId}`);
         if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
+        // Clean up throttle state
+        delete this._transferThrottle[fileId];
+        delete this._transferSpeedCalcAt[fileId];
+        delete this._transferStartTimes[fileId];
+        delete this._transferSizes?.[fileId];
         // Delete stored message
         const msgs = await DB.listMessagesByPeer(this.activeConv?.id || '', this.my.aesKey);
         for (const m of msgs) {
