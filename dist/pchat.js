@@ -531,22 +531,14 @@ const DB = {
 
     // Open a writable stream for a direct-transfer file
     async openDirectFile(fileId, fileName) {
-        const root = await this._getOprfsRoot();
-        const handle = await root.getFileHandle(`pchat-${fileId}`, { create: true });
-        const writable = await handle.createWritable({ keepExistingData: false });
-        // Preserve any chunks that arrived before header (lazy entry)
+        // Temp segment files: pchat-${fileId}-0, pchat-${fileId}-1, ...
+        // Merged into pchat-${fileId} on completion
         const existing = DB._directWriters[fileId];
         DB._directWriters[fileId] = {
-            writable, handle, fileName,
-            buffer: existing?.buffer || [],
-            bufferedSize: existing?.bufferedSize || 0,
+            fileName, segmentCount: existing?.segmentCount || 0,
             rawChunks: existing?.rawChunks || [],
             rawTotal: existing?.rawTotal || 0,
         };
-        // If lazy chunks were buffered, flush them now
-        if (existing?.rawChunks?.length > 0) {
-            DB._flushRawBuffer(fileId).catch(e => console.error('[OPFS] lazy flush failed:', e));
-        }
         return true;
     },
 
@@ -580,7 +572,7 @@ const DB = {
         }
     },
 
-    // Flush raw binary chunks to OPFS — no base64, no atob, no charCodeAt!
+    // Flush raw binary chunks to OPFS as a temp segment file
     async _flushRawBuffer(fileId) {
         const entry = DB._directWriters[fileId];
         if (!entry || !entry.rawChunks || entry.rawChunks.length === 0) return;
@@ -591,8 +583,16 @@ const DB = {
         entry.rawTotal = 0;
         const blob = new Blob(chunks);
         const buf = await blob.arrayBuffer();
-        await entry.writable.write(buf);
-        // Track written bytes for progress comparison
+        // Write as temp segment file (complete file, not streaming)
+        const root = await this._getOprfsRoot();
+        const segName = `pchat-${fileId}-${entry.segmentCount}`;
+        const segHandle = await root.getFileHandle(segName, { create: true });
+        const segWritable = await segHandle.createWritable();
+        await segWritable.write(buf);
+        await segWritable.close();
+        entry.segmentCount++;
+        console.log(`[OPFS] Segment ${segName}: ${(buf.byteLength/1024/1024).toFixed(1)}MB (total segments: ${entry.segmentCount})`);
+        // Track written bytes
         const ft = ChatApp.fileTransfer;
         const info = ft.pending[fileId];
         if (info) info._written = (info._written || 0) + buf.byteLength;
@@ -633,6 +633,9 @@ const DB = {
         }
 
         await entry.writable.write(bytes);
+        // Close & reopen to commit data to OPFS
+        await entry.writable.close();
+        entry.writable = await entry.handle.createWritable({ keepExistingData: true });
         entry._flushing = false;
         // If more chunks arrived during flush, flush again
         if (entry.buffer && entry.buffer.length > 0) {
@@ -640,20 +643,35 @@ const DB = {
         }
     },
 
-    // Close direct file stream, flush remaining buffer first
+    // Close direct file: merge all temp segments into final file, then delete segments
     async closeDirectFile(fileId) {
         const entry = DB._directWriters[fileId];
         if (!entry) return null;
-        // Flush any remaining buffered chunks (base64 or raw)
-        if (entry.buffer && entry.buffer.length > 0) {
-            await DB._flushDirectBuffer(fileId);
-        }
+        // Flush any remaining raw chunks
         if (entry.rawChunks && entry.rawChunks.length > 0) {
             await DB._flushRawBuffer(fileId);
         }
-        await entry.writable.close();
         const name = entry.fileName;
+        const segCount = entry.segmentCount || 0;
         delete DB._directWriters[fileId];
+
+        // Merge segments into final file
+        if (segCount > 0) {
+            const root = await this._getOprfsRoot();
+            const finalHandle = await root.getFileHandle(`pchat-${fileId}`, { create: true });
+            const finalWritable = await finalHandle.createWritable();
+            for (let i = 0; i < segCount; i++) {
+                try {
+                    const segHandle = await root.getFileHandle(`pchat-${fileId}-${i}`);
+                    const segFile = await segHandle.getFile();
+                    const buf = await segFile.arrayBuffer();
+                    await finalWritable.write(buf);
+                    await root.removeEntry(`pchat-${fileId}-${i}`);
+                } catch(e) { console.warn('[OPFS] Segment merge skip:', i, e.message); }
+            }
+            await finalWritable.close();
+            console.log(`[OPFS] Merged ${segCount} segments for ${fileId}`);
+        }
         return { fileId, fileName: name };
     },
 
@@ -676,19 +694,41 @@ const DB = {
         try {
             const root = await this._getOprfsRoot();
             await root.removeEntry(`pchat-${fileId}`);
-        } catch (e) {
-            // File may not exist, ignore
+        } catch (e) { /* may not exist */ }
+        // Also clean up any leftover temp segments
+        for (let i = 0; ; i++) {
+            try { await root.removeEntry(`pchat-${fileId}-${i}`); } catch(e) { break; }
         }
     },
 
-    // Get size of partially-received file (for resume after page refresh)
+    // Close all open writables (called on page unload to commit data)
+    _closeAllWriters() {
+        for (const [fid, entry] of Object.entries(DB._directWriters)) {
+            try { entry.writable.close(); } catch(e) {}
+        }
+    },
+
+    // Get size of partially-received file (sum of temp segment sizes)
     async getReceiveFileSize(fileId) {
         try {
             const root = await this._getOprfsRoot();
-            const handle = await root.getFileHandle(`pchat-${fileId}`);
-            const file = await handle.getFile();
-            return file.size;
-        } catch(e) { return 0; }
+            let totalSize = 0;
+            // Also check final merged file
+            try {
+                const finalHandle = await root.getFileHandle(`pchat-${fileId}`);
+                const finalFile = await finalHandle.getFile();
+                if (finalFile.size > 0) return finalFile.size;
+            } catch(e) { /* no final file yet */ }
+            // Sum temp segments
+            for (let i = 0; ; i++) {
+                try {
+                    const segHandle = await root.getFileHandle(`pchat-${fileId}-${i}`);
+                    const segFile = await segHandle.getFile();
+                    totalSize += segFile.size;
+                } catch(e) { break; }  // no more segments
+            }
+            return totalSize;
+        } catch(e) { console.warn('[OPFS] getReceiveFileSize error:', fileId, e.message); return 0; }
     },
 
     // ---- Outgoing file storage (OPFS, for resume after refresh) ----
@@ -3183,7 +3223,8 @@ const ChatApp = {
             if (pr.peerId !== peerId) continue;
             if (ft.pending[fid]) continue;  // already handled above
             const opfsSize = await DB.getReceiveFileSize(fid);
-            if (opfsSize === 0) continue;  // nothing persisted yet
+            console.log(`[File] _pendingReceives opfsSize=${opfsSize} for fid=${fid}`);
+            if (opfsSize === 0) { delete this._pendingReceives[fid]; this._savePendingReceives(); continue; }
             console.log(`[File] Resume after refresh: ${pr.name}, opfs=${(opfsSize/1024/1024).toFixed(1)}MB / ${(pr.size/1024/1024).toFixed(1)}MB`);
             // Reconstruct minimal info so subsequent chunks get progress UI
             const info = { peerId, name: pr.name, size: pr.size, directTransfer: true, binaryChannel: true, totalRawReceived: opfsSize, totalChunks: -1, chunkCount: 0, _written: opfsSize };
