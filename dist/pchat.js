@@ -2904,12 +2904,19 @@ const ChatApp = {
         console.log('[sendImage] all done');
     },
 
-    // ---- Send file ----
+    // ---- Send file (supports multiple) ----
     async sendFile(event) {
-        const file = event.target.files[0];
-        if (!file || !this.activeConv) return;
+        const files = event.target.files;
+        if (!files || files.length === 0 || !this.activeConv) return;
+        const fileArray = Array.from(files);
         event.target.value = "";
-        await this._sendFileInternal(file);
+        for (const file of fileArray) {
+            try {
+                await this._sendFileInternal(file);
+            } catch(err) {
+                console.error('[sendFile] error:', err);
+            }
+        }
     },
 
     // ---- Voice Message Recording ----
