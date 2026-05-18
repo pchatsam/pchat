@@ -2700,6 +2700,14 @@ const ChatApp = {
         await DB.put("messages", msg, this.my.aesKey);
         console.log('[File] Message stored, msgId:', id, 'hasFileData:', !!msg.fileData, 'fileDataLen:', (msg.fileData || '').length);
 
+        // Remove transfer progress card, replace with proper message bubble
+        const progressRow = document.getElementById(`transfer-${d.fileId}`);
+        if (progressRow) progressRow.remove();
+        delete this._transferThrottle[d.fileId];
+        delete this._transferSpeedCalcAt[d.fileId];
+        delete this._transferStartTimes[d.fileId];
+        delete this._transferSizes?.[d.fileId];
+
         if (this.activeConv && this.activeConv.id === peerId) {
             this._appendMsg(msg);
         }
