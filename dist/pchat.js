@@ -3020,7 +3020,7 @@ const ChatApp = {
         if (progressRow) progressRow.remove();
         delete this._transferThrottle[fileId];
         delete this._transferSpeedCalcAt[fileId];
-        delete this._transferStartTimes[fileId];
+        delete this._transferStartTimes[fileId]; delete this._transferResumeBaseBytes?.[fileId];
         delete this._transferSizes?.[fileId];
         delete this._activeReceives[peerId];
         this._renderContacts();
@@ -3088,7 +3088,7 @@ const ChatApp = {
             if (progressRow) progressRow.remove();
             delete this._transferThrottle[d.fileId];
             delete this._transferSpeedCalcAt[d.fileId];
-            delete this._transferStartTimes[d.fileId];
+            delete this._transferStartTimes[d.fileId]; delete this._transferResumeBaseBytes?.[d.fileId];
             delete this._transferSizes?.[d.fileId];
             delete this._activeReceives[peerId];
             this._renderContacts();
@@ -3300,6 +3300,10 @@ const ChatApp = {
         }
         this._activeSends[peerId] = { fileId: fid, name: pending.name, size: pending.size, pct: startPct };
         this._renderContacts();
+        // Reset speed timer for resume (don't count pre-resume bytes in speed calc)
+        this._transferStartTimes[fid] = Date.now();
+        if (!this._transferResumeBaseBytes) this._transferResumeBaseBytes = {};
+        this._transferResumeBaseBytes[fid] = Math.round(startPct / 100 * pending.size);
         this._updateTransferProgress(fid, startPct, `续传中 ${startPct}%`);
         this._updateSidebarTransfer(peerId, `📤 ${pending.name.substring(0,15)}${pending.name.length>15?'...':''} ${startPct}%`);
 
@@ -3350,7 +3354,7 @@ const ChatApp = {
         if (pr) pr.remove();
         delete this._transferThrottle[fid];
         delete this._transferSpeedCalcAt[fid];
-        delete this._transferStartTimes[fid];
+        delete this._transferStartTimes[fid]; delete this._transferResumeBaseBytes?.[fid];
         delete this._transferSizes?.[fid];
         delete this._activeSends[peerId];
 
@@ -3732,7 +3736,7 @@ const ChatApp = {
             if (progressRow) progressRow.remove();
             delete this._transferThrottle[fileId];
             delete this._transferSpeedCalcAt[fileId];
-            delete this._transferStartTimes[fileId];
+            delete this._transferStartTimes[fileId]; delete this._transferResumeBaseBytes?.[fileId];
             delete this._transferSizes?.[fileId];
             delete this._activeSends[peerId];
             if (finalOk) { this._clearPendingSend(fileId, true); DB.deleteOutgoingFile(fileId).catch(() => {}); }
@@ -4054,7 +4058,8 @@ const ChatApp = {
                 if (elapsed > 1 && pctNum > 0) {
                     const totalSize = this._transferSizes?.[transferId] || 0;
                     const bytesDone = totalSize * pctNum / 100;
-                    const speed = bytesDone / elapsed;
+                    const resumeBase = this._transferResumeBaseBytes?.[transferId] || 0;
+                    const speed = (bytesDone - resumeBase) / elapsed;
                     const spdStr = speed > 1024*1024 ? `${(speed/1024/1024).toFixed(1)} MB/s` : `${(speed/1024).toFixed(0)} KB/s`;
                     const remaining = pctNum > 0 ? (100 - pctNum) / pctNum * elapsed : 0;
                     const etaStr = remaining > 3600 ? `${Math.round(remaining/3600)}h${Math.round(remaining%3600/60)}m` : remaining > 60 ? `${Math.round(remaining/60)}分` : `${Math.round(remaining)}秒`;
@@ -4089,7 +4094,7 @@ const ChatApp = {
         // Clean up throttle state for this transfer
         delete this._transferThrottle[transferId];
         delete this._transferSpeedCalcAt[transferId];
-        delete this._transferStartTimes[transferId];
+        delete this._transferStartTimes[transferId]; delete this._transferResumeBaseBytes?.[transferId];
         delete this._transferSizes?.[transferId];
     },
 
@@ -4134,7 +4139,7 @@ const ChatApp = {
         if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
         delete this._transferThrottle[fileId];
         delete this._transferSpeedCalcAt[fileId];
-        delete this._transferStartTimes[fileId];
+        delete this._transferStartTimes[fileId]; delete this._transferResumeBaseBytes?.[fileId];
         delete this._transferSizes?.[fileId];
 
         // ---- Delete DB messages (both sent:false chunked, and receive-side direct-file) ----
@@ -4191,7 +4196,7 @@ const ChatApp = {
         if (progressRow) progressRow.remove();
         delete this._transferThrottle[fileId];
         delete this._transferSpeedCalcAt[fileId];
-        delete this._transferStartTimes[fileId];
+        delete this._transferStartTimes[fileId]; delete this._transferResumeBaseBytes?.[fileId];
         delete this._transferSizes?.[fileId];
         delete this._activeReceives[info.peerId];
         delete this._pendingReceives[fileId];
