@@ -3154,15 +3154,27 @@ const ChatApp = {
         const fid = data.fileId;
         const pending = this._pendingSends[fid];
         if (!pending) { console.warn(`[File] Resume request for unknown file: ${fid}`); return; }
-        console.log(`[File] Resume: ${pending.name}, received=${(data.receivedBytes/1024/1024).toFixed(1)}MB`);
+        const offset = data.receivedBytes || 0;
+        const startPct = pending.size > 0 ? Math.round(offset / pending.size * 100) : 0;
+        console.log(`[File] Resume: ${pending.name}, from ${(offset/1024/1024).toFixed(1)}MB (${startPct}%)`);
 
         const state = PeerConn.peers[peerId];
         if (!state || !state.conn || !state.conn.open) return;
 
-        const file = await DB.getOutgoingFile(fid);
-        if (!file) { console.warn(`[File] OPFS file not found: ${fid}`); return; }
+        let file = await DB.getOutgoingFile(fid);
+        if (!file) {
+            await new Promise(r => setTimeout(r, 2000));
+            file = await DB.getOutgoingFile(fid);
+            if (!file) { console.warn(`[File] OPFS file not found: ${fid}`); return; }
+        }
 
-        const offset = data.receivedBytes || 0;
+        // Show progress card + sidebar
+        this._insertTransferCard(fid, pending.name, pending.size, true);
+        this._activeSends[peerId] = { fileId: fid, name: pending.name, size: pending.size, pct: startPct };
+        this._renderContacts();
+        this._updateTransferProgress(fid, startPct, `续传中 ${startPct}%`);
+        this._updateSidebarTransfer(peerId, `📤 ${pending.name.substring(0,15)}${pending.name.length>15?'...':''} ${startPct}%`);
+
         const chunkSize = 262144;
         const fileConn = PeerConn.peer.connect(peerId, { label: 'file-' + fid, serialization: 'binary', reliable: true });
         this._binarySendChannels[fid] = fileConn;
@@ -3171,7 +3183,6 @@ const ChatApp = {
             setTimeout(() => reject(new Error('Timeout')), 15000);
         });
 
-        console.log(`[File] Resuming binary send from ${(offset/1024/1024).toFixed(1)}MB`);
         let sentBytes = offset;
         while (sentBytes < file.size) {
             const segSize = 10 * 1024 * 1024;
@@ -3179,23 +3190,50 @@ const ChatApp = {
             const segBuf = await new Promise((r2, rj) => { const fr = new FileReader(); fr.onload = (e) => r2(new Uint8Array(e.target.result)); fr.onerror = rj; fr.readAsArrayBuffer(seg); });
             for (let i = 0; i < segBuf.length; i += chunkSize) {
                 const end = Math.min(i + chunkSize, segBuf.length);
+                while (fileConn._dc && fileConn._dc.bufferedAmount > 2 * 1024 * 1024) {
+                    await new Promise(r => setTimeout(r, 50));
+                }
                 fileConn.send(segBuf.slice(i, end)); sentBytes += (end - i);
             }
+            // Yield between segments to prevent buffer bloat
+            await new Promise(r => setTimeout(r, 0));
+            const pct = Math.round(sentBytes / file.size * 100);
+            this._updateTransferProgress(fid, pct, `续传中 ${pct}%`);
+            const as = this._activeSends[peerId];
+            if (as) { as.pct = pct; this._updateSidebarTransfer(peerId, `📤 ${as.name.substring(0,15)}${as.name.length>15?'...':''} ${pct}%`); }
         }
         state.conn.send({ type: "file-footer", fileId: fid });
         fileConn.close();
         delete this._binarySendChannels[fid];
+        this._updateTransferProgress(fid, 100, '等待对方确认...');
 
         const acked = await new Promise((r) => {
             const h = (d) => { if (d.type==="file-ack"&&d.fileId===fid) { clearTimeout(t); state.conn.off("data",h); r(true); } };
             const t = setTimeout(() => { state.conn.off("data",h); r(false); }, 120000);
             state.conn.on("data", h);
         });
+
+        // Clean up progress UI
+        const pr = document.getElementById(`transfer-${fid}`);
+        if (pr) pr.remove();
+        delete this._transferThrottle[fid];
+        delete this._transferSpeedCalcAt[fid];
+        delete this._transferStartTimes[fid];
+        delete this._transferSizes?.[fid];
+        delete this._activeSends[peerId];
+
         if (acked) {
             this._clearPendingSend(fid, true);
             DB.deleteOutgoingFile(fid).catch(() => {});
             console.log(`[File] Resume ack: ${pending.name}`);
+            // Show completed message
+            const now = Date.now();
+            const msg = { id: `msg_direct_${fid}`, peerId, ts: now, direction: "sent", sent: true, fromId: this.my.id, type: "direct-file", fileName: pending.name, mimeType: pending.mime, fileSize: pending.size, fileId: fid };
+            if (this.activeConv && this.activeConv.id === peerId) this._appendMsg(msg);
+            const contact = this.contacts.find(c => c.userId === peerId);
+            if (contact) { contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + pending.name, ts: now, fromId: this.my.id }; this.saveContact(contact); }
         }
+        this._renderContacts();
     },
 
     // ---- Send image file (supports multiple) ----
@@ -3480,8 +3518,8 @@ const ChatApp = {
             // ≥10MB: Binary DC — zero encoding overhead, seekable resume
             console.log(`[File] Binary DC (${(file.size/1024/1024).toFixed(1)}MB)`);
 
-            // Save to OPFS for resume across page refreshes
-            await DB.saveOutgoingFile(fileId, file).catch(e => console.warn('[OPFS] saveOutgoingFile failed:', e));
+            // Save to OPFS async (don't block sending)
+            DB.saveOutgoingFile(fileId, file).catch(e => console.warn('[OPFS] saveOutgoingFile failed:', e));
             this._pendingSends[fileId] = { name: file.name, size: file.size, mime: file.type, peerId, progress: 0, ts: Date.now() };
             this._savePendingSends();
 
@@ -3511,9 +3549,14 @@ const ChatApp = {
                     const segBuf = await new Promise((r2, rj) => { const fr = new FileReader(); fr.onload = (e) => r2(new Uint8Array(e.target.result)); fr.onerror = rj; fr.readAsArrayBuffer(seg); });
                     for (let i = 0; i < segBuf.length; i += chunkSize) {
                         const end = Math.min(i + chunkSize, segBuf.length);
+                        // Backpressure: pause if channel buffer exceeds 2MB
+                        while (fileConn._dc && fileConn._dc.bufferedAmount > 2 * 1024 * 1024) {
+                            await new Promise(r => setTimeout(r, 50));
+                        }
                         fileConn.send(segBuf.slice(i, end)); sentChunks++; sentBytes += (end - i);
-                        if (sentChunks % 10 === 0) {
-                            await new Promise(r => { const ah = (d) => { if (d.type==='file-ack'&&d.fileId===fileId) { conn.off('data',ah); r(); } }; conn.on('data', ah); setTimeout(() => { conn.off('data',ah); r(); }, 5000); });
+                        // Yield every 20 chunks to prevent buffer bloat
+                        if (sentChunks % 20 === 0) {
+                            await new Promise(r => setTimeout(r, 0));
                         }
                     }
                     offset += segSize;
@@ -3572,11 +3615,12 @@ const ChatApp = {
         }
 
         // <10MB: chunked base64 + encryption
-        console.log(`[File] Chunked (${(file.size/1024/1024).toFixed(2)}MB), encrypt=true`);
-
-        await DB.saveOutgoingFile(fileId, file).catch(e => console.warn('[OPFS] saveOutgoingFile failed:', e));
+        // Save to OPFS async (don't block sending)
+        DB.saveOutgoingFile(fileId, file).catch(e => console.warn('[OPFS] saveOutgoingFile failed:', e));
         this._pendingSends[fileId] = { name: file.name, size: file.size, mime: file.type, peerId, progress: 0, ts: Date.now() };
         this._savePendingSends();
+
+        console.log(`[File] Chunked (${(file.size/1024/1024).toFixed(2)}MB), encrypt=true`);
 
         const buffer = await new Promise((resolve, reject) => {
             const r = new FileReader();
