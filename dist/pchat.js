@@ -2602,8 +2602,6 @@ const ChatApp = {
             await DB.closeDirectFile(d.fileId);
             delete ft.pending[d.fileId];
 
-            ChatApp._finishTransferCard(d.fileId, d.fileId, info.name, false);
-
             const now = Date.now();
             const id = `msg_${peerId}_${now}_${Math.random().toString(36).slice(2,6)}`;
             const msg = {
@@ -2614,6 +2612,17 @@ const ChatApp = {
                 fileId: d.fileId,
             };
             await DB.putRaw("messages", msg);
+
+            // Replace progress card with proper message bubble (same as re-entry)
+            const progressRow = document.getElementById(`transfer-${d.fileId}`);
+            if (progressRow) progressRow.remove();
+            delete this._transferThrottle[d.fileId];
+            delete this._transferSpeedCalcAt[d.fileId];
+            delete this._transferStartTimes[d.fileId];
+            delete this._transferSizes?.[d.fileId];
+            if (this.activeConv && this.activeConv.id === peerId) {
+                this._appendMsg(msg);
+            }
 
             const contact = this.contacts.find(c => c.userId === peerId);
             if (contact) {
@@ -3592,7 +3601,7 @@ const ChatApp = {
         await DB._flushRawBuffer(fileId);
         await DB.closeDirectFile(fileId);
         delete ft.pending[fileId];
-        this._finishTransferCard(fileId, fileId, info.name, false);
+
         const now = Date.now();
         const msg = {
             id: `msg_${info.peerId}_${now}_${Math.random().toString(36).slice(2,6)}`,
@@ -3600,6 +3609,18 @@ const ChatApp = {
             type: "direct-file", fileName: info.name, mimeType: info.mime, fileSize: info.size, fileId,
         };
         await DB.putRaw("messages", msg);
+
+        // Replace progress card with proper message bubble (same as re-entry)
+        const progressRow = document.getElementById(`transfer-${fileId}`);
+        if (progressRow) progressRow.remove();
+        delete this._transferThrottle[fileId];
+        delete this._transferSpeedCalcAt[fileId];
+        delete this._transferStartTimes[fileId];
+        delete this._transferSizes?.[fileId];
+        if (this.activeConv && this.activeConv.id === info.peerId) {
+            this._appendMsg(msg);
+        }
+
         const ackPeer = PeerConn.peers[info.peerId];
         if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
             ackPeer.conn.send({ type: "file-ack", fileId });
