@@ -910,8 +910,7 @@ const PeerConn = {
                                 info._written = info._written || 0;
                                 const pct = netPct;
                                 if (info.chunkCount % 100 === 0) {
-                                    const writePct = info._written > 0 ? (info._written / info.size * 100).toFixed(1) : '0.0';
-                                    console.log(`[BinaryDC] #${info.chunkCount} net=${netPct.toFixed(1)}% write=${writePct}% (${(rawReceived/1024/1024).toFixed(0)}MB/${(info._written/1024/1024).toFixed(0)}MB)`);
+                                    // Progress log (silent, tracked via _updateTransferProgress)
                                 }
                                 _chunkCount++;
                                 // Mini-ack every 10 chunks for sender flow control
@@ -1095,7 +1094,9 @@ const PeerConn = {
         conn.on("data", async (data) => {
             try {
                 if (!data || !data.type) { console.log(`[PeerConn] ${peerId} data ignored (no type)`, data); return; }
-                console.log(`[PeerConn] ${peerId} data type=${data.type}`, data);
+                if (data.type !== "_ping" && data.type !== "_pong") {
+                    console.log(`[PeerConn] ${peerId} data type=${data.type}`, data);
+                }
                 const state = this.peers[peerId];
                 if (data.type === "add") {
                     console.log(`[PeerConn] ${peerId} received add request`, data);
