@@ -3261,7 +3261,9 @@ const ChatApp = {
             this._activeReceives[peerId] = { fileId: fid, name: pr.name, size: pr.size, pct: Math.round(received / pr.size * 100) };
             this._renderContacts();
             if (this.activeConv && this.activeConv.id === peerId) {
-                this._insertTransferCard(fid, pr.name, pr.size, false);
+                if (!document.getElementById(`transfer-${fid}`)) {
+                    this._insertTransferCard(fid, pr.name, pr.size, false);
+                }
                 this._updateTransferProgress(fid, Math.round(received / pr.size * 100), null);
             }
             state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, totalSize: pr.size });
@@ -3291,8 +3293,11 @@ const ChatApp = {
             if (!file) { console.warn(`[File] OPFS file not found: ${fid}`); return; }
         }
 
-        // Show progress card + sidebar
-        this._insertTransferCard(fid, pending.name, pending.size, true);
+        // Show progress card + sidebar (reuse existing if present)
+        const existingCard = document.getElementById(`transfer-${fid}`);
+        if (!existingCard) {
+            this._insertTransferCard(fid, pending.name, pending.size, true);
+        }
         this._activeSends[peerId] = { fileId: fid, name: pending.name, size: pending.size, pct: startPct };
         this._renderContacts();
         this._updateTransferProgress(fid, startPct, `续传中 ${startPct}%`);
@@ -3866,8 +3871,10 @@ const ChatApp = {
             const pct = info.directTransfer
                 ? (info.totalRawReceived > 0 ? Math.round(info.totalRawReceived / info.size * 100) : info.chunkCount > 0 ? Math.round(info.totalBase64Received * 0.75 / info.size * 100) : 0)
                 : (info.totalChunks > 0 ? Math.round(info.chunkCount / info.totalChunks * 100) : 0);
-            this._insertTransferCard(fid, info.name, info.size, false);
-            this._updateTransferProgress(fid, Math.min(pct, 99), null);
+            if (!document.getElementById(`transfer-${fid}`)) {
+                this._insertTransferCard(fid, info.name, info.size, false);
+                this._updateTransferProgress(fid, Math.min(pct, 99), null);
+            }
         }
         // Sends:
         const as = this._activeSends[peerId];
@@ -3877,7 +3884,9 @@ const ChatApp = {
                 m.fileId === as.fileId
             );
             if (!alreadyStored) {
-                this._insertTransferCard(as.fileId, as.name, as.size, true);
+                if (!document.getElementById(`transfer-${as.fileId}`)) {
+                    this._insertTransferCard(as.fileId, as.name, as.size, true);
+                }
                 if (as.pct < 100) {
                     this._updateTransferProgress(as.fileId, as.pct, `发送中 ${as.pct}%`);
                 } else {
