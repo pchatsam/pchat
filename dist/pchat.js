@@ -3184,19 +3184,23 @@ const ChatApp = {
         });
 
         let sentBytes = offset;
+        let sentChunks = 0;
         while (sentBytes < file.size) {
             const segSize = 10 * 1024 * 1024;
             const seg = file.slice(sentBytes, sentBytes + segSize);
             const segBuf = await new Promise((r2, rj) => { const fr = new FileReader(); fr.onload = (e) => r2(new Uint8Array(e.target.result)); fr.onerror = rj; fr.readAsArrayBuffer(seg); });
             for (let i = 0; i < segBuf.length; i += chunkSize) {
                 const end = Math.min(i + chunkSize, segBuf.length);
-                while (fileConn._dc && fileConn._dc.bufferedAmount > 2 * 1024 * 1024) {
-                    await new Promise(r => setTimeout(r, 50));
+                fileConn.send(segBuf.slice(i, end)); sentBytes += (end - i); sentChunks++;
+                // Flow control: wait for receiver ack every 10 chunks
+                if (sentChunks % 10 === 0) {
+                    await new Promise(r => {
+                        const ah = (d) => { if (d.type==='file-ack'&&d.fileId===fid) { state.conn.off('data',ah); r(); } };
+                        state.conn.on('data', ah);
+                        setTimeout(() => { state.conn.off('data',ah); r(); }, 5000);
+                    });
                 }
-                fileConn.send(segBuf.slice(i, end)); sentBytes += (end - i);
             }
-            // Yield between segments to prevent buffer bloat
-            await new Promise(r => setTimeout(r, 0));
             const pct = Math.round(sentBytes / file.size * 100);
             this._updateTransferProgress(fid, pct, `续传中 ${pct}%`);
             const as = this._activeSends[peerId];
@@ -3549,14 +3553,14 @@ const ChatApp = {
                     const segBuf = await new Promise((r2, rj) => { const fr = new FileReader(); fr.onload = (e) => r2(new Uint8Array(e.target.result)); fr.onerror = rj; fr.readAsArrayBuffer(seg); });
                     for (let i = 0; i < segBuf.length; i += chunkSize) {
                         const end = Math.min(i + chunkSize, segBuf.length);
-                        // Backpressure: pause if channel buffer exceeds 2MB
-                        while (fileConn._dc && fileConn._dc.bufferedAmount > 2 * 1024 * 1024) {
-                            await new Promise(r => setTimeout(r, 50));
-                        }
                         fileConn.send(segBuf.slice(i, end)); sentChunks++; sentBytes += (end - i);
-                        // Yield every 20 chunks to prevent buffer bloat
-                        if (sentChunks % 20 === 0) {
-                            await new Promise(r => setTimeout(r, 0));
+                        // Flow control: wait for receiver ack every 10 chunks
+                        if (sentChunks % 10 === 0) {
+                            await new Promise(r => {
+                                const ah = (d) => { if (d.type==='file-ack'&&d.fileId===fileId) { conn.off('data',ah); r(); } };
+                                conn.on('data', ah);
+                                setTimeout(() => { conn.off('data',ah); r(); }, 5000);
+                            });
                         }
                     }
                     offset += segSize;
