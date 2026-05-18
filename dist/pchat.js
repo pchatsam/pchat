@@ -1174,6 +1174,8 @@ const ChatApp = {
     },
     // Active receives for sidebar progress (peerId → {fileId, name, size, pct})
     _activeReceives: {},
+    // Active sends for sidebar + re-entry progress (peerId → {fileId, name, size, pct})
+    _activeSends: {},
     call: {
         active: false,
         peerId: null,
@@ -3164,6 +3166,8 @@ const ChatApp = {
             });
 
             this._insertTransferCard(fileId, file.name, file.size, true);
+            this._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
+            this._renderContacts();
 
             // Send all chunks in one pass with pacing
             let sentChunks = 0;
@@ -3195,10 +3199,15 @@ const ChatApp = {
                     const pct = (sentBytes / file.size * 100).toFixed(1);
                     console.log(`[File] Chunk#${sentChunks} ${(sentBytes/1024/1024).toFixed(0)}MB (${pct}%)`);
                     this._updateTransferProgress(fileId, parseFloat(pct), `发送中 ${pct}%`);
+                    // Update sidebar send progress
+                    const as = this._activeSends[peerId];
+                    if (as) { as.pct = Math.round(parseFloat(pct)); this._updateSidebarTransfer(peerId, `📤 ${as.name.substring(0, 15)}${as.name.length > 15 ? '...' : ''} ${as.pct}%`); }
                 }
             } catch(e) {
                 console.error('[File] Binary send error:', e);
                 fileConn.close();
+                delete this._activeSends[peerId];
+                this._renderContacts();
                 return;
             }
 
@@ -3207,6 +3216,9 @@ const ChatApp = {
             conn.send({ type: "file-footer", fileId });
             console.log(`[File] All ${sentChunks} chunks ${(sentBytes/1024/1024).toFixed(0)}MB sent, waiting for receiver...`);
             this._updateTransferProgress(fileId, 100, '等待对方确认...');
+            // Update sidebar
+            const as2 = this._activeSends[peerId];
+            if (as2) { as2.pct = 100; this._updateSidebarTransfer(peerId, `📤 ${as2.name.substring(0, 15)}${as2.name.length > 15 ? '...' : ''} 100%`); }
 
             const finalOk = await new Promise((ackResolve) => {
                 const handler = (data) => {
@@ -3249,6 +3261,8 @@ const ChatApp = {
             delete this._transferSpeedCalcAt[fileId];
             delete this._transferStartTimes[fileId];
             delete this._transferSizes?.[fileId];
+            delete this._activeSends[peerId];
+            this._renderContacts();
             this._appendMsg(sentMsg);
 
             const contact = this.contacts.find(c => c.userId === peerId);
@@ -3278,8 +3292,22 @@ const ChatApp = {
             });
             const base64 = arrayBufferToBase64(buffer);
             console.log(`[File] Read complete, base64 length=${base64.length}`);
+            // Show progress card + track send
+            this._insertTransferCard(fileId, file.name, file.size, true);
+            this._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
+            this._renderContacts();
+            this._updateSidebarTransfer(peerId, `📤 ${file.name.substring(0, 15)}${file.name.length > 15 ? '...' : ''} 0%`);
             await sendChunks(base64, file.size);
+            // Remove progress card, clean up tracking (storeMsg handles _appendMsg)
+            const pr = document.getElementById(`transfer-${fileId}`);
+            if (pr) pr.remove();
+            delete this._transferThrottle[fileId];
+            delete this._transferSpeedCalcAt[fileId];
+            delete this._transferStartTimes[fileId];
+            delete this._transferSizes?.[fileId];
+            delete this._activeSends[peerId];
             await storeMsg(base64, true);
+            this._renderContacts();
             console.log(`[File] Done: ${file.name}`);
             return;
         }
@@ -3305,8 +3333,22 @@ const ChatApp = {
                     return;
                 }
                 console.log(`[File] Read complete, base64 length=${base64.length}`);
+                // Show progress card + track send
+                ChatApp._insertTransferCard(fileId, file.name, file.size, true);
+                ChatApp._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
+                ChatApp._renderContacts();
+                ChatApp._updateSidebarTransfer(peerId, `📤 ${file.name.substring(0, 15)}${file.name.length > 15 ? '...' : ''} 0%`);
                 await sendChunks(base64, file.size);
+                // Remove progress card, clean up tracking (storeMsg handles _appendMsg)
+                const pr2 = document.getElementById(`transfer-${fileId}`);
+                if (pr2) pr2.remove();
+                delete ChatApp._transferThrottle[fileId];
+                delete ChatApp._transferSpeedCalcAt[fileId];
+                delete ChatApp._transferStartTimes[fileId];
+                delete ChatApp._transferSizes?.[fileId];
+                delete ChatApp._activeSends[peerId];
                 await storeMsg(base64, false);
+                ChatApp._renderContacts();
                 resolve();
             };
             reader.onerror = (e) => {
@@ -3405,23 +3447,37 @@ const ChatApp = {
         };
         for (const m of conv) this._appendMsg(m);
 
-        // Insert progress cards for any active file transfers from this peer
+        // Insert progress cards for any active file transfers from/to this peer
         const ft = this.fileTransfer;
+        // Receives:
         for (const [fid, info] of Object.entries(ft.pending)) {
             if (info.peerId !== peerId) continue;
-            // Only show card if transfer is still in progress (not yet stored as message)
             const alreadyStored = conv.some(m =>
                 (m.type === 'direct-file' || m.type === 'file' || m.type === 'image') &&
                 m.fileId === fid
             );
             if (alreadyStored) continue;
-
-            // Create progress card
             const pct = info.directTransfer
                 ? (info.totalRawReceived > 0 ? Math.round(info.totalRawReceived / info.size * 100) : info.chunkCount > 0 ? Math.round(info.totalBase64Received * 0.75 / info.size * 100) : 0)
                 : (info.totalChunks > 0 ? Math.round(info.chunkCount / info.totalChunks * 100) : 0);
             this._insertTransferCard(fid, info.name, info.size, false);
             this._updateTransferProgress(fid, Math.min(pct, 99), null);
+        }
+        // Sends:
+        const as = this._activeSends[peerId];
+        if (as) {
+            const alreadyStored = conv.some(m =>
+                (m.type === 'direct-file' || m.type === 'file' || m.type === 'image') &&
+                m.fileId === as.fileId
+            );
+            if (!alreadyStored) {
+                this._insertTransferCard(as.fileId, as.name, as.size, true);
+                if (as.pct < 100) {
+                    this._updateTransferProgress(as.fileId, as.pct, `发送中 ${as.pct}%`);
+                } else {
+                    this._updateTransferProgress(as.fileId, 100, '等待对方确认...');
+                }
+            }
         }
 
         this._scroll();
@@ -4822,10 +4878,13 @@ const ChatApp = {
             else if (c.publicKey || hasPeerKey) { icon = "⚪"; st = _i18n.t('pchat.status.offline'); }
             else { icon = "⏳"; st = _i18n.t('pchat.status.waitingKeyExchange'); }
             let lastMsgHtml = "";
-            // Show transfer progress if active receive
+            // Show transfer progress if active receive or send
             const ar = this._activeReceives[c.userId];
+            const as = this._activeSends[c.userId];
             if (ar) {
                 lastMsgHtml = `<div class="last-msg"><span style="color:var(--accent)">📥 ${ar.name.substring(0, 15)}${ar.name.length > 15 ? '...' : ''} ${ar.pct}%</span></div>`;
+            } else if (as) {
+                lastMsgHtml = `<div class="last-msg"><span style="color:var(--accent)">📤 ${as.name.substring(0, 15)}${as.name.length > 15 ? '...' : ''} ${as.pct}%</span></div>`;
             } else if (c.lastMessage) {
                 const lm = c.lastMessage;
                 const sender = lm.fromId === this.my.id ? _i18n.t('pchat.msg.selfPrefix') : (c.nickname + ':');
