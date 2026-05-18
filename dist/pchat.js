@@ -1395,6 +1395,9 @@ const ChatApp = {
             this._savePendingSends();
         }
     },
+    _savePendingReceives() {
+        localStorage.setItem('pchat_pending_receives', JSON.stringify(this._pendingReceives));
+    },
     call: {
         active: false,
         peerId: null,
@@ -2804,6 +2807,11 @@ const ChatApp = {
         if (d.size >= 10 * 1024 * 1024) {
             this._activeReceives[peerId] = { fileId: d.fileId, name: d.name, size: d.size, pct: 0 };
             this._renderContacts();
+            // Persist for resume after page refresh
+            if (d.directTransfer) {
+                this._pendingReceives[d.fileId] = { name: d.name, size: d.size, peerId, ts: Date.now() };
+                this._savePendingReceives();
+            }
         }
     },
 
@@ -3159,12 +3167,29 @@ const ChatApp = {
         if (!state || !state.conn || !state.conn.open) return;
         for (const [fid, info] of Object.entries(ft.pending)) {
             if (info.peerId !== peerId) continue;
-            // Use max of in-memory count and OPFS persisted bytes (handles page refresh)
             const netReceived = info.totalRawReceived || 0;
             const opfsSize = await DB.getReceiveFileSize(fid);
             const received = Math.max(netReceived, opfsSize);
-            console.log(`[File] Requesting resume for ${info.name}: received=${(received/1024/1024).toFixed(1)}MB (net=${(netReceived/1024/1024).toFixed(1)}MB, opfs=${(opfsSize/1024/1024).toFixed(1)}MB) / ${(info.size/1024/1024).toFixed(1)}MB`);
+            console.log(`[File] Requesting resume for ${info.name}: received=${(received/1024/1024).toFixed(1)}MB / ${(info.size/1024/1024).toFixed(1)}MB`);
             state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, totalSize: info.size });
+        }
+        // Also check _pendingReceives for transfers that survived page refresh
+        for (const [fid, pr] of Object.entries(this._pendingReceives)) {
+            if (pr.peerId !== peerId) continue;
+            if (ft.pending[fid]) continue;  // already handled above
+            const opfsSize = await DB.getReceiveFileSize(fid);
+            if (opfsSize === 0) continue;  // nothing persisted yet
+            console.log(`[File] Resume after refresh: ${pr.name}, opfs=${(opfsSize/1024/1024).toFixed(1)}MB / ${(pr.size/1024/1024).toFixed(1)}MB`);
+            // Reconstruct minimal info so subsequent chunks get progress UI
+            const info = { peerId, name: pr.name, size: pr.size, directTransfer: true, binaryChannel: true, totalRawReceived: opfsSize, totalChunks: -1, chunkCount: 0, _written: opfsSize };
+            ft.pending[fid] = info;
+            this._activeReceives[peerId] = { fileId: fid, name: pr.name, size: pr.size, pct: Math.round(opfsSize / pr.size * 100) };
+            this._renderContacts();
+            if (this.activeConv && this.activeConv.id === peerId) {
+                this._insertTransferCard(fid, pr.name, pr.size, false);
+                this._updateTransferProgress(fid, Math.round(opfsSize / pr.size * 100), null);
+            }
+            state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: opfsSize, totalSize: pr.size });
         }
     },
 
@@ -4012,6 +4037,8 @@ const ChatApp = {
             await DB.deleteDirectFile(fileId).catch(() => {});
             delete ft.pending[fileId];
             delete this._activeReceives[info.peerId];
+            delete this._pendingReceives[fileId];
+            this._savePendingReceives();
         }
 
         // ---- Remove progress card + throttle state ----
@@ -4049,6 +4076,8 @@ const ChatApp = {
         if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
         // Clean up sidebar transfer progress
         delete this._activeReceives[peerId];
+        delete this._pendingReceives[d.fileId];
+        this._savePendingReceives();
         this._renderContacts();
     },
 
@@ -4077,6 +4106,8 @@ const ChatApp = {
         delete this._transferStartTimes[fileId];
         delete this._transferSizes?.[fileId];
         delete this._activeReceives[info.peerId];
+        delete this._pendingReceives[fileId];
+        this._savePendingReceives();
         if (this.activeConv && this.activeConv.id === info.peerId) {
             this._appendMsg(msg);
         }
