@@ -2811,6 +2811,7 @@ const ChatApp = {
             if (d.directTransfer) {
                 this._pendingReceives[d.fileId] = { name: d.name, size: d.size, peerId, ts: Date.now() };
                 this._savePendingReceives();
+                console.log(`[File] Saved pending receive: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB) from ${peerId}, fileId=${d.fileId}`);
             }
         }
     },
@@ -3163,6 +3164,9 @@ const ChatApp = {
     // ---- Receiver asks sender to resume incomplete Binary DC transfer ----
     async _requestFileResume(peerId) {
         const ft = this.fileTransfer;
+        const pendingCount = Object.keys(ft.pending).length;
+        const recvCount = Object.keys(this._pendingReceives).length;
+        console.log(`[File] _requestFileResume peer=${peerId}, ft.pending=${pendingCount}, _pendingReceives=${recvCount}`);
         const state = PeerConn.peers[peerId];
         if (!state || !state.conn || !state.conn.open) return;
         for (const [fid, info] of Object.entries(ft.pending)) {
