@@ -2910,14 +2910,12 @@ const ChatApp = {
             if (rawReceived - lastAckAt >= 10 * 1024 * 1024) {
                 // Calculate receive speed since last ack (receiver-side measurement)
                 const nowMs = Date.now();
+                // Use first-chunk time for initial ack, last-ack time for subsequent ones
                 const lastAckTime = info.lastAckTime || info._recvStartTime || nowMs;
                 const deltaBytes = rawReceived - lastAckAt;
-                const deltaSec = (nowMs - lastAckTime) / 1000;
-                let speedStr = '';
-                if (deltaSec > 0.5 && deltaBytes > 0) {
-                    const spd = deltaBytes / deltaSec;
-                    speedStr = spd > 1024*1024 ? `${(spd/1024/1024).toFixed(1)} MB/s` : `${(spd/1024).toFixed(0)} KB/s`;
-                }
+                const deltaSec = Math.max((nowMs - lastAckTime) / 1000, 0.01);
+                const spd = deltaBytes / deltaSec;
+                const speedStr = spd > 1024*1024 ? `${(spd/1024/1024).toFixed(1)} MB/s` : `${(spd/1024).toFixed(0)} KB/s`;
                 info.lastAckBytes = rawReceived;
                 info.lastAckTime = nowMs;
                 const ackPeer = PeerConn.peers[info.peerId];
