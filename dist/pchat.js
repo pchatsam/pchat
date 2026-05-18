@@ -111,6 +111,7 @@ _i18n.dict = {
     'pchat.status.online':               { zh: '在线', en: 'Online', ja: 'オンライン', de: 'Online', fr: 'En ligne', es: 'En línea', pt: 'Online', he: 'מחובר', ko: '온라인', it: 'Online' },
     'pchat.status.peerJSOnline':         { zh: 'PeerJS 在线', en: 'PeerJS online', ja: 'PeerJS オンライン', de: 'PeerJS online', fr: 'PeerJS en ligne', es: 'PeerJS en línea', pt: 'PeerJS online', he: 'PeerJS מחובר', ko: 'PeerJS 온라인', it: 'PeerJS online' },
     'pchat.status.offline':              { zh: '离线', en: 'Offline', ja: 'オフライン', de: 'Offline', fr: 'Hors ligne', es: 'Desconectado', pt: 'Offline', he: 'לא מחובר', ko: '오프라인', it: 'Offline' },
+    'pchat.status.reconnecting':         { zh: '重连中...', en: 'Reconnecting...', ja: '再接続中...', de: 'Wiederverbindung...', fr: 'Reconnexion...', es: 'Reconectando...', pt: 'Reconectando...', he: 'מתחבר מחדש...', ko: '재연결 중...', it: 'Riconnessione...' },
     'pchat.status.waitingKeyExchange':   { zh: '等待公钥交换', en: 'Waiting for key exchange', ja: '鍵交換を待機中', de: 'Warten auf Schlüsselaustausch', fr: 'En attente d\'échange de clés', es: 'Esperando intercambio de claves', pt: 'Aguardando troca de chaves', he: 'ממתין להחלפת מפתחות', ko: '키 교환 대기 중', it: 'In attesa di scambio chiavi' },
     'pchat.status.groupMembers':         { zh: '{n} 成员', en: '{n} members', ja: '{n} 人のメンバー', de: '{n} Mitglieder', fr: '{n} membres', es: '{n} membri', pt: '{n} membros', he: '{n} חברים', ko: '{n}명', it: '{n} membri' },
     'pchat.msg.self':                    { zh: '我', en: 'Me', ja: '私', de: 'Ich', fr: 'Moi', es: 'Yo', pt: 'Eu', he: 'אני', ko: '나', it: 'Io' },
@@ -680,6 +681,33 @@ const DB = {
         }
     },
 
+    // ---- Outgoing file storage (OPFS, for resume after refresh) ----
+    async saveOutgoingFile(fileId, blob) {
+        const root = await this._getOprfsRoot();
+        const handle = await root.getFileHandle(`send-${fileId}`, { create: true });
+        const writable = await handle.createWritable({ keepExistingData: false });
+        await writable.write(blob);
+        await writable.close();
+    },
+
+    async getOutgoingFile(fileId) {
+        try {
+            const root = await this._getOprfsRoot();
+            const handle = await root.getFileHandle(`send-${fileId}`);
+            return await handle.getFile();
+        } catch(e) { return null; }
+    },
+
+    async deleteOutgoingFile(fileId) {
+        try {
+            const root = await this._getOprfsRoot();
+            await root.removeEntry(`send-${fileId}`);
+        } catch(e) { /* already deleted */ }
+    },
+
+    // Track pending sends in localStorage for resume across refreshes
+    _pendingSendsKey: 'pchat_pending_sends',
+
     // ---- Generate thumbnail from base64 image ----
     async generateThumbnail(base64Data, mime, maxDim) {
         maxDim = maxDim || 200;
@@ -774,6 +802,13 @@ const PeerConn = {
     peer: null,
     // peerId → { conn: DataConnection, myKey, peerKey, connected }
     peers: {},
+    _amOffline: false,          // true when we lost signaling server
+    _reconnectTimers: {},       // peerId → {timer, delay, attempts}
+    _heartbeats: {},            // peerId → {intervalId, lastPong, missCount}
+
+    // Heartbeat constants
+    HB_INTERVAL: 5000,          // ping every 5s
+    HB_TIMEOUT: 10000,          // no pong for 10s → dead
 
     // Initialize PeerJS instance
     init(myId, callback) {
@@ -900,16 +935,28 @@ const PeerConn = {
 
         this.peer.on("disconnected", () => {
             console.log("[PeerConn] Disconnected from server, reconnecting...");
+            this._amOffline = true;
+            // Stop all reconnect timers — we'll restart them when signaling recovers
+            for (const pid of Object.keys(this._reconnectTimers)) {
+                this._cancelReconnect(pid);
+            }
             this.peer.reconnect();
         });
     },
 
     // Connect to a peer via data connection
     async connect(peerId) {
-        if (this.peers[peerId] && this.peers[peerId].conn && this.peers[peerId].conn.open) {
+        // If we're recovering from offline, always force-reconnect (old DC may be in limbo)
+        if (!this._amOffline && this.peers[peerId] && this.peers[peerId].conn && this.peers[peerId].conn.open) {
             console.log(`[PeerConn] Already connected to ${peerId}`);
             return this.peers[peerId];
         }
+        // Clean up stale state
+        if (this.peers[peerId] && this.peers[peerId].conn) {
+            try { this.peers[peerId].conn.close(); } catch(e) {}
+        }
+        this._stopHeartbeat(peerId);
+        this._cancelReconnect(peerId);
 
         let myKey;
         const contact = ChatApp.contacts.find(c => c.userId === peerId);
@@ -938,6 +985,8 @@ const PeerConn = {
             if (!state) return;
             state.connected = true;
             ChatApp._renderContacts();
+            PeerConn._cancelReconnect(peerId);  // reset backoff on success
+            PeerConn._startHeartbeat(peerId);
 
             if (initiator) {
                 const contact = ChatApp.contacts.find(c => c.userId === peerId);
@@ -976,12 +1025,8 @@ const PeerConn = {
             }
 
             this.flushPending(peerId);
-        });
-
-        conn.on("close", () => {
-            console.log(`[PeerConn] ${peerId} connection closed`);
-            const state = this.peers[peerId];
-            if (state) state.connected = false;
+            // Request resume for any incomplete file transfers
+            ChatApp._requestFileResume(peerId);
         });
 
         conn.on("error", (err) => {
@@ -1044,12 +1089,24 @@ const PeerConn = {
                     ChatApp._onFileFooter(peerId, data);
                 } else if (data.type === "file-cancel") {
                     ChatApp._onFileCancel(peerId, data);
+                } else if (data.type === "file-resume") {
+                    // Sender: receiver wants us to resume a transfer
+                    ChatApp._handleFileResume(peerId, data);
                 } else if (data.type === "receipt") {
                     // Received read receipt for a message
                     ChatApp._onReceiptReceived(peerId, data.msgId);
                 } else if (data.type === "id-change") {
                     // Contact changed their ID - update contact list
                     ChatApp._onIdChangeNotification(peerId, data);
+                } else if (data.type === "_ping") {
+                    // Heartbeat: reply pong immediately
+                    if (state && state.conn && state.conn.open) {
+                        state.conn.send({ type: "_pong", ts: data.ts });
+                    }
+                } else if (data.type === "_pong") {
+                    // Heartbeat: update lastPong timestamp
+                    const hb = PeerConn._heartbeats[peerId];
+                    if (hb) { hb.lastPong = Date.now(); hb.missCount = 0; }
                 } else if (data.type === "transfer-request" || data.type === "transfer-start" ||
                            data.type === "table-start" || data.type === "table-done" ||
                            data.type === "transfer-chunk" || data.type === "transfer-complete") {
@@ -1063,12 +1120,116 @@ const PeerConn = {
             console.log(`[PeerConn] Disconnected from ${peerId}`);
             const state = this.peers[peerId];
             if (state) state.connected = false;
-            ChatApp._renderContacts();
+            PeerConn._stopHeartbeat(peerId);
+            // If WE went offline, reconnect state is handled by peer.on(open).
+            // If PEER went offline, don't reconnect — wait for them to reconnect.
+            if (!PeerConn._amOffline) {
+                ChatApp._renderContacts();
+            }
         });
 
         conn.on("error", (err) => {
             console.error(`[PeerConn] Connection error (${peerId}):`, err);
         });
+    },
+
+    // ---- Heartbeat ----
+    _startHeartbeat(peerId) {
+        this._stopHeartbeat(peerId);
+        const hb = { lastPong: Date.now(), missCount: 0, intervalId: null };
+        hb.intervalId = setInterval(() => {
+            const state = this.peers[peerId];
+            if (!state || !state.conn || !state.conn.open) {
+                this._stopHeartbeat(peerId);
+                return;
+            }
+            // Send ping
+            state.conn.send({ type: "_ping", ts: Date.now() });
+            // Check timeout
+            const elapsed = Date.now() - hb.lastPong;
+            if (elapsed > this.HB_TIMEOUT) {
+                hb.missCount++;
+                console.warn(`[PeerConn] Heartbeat timeout for ${peerId}, miss=${hb.missCount}, elapsed=${elapsed}ms`);
+                if (hb.missCount >= 2) {
+                    // DC is dead
+                    console.warn(`[PeerConn] DC dead for ${peerId}, closing`);
+                    this._stopHeartbeat(peerId);
+                    if (state.conn) { try { state.conn.close(); } catch(e) {} }
+                    state.connected = false;
+                    ChatApp._renderContacts();
+                    // If our signaling is still up, try to reconnect (covers network partition)
+                    if (!this._amOffline) {
+                        this._scheduleReconnect(peerId);
+                    }
+                }
+            }
+        }, this.HB_INTERVAL);
+        this._heartbeats[peerId] = hb;
+    },
+
+    _stopHeartbeat(peerId) {
+        const hb = this._heartbeats[peerId];
+        if (hb) {
+            if (hb.intervalId) clearInterval(hb.intervalId);
+            delete this._heartbeats[peerId];
+        }
+    },
+
+    // ---- Reconnect backoff ----
+    // Schedule reconnect with exponential backoff: 2→4→6→8→10→12→14→16→18→20→20→...
+    _scheduleReconnect(peerId) {
+        // Only reconnect for contacts with completed handshake
+        const contact = ChatApp.contacts.find(c => c.userId === peerId);
+        if (!contact || !contact.publicKey) return;
+
+        const existing = this._reconnectTimers[peerId];
+        if (existing && existing.timer) return; // already scheduled
+
+        const rt = existing || { attempts: 0, delay: 0, timer: null };
+        // Calculate backoff
+        if (rt.attempts < 10) {
+            rt.delay = (rt.attempts + 1) * 2000;  // 2s, 4s, ..., 20s
+        } else {
+            rt.delay = 20000;  // cap at 20s
+        }
+        rt.attempts++;
+        console.log(`[PeerConn] Scheduling reconnect to ${peerId}, attempt=${rt.attempts}, delay=${rt.delay}ms`);
+
+        rt.timer = setTimeout(async () => {
+            delete this._reconnectTimers[peerId];  // clear current entry, will be re-created if needed
+            if (!this._amOffline) {
+                try {
+                    await this.connect(peerId);
+                } catch(e) {
+                    console.warn(`[PeerConn] Reconnect failed for ${peerId}:`, e.message);
+                }
+            }
+            // If still not connected, schedule next retry
+            const s = this.peers[peerId];
+            if (!s || !s.connected) {
+                this._scheduleReconnect(peerId);
+            }
+        }, rt.delay);
+        this._reconnectTimers[peerId] = rt;
+    },
+
+    _cancelReconnect(peerId) {
+        const rt = this._reconnectTimers[peerId];
+        if (rt) {
+            if (rt.timer) clearTimeout(rt.timer);
+            delete this._reconnectTimers[peerId];
+        }
+    },
+
+    // Called when our signaling recovers: reconnect all contacts that lost DC
+    _reconnectAll() {
+        for (const c of ChatApp.contacts) {
+            if (!c.publicKey) continue;
+            const s = this.peers[c.userId];
+            if (!s || !s.connected) {
+                this._scheduleReconnect(c.userId);
+            }
+        }
     },
 
     // Send chat message to peer
@@ -1092,21 +1253,31 @@ const PeerConn = {
         return true;
     },
 
-    // Flush pending messages
+    // Flush pending messages (text, voice, files)
     async flushPending(peerId) {
         const msgs = await ChatApp.getMessages(peerId);
-        const pending = msgs.filter(m => m.direction === "sent" && !m.sent && m.content !== undefined);
+        const pending = msgs.filter(m => m.direction === "sent" && !m.sent);
         const state = this.peers[peerId];
         if (!state || !state.conn || !state.conn.open) return;
+        console.log(`[PeerConn] Flushing ${pending.length} pending messages to ${peerId}`);
         for (const m of pending) {
-            let sendContent = m.content;
-            if (state.peerKey) {
-                try { sendContent = await Crypto.encryptChunks(state.peerKey, m.content); }
-                catch(e) { console.warn('[PeerConn] Flush encrypt failed:', e.message); }
+            if (m.type === "voice" && m.content) {
+                state.conn.send({ type: "voice", content: m.content, ts: m.ts, duration: m.duration || 0 });
+                m.sent = true;
+                ChatApp.DB_put_msg(m);
+            } else if (m.type === "file" || m.type === "image") {
+                // File retry: handled by ChatApp._retryPendingFile
+                ChatApp._retryPendingFile(peerId, m);
+            } else if (m.content !== undefined) {
+                let sendContent = m.content;
+                if (state.peerKey) {
+                    try { sendContent = await Crypto.encryptChunks(state.peerKey, m.content); }
+                    catch(e) { console.warn('[PeerConn] Flush encrypt failed:', e.message); }
+                }
+                state.conn.send({ type: "chat", id: m.id, content: sendContent, ts: m.ts, encrypted: sendContent !== m.content });
+                m.sent = true;
+                ChatApp.DB_put_msg(m);
             }
-            state.conn.send({ type: "chat", id: m.id, content: sendContent, ts: m.ts, encrypted: sendContent !== m.content });
-            m.sent = true;
-            ChatApp.DB_put_msg(m);
         }
     },
 
@@ -1176,6 +1347,27 @@ const ChatApp = {
     _activeReceives: {},
     // Active sends for sidebar + re-entry progress (peerId → {fileId, name, size, pct})
     _activeSends: {},
+    // Pending sends persisted to localStorage: {fileId: {name, size, mime, peerId, progress, ts}}
+    _pendingSends: {},
+
+    _loadPendingSends() {
+        try {
+            const raw = localStorage.getItem('pchat_pending_sends');
+            if (raw) this._pendingSends = JSON.parse(raw);
+        } catch(e) { this._pendingSends = {}; }
+    },
+    _savePendingSends() {
+        localStorage.setItem('pchat_pending_sends', JSON.stringify(this._pendingSends));
+    },
+    _clearPendingSend(fileId, markCompleted) {
+        if (markCompleted && this._pendingSends[fileId]) {
+            this._pendingSends[fileId].completed = true;  // ≥10MB: keep for re-entry rendering
+            this._savePendingSends();
+        } else {
+            delete this._pendingSends[fileId];  // <10MB: stored in DB, remove tracking
+            this._savePendingSends();
+        }
+    },
     call: {
         active: false,
         peerId: null,
@@ -1893,6 +2085,8 @@ const ChatApp = {
             if (state.conn) { try { state.conn.close(); } catch {} }
         }
         delete PeerConn.peers[userId];
+        PeerConn._stopHeartbeat(userId);
+        PeerConn._cancelReconnect(userId);
         // If currently viewing this conversation, close it
         if (this.activeChatId === userId) this.closeChatView();
         this._renderContacts();
@@ -1900,6 +2094,7 @@ const ChatApp = {
 
     // ---- PeerJS initialization ----
     _initPeer() {
+        this._loadPendingSends();
         PeerConn.init(this.my.id, async (id) => {
             console.log("[PeerJS] Initialized with ID:", id);
             
@@ -1926,11 +2121,19 @@ const ChatApp = {
                 return;
             }
             
-            // Auto-connect to all contacts (only those with publicKey = handshake complete)
-            for (const c of this.contacts) {
-                if (c.publicKey) {
-                    console.log(`[PeerJS] Auto-connect to ${c.userId} (${c.nickname})`);
-                    await PeerConn.connect(c.userId);
+            const wasOffline = PeerConn._amOffline;
+            PeerConn._amOffline = false;
+            
+            if (wasOffline) {
+                // Recovering from signaling loss — use backoff reconnect
+                PeerConn._reconnectAll();
+            } else {
+                // First login — immediate auto-connect
+                for (const c of this.contacts) {
+                    if (c.publicKey) {
+                        console.log(`[PeerJS] Auto-connect to ${c.userId} (${c.nickname})`);
+                        await PeerConn.connect(c.userId);
+                    }
                 }
             }
             // If there's a pending invite, initiate friend request
@@ -2817,7 +3020,23 @@ const ChatApp = {
     async sendMessage() {
         const input = document.getElementById("message-input");
         const content = input.value.trim();
-        if (!content || !this.activeConv) return;
+        // Send clipboard images first, then text
+        const hasImages = this._clipboardImages && this._clipboardImages.length > 0;
+        if (!content && !hasImages) return;
+        if (!this.activeConv) return;
+
+        // Send clipboard images as files
+        if (hasImages) {
+            const images = [...this._clipboardImages];
+            this._clipboardImages = [];
+            this._renderClipboardPreview();
+            for (const img of images) {
+                const file = new File([img.blob], img.name, { type: img.blob.type || 'image/png' });
+                try { await this._sendFileInternal(file); } catch(err) { console.error('[Clipboard] send error:', err); }
+            }
+        }
+
+        if (!content) { input.value = ""; return; }
 
         // Check for HTML content marker
         const isHtml = content.startsWith('[HTML]');
@@ -2876,6 +3095,93 @@ const ChatApp = {
             this._renderContacts();
 
             input.value = "";
+        }
+    },
+
+    // ---- Retry a failed file send on reconnect (<10MB auto-resend from DB message data) ----
+    async _retryPendingFile(peerId, msg) {
+        if (!msg.fileData) return;
+        const state = PeerConn.peers[peerId];
+        if (!state || !state.conn || !state.conn.open) return;
+        console.log(`[File] Retrying send: ${msg.fileName} (${msg.fileSize}B)`);
+
+        const chunkSize = 262144;
+        const fileId = msg.fileId || `file_retry_${msg.id}`;
+        const isImage = msg.type === "image";
+        const totalChunks = Math.ceil(msg.fileData.length / chunkSize);
+        const fileHash = this._hashBase64(msg.fileData);
+
+        state.conn.send({ type: "file-header", fileId, name: msg.fileName, mime: msg.mimeType || "application/octet-stream", size: msg.fileSize, totalChunks, isImage, base64Len: msg.fileData.length, hash: fileHash });
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize; const end = Math.min(start + chunkSize, msg.fileData.length);
+            state.conn.send({ type: "file-chunk", fileId, index: i, data: msg.fileData.slice(start, end) });
+        }
+        state.conn.send({ type: "file-footer", fileId });
+        const acked = await new Promise((r) => {
+            const h = (d) => { if (d.type === "file-ack" && d.fileId === fileId) { clearTimeout(t); state.conn.off("data", h); r(true); } };
+            const t = setTimeout(() => { state.conn.off("data", h); r(false); }, 120000);
+            state.conn.on("data", h);
+        });
+        if (acked) { msg.sent = true; await DB.put("messages", msg, this.my.aesKey); console.log(`[File] Retry success: ${msg.fileName}`); }
+    },
+
+    // ---- Receiver asks sender to resume incomplete Binary DC transfer ----
+    _requestFileResume(peerId) {
+        const ft = this.fileTransfer;
+        const state = PeerConn.peers[peerId];
+        if (!state || !state.conn || !state.conn.open) return;
+        for (const [fid, info] of Object.entries(ft.pending)) {
+            if (info.peerId !== peerId) continue;
+            const received = info.totalRawReceived || 0;
+            console.log(`[File] Requesting resume for ${info.name}: ${(received/1024/1024).toFixed(1)}MB / ${(info.size/1024/1024).toFixed(1)}MB`);
+            state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, totalSize: info.size });
+        }
+    },
+
+    // ---- Sender handles file-resume request (Binary DC only, ≥10MB) ----
+    async _handleFileResume(peerId, data) {
+        const fid = data.fileId;
+        const pending = this._pendingSends[fid];
+        if (!pending) { console.warn(`[File] Resume request for unknown file: ${fid}`); return; }
+        console.log(`[File] Resume: ${pending.name}, received=${(data.receivedBytes/1024/1024).toFixed(1)}MB`);
+
+        const state = PeerConn.peers[peerId];
+        if (!state || !state.conn || !state.conn.open) return;
+
+        const file = await DB.getOutgoingFile(fid);
+        if (!file) { console.warn(`[File] OPFS file not found: ${fid}`); return; }
+
+        const offset = data.receivedBytes || 0;
+        const chunkSize = 262144;
+        const fileConn = PeerConn.peer.connect(peerId, { label: 'file-' + fid, serialization: 'binary', reliable: true });
+        await new Promise((resolve, reject) => {
+            fileConn.on('open', resolve); fileConn.on('error', reject);
+            setTimeout(() => reject(new Error('Timeout')), 15000);
+        });
+
+        console.log(`[File] Resuming binary send from ${(offset/1024/1024).toFixed(1)}MB`);
+        let sentBytes = offset;
+        while (sentBytes < file.size) {
+            const segSize = 10 * 1024 * 1024;
+            const seg = file.slice(sentBytes, sentBytes + segSize);
+            const segBuf = await new Promise((r2, rj) => { const fr = new FileReader(); fr.onload = (e) => r2(new Uint8Array(e.target.result)); fr.onerror = rj; fr.readAsArrayBuffer(seg); });
+            for (let i = 0; i < segBuf.length; i += chunkSize) {
+                const end = Math.min(i + chunkSize, segBuf.length);
+                fileConn.send(segBuf.slice(i, end)); sentBytes += (end - i);
+            }
+        }
+        state.conn.send({ type: "file-footer", fileId: fid });
+        fileConn.close();
+
+        const acked = await new Promise((r) => {
+            const h = (d) => { if (d.type==="file-ack"&&d.fileId===fid) { clearTimeout(t); state.conn.off("data",h); r(true); } };
+            const t = setTimeout(() => { state.conn.off("data",h); r(false); }, 120000);
+            state.conn.on("data", h);
+        });
+        if (acked) {
+            this._clearPendingSend(fid, true);
+            DB.deleteOutgoingFile(fid).catch(() => {});
+            console.log(`[File] Resume ack: ${pending.name}`);
         }
     },
 
@@ -3058,9 +3364,7 @@ const ChatApp = {
             return;
         }
 
-        const LARGE_FILE = 10 * 1024 * 1024;  // 10MB: skip encryption
-        const DIRECT_FILE = 20 * 1024 * 1024; // 20MB: direct transfer, no DB
-        const SHOW_PROGRESS = 10 * 1024 * 1024; // 10MB+: show progress bar
+        const SHOW_PROGRESS = 10 * 1024 * 1024; // ≥10MB: Binary DC
         const conn = state.conn;
         const isImage = file.type.startsWith("image/");
         const chunkSize = 262144;  // 256KB for direct transfer // 256KB for direct, 16KB for small
@@ -3117,14 +3421,11 @@ const ChatApp = {
                 conn.on("data", handler);
             });
 
-            if (ackReceived) {
-                console.log(`[File] Ack received: ${file.name}`);
-            }
-            return base64Data;
+            return ackReceived;
         };
 
-        // ---- Store message in DB (with optional encryption skip) ----
-        const storeMsg = async (base64Data, skipEncryption) => {
+        // ---- Store message in DB (always encrypted for <10MB) ----
+        const storeMsg = async (base64Data, sent) => {
             const now = Date.now();
             const id = `msg_${peerId}_${now}_${Math.random().toString(36).slice(2,6)}`;
             let thumbData = null;
@@ -3133,18 +3434,13 @@ const ChatApp = {
 
             if (isImage) {
                 thumbData = await DB.generateThumbnail(base64Data, file.type, 200);
-                if (skipEncryption) {
-                    // Store raw in files store
-                    await DB.putFileRaw(fileId, base64Data, file.type);
-                } else {
-                    await DB.putFile(fileId, base64Data, file.type, this.my.aesKey);
-                }
+                await DB.putFile(fileId, base64Data, file.type, this.my.aesKey);
                 storedFileId = fileId;
                 msgFileData = thumbData || base64Data;
             }
 
             const sentMsg = {
-                id, peerId, ts: now, direction: "sent",
+                id, peerId, ts: now, direction: "sent", sent,
                 fromId: this.my.id,
                 type: isImage ? "image" : "file",
                 fileName: file.name, mimeType: file.type, fileSize: file.size,
@@ -3152,11 +3448,7 @@ const ChatApp = {
                 fileData: msgFileData,
             };
 
-            if (skipEncryption) {
-                await DB.putRaw("messages", sentMsg);
-            } else {
-                await DB.put("messages", sentMsg, this.my.aesKey);
-            }
+            await DB.put("messages", sentMsg, this.my.aesKey);
             this._appendMsg(sentMsg);
 
             const contact = this.contacts.find(c => c.userId === peerId);
@@ -3171,70 +3463,51 @@ const ChatApp = {
         };
 
         // ======== Main flow ========
-        if (file.size > DIRECT_FILE) {
-            // >20MB: dedicated binary data channel — zero encoding overhead
-            console.log(`[File] DIRECT transfer (${(file.size/1024/1024).toFixed(1)}MB), binary DC, 10MB segments`);
+        if (file.size >= SHOW_PROGRESS) {
+            // ≥10MB: Binary DC — zero encoding overhead, seekable resume
+            console.log(`[File] Binary DC (${(file.size/1024/1024).toFixed(1)}MB)`);
+
+            // Save to OPFS for resume across page refreshes
+            await DB.saveOutgoingFile(fileId, file).catch(e => console.warn('[OPFS] saveOutgoingFile failed:', e));
+            this._pendingSends[fileId] = { name: file.name, size: file.size, mime: file.type, peerId, progress: 0, ts: Date.now() };
+            this._savePendingSends();
+
             const segSize = 10 * 1024 * 1024;
             let offset = 0;
 
-            // Open dedicated binary data channel
             const fileConn = PeerConn.peer.connect(peerId, {
-                label: 'file-' + fileId,
-                serialization: 'binary',
-                reliable: true,
+                label: 'file-' + fileId, serialization: 'binary', reliable: true,
             });
             await new Promise((resolve, reject) => {
-                fileConn.on('open', resolve);
-                fileConn.on('error', reject);
+                fileConn.on('open', resolve); fileConn.on('error', reject);
                 setTimeout(() => reject(new Error('Binary channel timeout')), 15000);
             });
             console.log('[File] Binary DC opened');
 
-            // Send header on main JSON channel
-            conn.send({
-                type: "file-header",
-                fileId, name: file.name, mime: file.type,
-                size: file.size, totalChunks: -1, isImage: false,
-                directTransfer: true, binaryChannel: true,
-            });
+            conn.send({ type: "file-header", fileId, name: file.name, mime: file.type, size: file.size, totalChunks: -1, isImage, directTransfer: true, binaryChannel: true });
 
             this._insertTransferCard(fileId, file.name, file.size, true);
             this._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
             this._renderContacts();
 
-            // Send all chunks in one pass with pacing
-            let sentChunks = 0;
-            let sentBytes = 0;
+            let sentChunks = 0, sentBytes = 0;
             try {
                 while (offset < file.size) {
                     const seg = file.slice(offset, offset + segSize);
-                    const segBuf = await new Promise((resolve, reject) => {
-                        const r = new FileReader();
-                        r.onload = (e) => resolve(new Uint8Array(e.target.result));
-                        r.onerror = reject;
-                        r.readAsArrayBuffer(seg);
-                    });
-
+                    const segBuf = await new Promise((r2, rj) => { const fr = new FileReader(); fr.onload = (e) => r2(new Uint8Array(e.target.result)); fr.onerror = rj; fr.readAsArrayBuffer(seg); });
                     for (let i = 0; i < segBuf.length; i += chunkSize) {
                         const end = Math.min(i + chunkSize, segBuf.length);
-                        fileConn.send(segBuf.slice(i, end));
-                        sentChunks++;
-                        sentBytes += (end - i);
+                        fileConn.send(segBuf.slice(i, end)); sentChunks++; sentBytes += (end - i);
                         if (sentChunks % 10 === 0) {
-                            await new Promise(r => {
-                                const ah = (d) => { if (d.type==='file-ack'&&d.fileId===fileId) { conn.off('data',ah); r(); } };
-                                conn.on('data', ah);
-                                setTimeout(() => { conn.off('data',ah); r(); }, 5000);
-                            });
+                            await new Promise(r => { const ah = (d) => { if (d.type==='file-ack'&&d.fileId===fileId) { conn.off('data',ah); r(); } }; conn.on('data', ah); setTimeout(() => { conn.off('data',ah); r(); }, 5000); });
                         }
                     }
                     offset += segSize;
                     const pct = (sentBytes / file.size * 100).toFixed(1);
-                    console.log(`[File] Chunk#${sentChunks} ${(sentBytes/1024/1024).toFixed(0)}MB (${pct}%)`);
+                    console.log(`[File] #${sentChunks} ${(sentBytes/1024/1024).toFixed(0)}MB (${pct}%)`);
                     this._updateTransferProgress(fileId, parseFloat(pct), `发送中 ${pct}%`);
-                    // Update sidebar send progress
                     const as = this._activeSends[peerId];
-                    if (as) { as.pct = Math.round(parseFloat(pct)); this._updateSidebarTransfer(peerId, `📤 ${as.name.substring(0, 15)}${as.name.length > 15 ? '...' : ''} ${as.pct}%`); }
+                    if (as) { as.pct = Math.round(parseFloat(pct)); this._updateSidebarTransfer(peerId, `📤 ${as.name.substring(0,15)}${as.name.length>15?'...':''} ${as.pct}%`); }
                 }
             } catch(e) {
                 console.error('[File] Binary send error:', e);
@@ -3244,50 +3517,26 @@ const ChatApp = {
                 return;
             }
 
-            // DON'T close binary channel yet — let receiver finish processing
-            // Send footer, wait for ack, then close
             conn.send({ type: "file-footer", fileId });
-            console.log(`[File] All ${sentChunks} chunks ${(sentBytes/1024/1024).toFixed(0)}MB sent, waiting for receiver...`);
+            console.log(`[File] All ${sentChunks} chunks ${(sentBytes/1024/1024).toFixed(0)}MB sent, waiting...`);
             this._updateTransferProgress(fileId, 100, '等待对方确认...');
-            // Update sidebar
             const as2 = this._activeSends[peerId];
-            if (as2) { as2.pct = 100; this._updateSidebarTransfer(peerId, `📤 ${as2.name.substring(0, 15)}${as2.name.length > 15 ? '...' : ''} 100%`); }
+            if (as2) { as2.pct = 100; this._updateSidebarTransfer(peerId, `📤 ${as2.name.substring(0,15)}${as2.name.length>15?'...':''} 100%`); }
 
             const finalOk = await new Promise((ackResolve) => {
-                const handler = (data) => {
-                    if (data.type === "file-ack" && data.fileId === fileId) {
-                        clearTimeout(timer);
-                        conn.off("data", handler);
-                        const ackPct = data.progress != null ? data.progress : 100;
-                        ChatApp._updateTransferProgress(fileId, ackPct, `对方已接收 ${ackPct}%`);
-                        ackResolve(true);
-                    }
-                };
-                const timer = setTimeout(() => {
-                    conn.off("data", handler);
-                    ackResolve(false);
-                }, 600000);
+                const handler = (data) => { if (data.type==="file-ack"&&data.fileId===fileId) { clearTimeout(timer); conn.off("data",handler); ChatApp._updateTransferProgress(fileId, data.progress!=null?data.progress:100, `对方已接收 ${data.progress!=null?data.progress:100}%`); ackResolve(true); } };
+                const timer = setTimeout(() => { conn.off("data",handler); ackResolve(false); }, 600000);
                 conn.on("data", handler);
             });
 
-            fileConn.close();  // close only after receiver confirms
-            if (finalOk) {
-                console.log(`[File] Ack received: ${file.name}`);
-            }
+            fileConn.close();
+            if (finalOk) console.log(`[File] Ack received: ${file.name}`);
 
-            // Store metadata-only message (no fileData — receiver gets it from OPFS)
             const now = Date.now();
             const id = `msg_${peerId}_${now}_${Math.random().toString(36).slice(2,6)}`;
-            const sentMsg = {
-                id, peerId, ts: now, direction: "sent",
-                fromId: this.my.id,
-                type: "direct-file",
-                fileName: file.name, mimeType: file.type, fileSize: file.size,
-                fileId,
-            };
-            await DB.putRaw("messages", sentMsg);
+            const sentMsg = { id, peerId, ts: now, direction: "sent", sent: finalOk, fromId: this.my.id, type: "direct-file", fileName: file.name, mimeType: file.type, fileSize: file.size, fileId };
+            // ≥10MB: OPFS-only, no DB storage. _appendMsg renders the UI card.
 
-            // Replace progress card with proper message bubble (same as re-entry)
             const progressRow = document.getElementById(`transfer-${fileId}`);
             if (progressRow) progressRow.remove();
             delete this._transferThrottle[fileId];
@@ -3295,56 +3544,37 @@ const ChatApp = {
             delete this._transferStartTimes[fileId];
             delete this._transferSizes?.[fileId];
             delete this._activeSends[peerId];
+            if (finalOk) { this._clearPendingSend(fileId, true); DB.deleteOutgoingFile(fileId).catch(() => {}); }
             this._renderContacts();
             this._appendMsg(sentMsg);
 
             const contact = this.contacts.find(c => c.userId === peerId);
-            if (contact) {
-                contact.lastMessage = {
-                    content: _i18n.t('pchat.file.prefixFile') + ' ' + file.name,
-                    ts: now, fromId: this.my.id,
-                };
-                this.saveContact(contact);
-            }
+            if (contact) { contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + file.name, ts: now, fromId: this.my.id }; this.saveContact(contact); }
             this._renderContacts();
-            console.log(`[File] DIRECT transfer sent: ${file.name}`);
+            console.log(`[File] Binary DC done: ${file.name}`);
             return;
         }
 
-        // ≤20MB: unified ArrayBuffer path (no base64 doubling from DataURL)
-        const skipEncryption = file.size > LARGE_FILE;  // >10MB skip DB encryption
-        console.log(`[File] ${(file.size/1024/1024).toFixed(1)}MB, ArrayBuffer, encrypt=${!skipEncryption}`);
+        // <10MB: chunked base64 + encryption
+        console.log(`[File] Chunked (${(file.size/1024/1024).toFixed(2)}MB), encrypt=true`);
+
+        await DB.saveOutgoingFile(fileId, file).catch(e => console.warn('[OPFS] saveOutgoingFile failed:', e));
+        this._pendingSends[fileId] = { name: file.name, size: file.size, mime: file.type, peerId, progress: 0, ts: Date.now() };
+        this._savePendingSends();
+
         const buffer = await new Promise((resolve, reject) => {
             const r = new FileReader();
-            r.onload = (e) => {
-                if (!e.target.result) return reject(new Error('Read failed'));
-                resolve(e.target.result);
-            };
+            r.onload = (e) => { if (!e.target.result) return reject(new Error('Read failed')); resolve(e.target.result); };
             r.onerror = (e) => reject(e);
             r.readAsArrayBuffer(file);
         });
         const base64 = arrayBufferToBase64(buffer);
         console.log(`[File] Read complete, base64 length=${base64.length}`);
-        // Show progress only for files ≥10MB
-        if (file.size >= SHOW_PROGRESS) {
-            this._insertTransferCard(fileId, file.name, file.size, true);
-            this._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
-            this._renderContacts();
-            this._updateSidebarTransfer(peerId, `📤 ${file.name.substring(0, 15)}${file.name.length > 15 ? '...' : ''} 0%`);
-        }
-        await sendChunks(base64, file.size);
-        if (file.size >= SHOW_PROGRESS) {
-            const pr = document.getElementById(`transfer-${fileId}`);
-            if (pr) pr.remove();
-            delete this._transferThrottle[fileId];
-            delete this._transferSpeedCalcAt[fileId];
-            delete this._transferStartTimes[fileId];
-            delete this._transferSizes?.[fileId];
-            delete this._activeSends[peerId];
-        }
-        await storeMsg(base64, skipEncryption);
+        const acked = await sendChunks(base64, file.size);
+        if (acked) { this._clearPendingSend(fileId); DB.deleteOutgoingFile(fileId).catch(() => {}); }
+        await storeMsg(base64, acked);
         this._renderContacts();
-        console.log(`[File] Done: ${file.name}`);
+        console.log(`[File] Done: ${file.name}, acked=${acked}`);
     },
 
     // ---- Open conversation ----
@@ -3371,8 +3601,10 @@ const ChatApp = {
             if (c) {
                 title.textContent = c.nickname || c.userId;
                 const peer = PeerConn.peers[id];
-                const connOpen = peer && peer.conn && peer.conn.open;
-                status.textContent = connOpen ? _i18n.t('pchat.status.peerJSOnline') : _i18n.t('pchat.status.offline');
+                const connOpen = peer && peer.connected;
+                const reconnecting = !connOpen && !!PeerConn._reconnectTimers[id];
+                if (reconnecting) status.textContent = _i18n.t('pchat.status.reconnecting');
+                else status.textContent = connOpen ? _i18n.t('pchat.status.peerJSOnline') : _i18n.t('pchat.status.offline');
             }
         } else if (type === "group") {
             const g = this.groups.find(x => x.id === id);
@@ -3465,6 +3697,15 @@ const ChatApp = {
                     this._updateTransferProgress(as.fileId, 100, '等待对方确认...');
                 }
             }
+        }
+        // Completed ≥10MB OPFS sends (not in DB, render from _pendingSends)
+        for (const [fid, ps] of Object.entries(this._pendingSends)) {
+            if (ps.peerId !== peerId || !ps.completed) continue;
+            const alreadyRendered = conv.some(m => m.type === 'direct-file' && m.fileId === fid);
+            if (alreadyRendered) continue;
+            const msg = { id: `msg_direct_${fid}`, peerId, ts: ps.ts, direction: "sent", fromId: this.my.id, type: "direct-file", fileName: ps.name, mimeType: ps.mime, fileSize: ps.size, fileId: fid };
+            conv.push(msg);
+            this._appendMsg(msg);
         }
 
         this._scroll();
@@ -4861,7 +5102,9 @@ const ChatApp = {
             const connOpen = peer && peer.connected;
             const hasPeerKey = peer && peer.peerKey;
             let icon, st;
-            if (connOpen) { icon = '<svg width="12" height="12" viewBox="0 0 32 32" style="vertical-align:middle;margin-right:4px"><circle cx="16" cy="16" r="10" fill="#4ecca3"/></svg>'; st = _i18n.t('pchat.status.online'); }
+            const reconnecting = !connOpen && !!PeerConn._reconnectTimers[c.userId];
+            if (reconnecting) { icon = "🔄"; st = _i18n.t('pchat.status.reconnecting'); }
+            else if (connOpen) { icon = '<svg width="12" height="12" viewBox="0 0 32 32" style="vertical-align:middle;margin-right:4px"><circle cx="16" cy="16" r="10" fill="#4ecca3"/></svg>'; st = _i18n.t('pchat.status.online'); }
             else if (c.publicKey || hasPeerKey) { icon = "⚪"; st = _i18n.t('pchat.status.offline'); }
             else { icon = "⏳"; st = _i18n.t('pchat.status.waitingKeyExchange'); }
             let lastMsgHtml = "";
@@ -4945,6 +5188,61 @@ const ChatApp = {
         document.getElementById("password-input").onkeydown = (e) => { if (e.key === "Enter") this.registerUser(); };
         document.getElementById("login-password-input").onkeydown = (e) => { if (e.key === "Enter") this.loginUser(); };
         document.getElementById("add-friend-input").onkeydown = (e) => { if (e.key === "Enter") this.addFriendById(); };
+
+        // ---- Clipboard paste (images) ----
+        this._clipboardImages = [];
+        const msgInput = document.getElementById("message-input");
+        msgInput.onpaste = (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.type.startsWith("image/")) {
+                    e.preventDefault();
+                    const blob = item.getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        this._clipboardImages.push({ name: `clipboard_${Date.now()}.png`, data: ev.target.result, blob });
+                        this._renderClipboardPreview();
+                    };
+                    reader.readAsDataURL(blob);
+                }
+            }
+        };
+
+        // ---- Drag & drop ----
+        const chatArea = document.getElementById("chat-active");
+        if (chatArea) {
+            chatArea.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; };
+            chatArea.ondrop = async (e) => {
+                e.preventDefault();
+                const files = e.dataTransfer.files;
+                if (!files || files.length === 0) return;
+                for (const file of files) {
+                    try { await this._sendFileInternal(file); } catch(err) { console.error('[Drop] error:', err); }
+                }
+            };
+        }
+    },
+
+    // ---- Clipboard preview ----
+    _clipboardImages: [],
+    _renderClipboardPreview() {
+        const preview = document.getElementById("clipboard-preview");
+        if (!preview || this._clipboardImages.length === 0) {
+            if (preview) preview.style.display = "none";
+            return;
+        }
+        preview.style.display = "flex";
+        preview.innerHTML = this._clipboardImages.map((img, i) =>
+            `<div style="position:relative;margin:4px;width:60px;height:60px;border-radius:6px;overflow:hidden;border:1px solid var(--border);flex-shrink:0">
+                <img src="${img.data}" style="width:100%;height:100%;object-fit:cover">
+                <button onclick="ChatApp._removeClipboardImage(${i})" style="position:absolute;top:0;right:0;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:0 0 0 6px;font-size:12px;padding:1px 6px;cursor:pointer">×</button>
+            </div>`
+        ).join('') + `<span style="font-size:11px;color:var(--text3);align-self:center;margin-left:4px">${this._clipboardImages.length} 张图片待发送</span>`;
+    },
+    _removeClipboardImage(i) {
+        this._clipboardImages.splice(i, 1);
+        this._renderClipboardPreview();
     },
 
     // ---- Public helpers for PeerConn module ----

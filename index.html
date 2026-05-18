@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./logo.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./dist/chat.css?v=20260518K">
+    <link rel="stylesheet" href="./dist/chat.css?v=20260518O">
     <!-- i18n: detect browser language and show/hide language spans -->
     <script>
     (function(){
@@ -243,6 +243,7 @@
                         <button title="" onclick="document.getElementById('file-upload').click()"><svg width="20" height="20" viewBox="0 0 32 32"><path d="M10 28V14a6 6 0 0 1 12 0v12a3 3 0 0 1-6 0V12a1.5 1.5 0 0 1 3 0v12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     </div>
                     <textarea id="message-input" placeholder="" rows="1"></textarea>
+                    <div id="clipboard-preview" style="display:none;padding:4px 12px;border-top:1px solid var(--border);"></div>
                     <button id="send-btn" onclick="ChatApp.sendMessage()">
                         <span class="zh">发送</span> 
                     </button>
@@ -368,9 +369,9 @@
 
     <script src="./dist/qrcode.min.js"></script>
     <script src="./dist/jsqr.min.js"></script>
-    <script src="./dist/pchat.js?v=20260518K"></script>
+    <script src="./dist/pchat.js?v=20260518O"></script>
     <script>
-        const PCHAT_VERSION = '20260518.11';
+        const PCHAT_VERSION = '20260518.15';
         console.log('[PChat] Version: ' + PCHAT_VERSION);
         document.getElementById('app-version').textContent = 'v' + PCHAT_VERSION;
         document.getElementById('sidebar-version').textContent = 'v' + PCHAT_VERSION;
