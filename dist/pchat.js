@@ -2552,7 +2552,8 @@ const ChatApp = {
             info.lastAckBytes = 0;
             console.log(`[File] DIRECT header: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB)`);
             DB.openDirectFile(d.fileId, d.name).catch(e => console.error('[OPFS] openDirectFile failed:', e));
-            if (this.activeConv && this.activeConv.id === peerId) {
+            // Progress bar only for files ≥10MB
+            if (d.size >= 10 * 1024 * 1024 && this.activeConv && this.activeConv.id === peerId) {
                 ChatApp._insertTransferCard(d.fileId, d.name, d.size, false);
             }
         } else {
@@ -2562,16 +2563,18 @@ const ChatApp = {
             info.expectedBase64Len = d.base64Len || 0;
             info.expectedHash = d.hash || "";
             console.log(`[File] Header received: ${d.name} (${d.size}B, ${d.totalChunks} chunks, hash=${d.hash ? d.hash.slice(0,8)+'...' : 'none'})`);
-            // Show progress card if user is already in this chat
-            if (this.activeConv && this.activeConv.id === peerId) {
+            // Progress bar only for files ≥10MB
+            if (d.size >= 10 * 1024 * 1024 && this.activeConv && this.activeConv.id === peerId) {
                 ChatApp._insertTransferCard(d.fileId, d.name, d.size, false);
             }
         }
         ft.pending[d.fileId] = info;
 
-        // Track active receive for sidebar progress
-        this._activeReceives[peerId] = { fileId: d.fileId, name: d.name, size: d.size, pct: 0 };
-        this._renderContacts();
+        // Track active receive for sidebar progress (only files ≥10MB)
+        if (d.size >= 10 * 1024 * 1024) {
+            this._activeReceives[peerId] = { fileId: d.fileId, name: d.name, size: d.size, pct: 0 };
+            this._renderContacts();
+        }
     },
 
     // ---- File receive: chunk ----
@@ -3048,8 +3051,9 @@ const ChatApp = {
             return;
         }
 
-        const LARGE_FILE = 2 * 1024 * 1024;  // 2MB: skip encryption
+        const LARGE_FILE = 10 * 1024 * 1024;  // 10MB: skip encryption
         const DIRECT_FILE = 20 * 1024 * 1024; // 20MB: direct transfer, no DB
+        const SHOW_PROGRESS = 10 * 1024 * 1024; // 10MB+: show progress bar
         const conn = state.conn;
         const isImage = file.type.startsWith("image/");
         const chunkSize = 262144;  // 256KB for direct transfer // 256KB for direct, 16KB for small
@@ -3300,27 +3304,29 @@ const ChatApp = {
             return;
         }
 
-        if (file.size > LARGE_FILE) {
-            // >2MB: ArrayBuffer (no base64 doubling), skip encryption
-            console.log(`[File] Large file (${(file.size/1024/1024).toFixed(1)}MB), using ArrayBuffer, skipping encryption`);
-            const buffer = await new Promise((resolve, reject) => {
-                const r = new FileReader();
-                r.onload = (e) => {
-                    if (!e.target.result) return reject(new Error('Read failed'));
-                    resolve(e.target.result);
-                };
-                r.onerror = (e) => reject(e);
-                r.readAsArrayBuffer(file);
-            });
-            const base64 = arrayBufferToBase64(buffer);
-            console.log(`[File] Read complete, base64 length=${base64.length}`);
-            // Show progress card + track send
+        // ≤20MB: unified ArrayBuffer path (no base64 doubling from DataURL)
+        const skipEncryption = file.size > LARGE_FILE;  // >10MB skip DB encryption
+        console.log(`[File] ${(file.size/1024/1024).toFixed(1)}MB, ArrayBuffer, encrypt=${!skipEncryption}`);
+        const buffer = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = (e) => {
+                if (!e.target.result) return reject(new Error('Read failed'));
+                resolve(e.target.result);
+            };
+            r.onerror = (e) => reject(e);
+            r.readAsArrayBuffer(file);
+        });
+        const base64 = arrayBufferToBase64(buffer);
+        console.log(`[File] Read complete, base64 length=${base64.length}`);
+        // Show progress only for files ≥10MB
+        if (file.size >= SHOW_PROGRESS) {
             this._insertTransferCard(fileId, file.name, file.size, true);
             this._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
             this._renderContacts();
             this._updateSidebarTransfer(peerId, `📤 ${file.name.substring(0, 15)}${file.name.length > 15 ? '...' : ''} 0%`);
-            await sendChunks(base64, file.size);
-            // Remove progress card, clean up tracking (storeMsg handles _appendMsg)
+        }
+        await sendChunks(base64, file.size);
+        if (file.size >= SHOW_PROGRESS) {
             const pr = document.getElementById(`transfer-${fileId}`);
             if (pr) pr.remove();
             delete this._transferThrottle[fileId];
@@ -3328,58 +3334,10 @@ const ChatApp = {
             delete this._transferStartTimes[fileId];
             delete this._transferSizes?.[fileId];
             delete this._activeSends[peerId];
-            await storeMsg(base64, true);
-            this._renderContacts();
-            console.log(`[File] Done: ${file.name}`);
-            return;
         }
-
-        // ≤2MB: legacy base64 approach with encryption
-        console.log(`[File] Small file (${(file.size/1024).toFixed(1)}KB), base64 + encryption`);
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const result = e.target.result;
-                if (!result || typeof result !== 'string') {
-                    console.error('[File] FileReader returned invalid result:', result);
-                    this.showAlert(_i18n.t('pchat.alert.fileReadFail'));
-                    resolve();
-                    return;
-                }
-                const commaIdx = result.indexOf(',');
-                const base64 = commaIdx >= 0 ? result.substring(commaIdx + 1) : result;
-                if (!base64) {
-                    console.error('[File] Empty base64 data');
-                    this.showAlert(_i18n.t('pchat.alert.fileReadFail'));
-                    resolve();
-                    return;
-                }
-                console.log(`[File] Read complete, base64 length=${base64.length}`);
-                // Show progress card + track send
-                ChatApp._insertTransferCard(fileId, file.name, file.size, true);
-                ChatApp._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
-                ChatApp._renderContacts();
-                ChatApp._updateSidebarTransfer(peerId, `📤 ${file.name.substring(0, 15)}${file.name.length > 15 ? '...' : ''} 0%`);
-                await sendChunks(base64, file.size);
-                // Remove progress card, clean up tracking (storeMsg handles _appendMsg)
-                const pr2 = document.getElementById(`transfer-${fileId}`);
-                if (pr2) pr2.remove();
-                delete ChatApp._transferThrottle[fileId];
-                delete ChatApp._transferSpeedCalcAt[fileId];
-                delete ChatApp._transferStartTimes[fileId];
-                delete ChatApp._transferSizes?.[fileId];
-                delete ChatApp._activeSends[peerId];
-                await storeMsg(base64, false);
-                ChatApp._renderContacts();
-                resolve();
-            };
-            reader.onerror = (e) => {
-                console.error('[File] FileReader error:', e);
-                this.showAlert(_i18n.t('pchat.alert.fileReadFail'));
-                resolve();
-            };
-            reader.readAsDataURL(file);
-        });
+        await storeMsg(base64, skipEncryption);
+        this._renderContacts();
+        console.log(`[File] Done: ${file.name}`);
     },
 
     // ---- Open conversation ----
@@ -3469,11 +3427,11 @@ const ChatApp = {
         };
         for (const m of conv) this._appendMsg(m);
 
-        // Insert progress cards for any active file transfers from/to this peer
+        // Insert progress cards for any active file transfers from/to this peer (≥10MB only)
         const ft = this.fileTransfer;
         // Receives:
         for (const [fid, info] of Object.entries(ft.pending)) {
-            if (info.peerId !== peerId) continue;
+            if (info.peerId !== peerId || info.size < 10 * 1024 * 1024) continue;
             const alreadyStored = conv.some(m =>
                 (m.type === 'direct-file' || m.type === 'file' || m.type === 'image') &&
                 m.fileId === fid
