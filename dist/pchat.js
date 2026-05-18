@@ -862,7 +862,7 @@ const PeerConn = {
 
     // Initialize PeerJS instance
     init(myId, callback) {
-        console.log("[PeerConn] Connecting with user ID:", myId);
+        PeerConn._debug && console.log("[PeerConn] Connecting with user ID:", myId);
         const peerConfig = {
             config: {
                 iceServers: [
@@ -876,9 +876,9 @@ const PeerConn = {
         };
         this.peer = new Peer(myId, peerConfig);
         this.peer.on("open", (id) => {
-            console.log("[PeerConn] Peer ID assigned:", id);
+            PeerConn._debug && console.log("[PeerConn] Peer ID assigned:", id);
             if (id !== myId) {
-                console.warn("[PeerConn] ID mismatch: requested", myId, "but got", id);
+                PeerConn._debug && console.warn("[PeerConn] ID mismatch: requested", myId, "but got", id);
             }
             callback(id);
         });
@@ -887,7 +887,7 @@ const PeerConn = {
             // Binary file transfer channel — handle separately
             if (conn.label && conn.label.startsWith('file-')) {
                 const fileId = conn.label.slice(5); // 'file-xxx' → 'xxx'
-                console.log('[PeerConn] Binary file channel from', conn.peer, 'fileId:', fileId);
+                PeerConn._debug && console.log('[PeerConn] Binary file channel from', conn.peer, 'fileId:', fileId);
                 let _chunkCount = 0;
                 conn.on('data', async (chunk) => {
                     let raw = chunk;
@@ -940,7 +940,7 @@ const PeerConn = {
                         }
                 });
                 conn.on('close', async () => {
-                    console.log('[PeerConn] Binary file channel closed:', fileId);
+                    PeerConn._debug && console.log('[PeerConn] Binary file channel closed:', fileId);
                     // Safety net: if data complete but not finalized yet
                     const ft = ChatApp.fileTransfer;
                     const info = ft.pending[fileId];
@@ -948,42 +948,42 @@ const PeerConn = {
                         await ChatApp._finalizeDirectReceive(fileId);
                     }
                 });
-                conn.on('error', (e) => console.error('[PeerConn] Binary file channel error:', fileId, e));
+                conn.on('error', (e) => PeerConn._debug && console.error('[PeerConn] Binary file channel error:', fileId, e));
                 return;
             }
-            console.log("[PeerConn] Incoming connection from", conn.peer);
+            PeerConn._debug && console.log("[PeerConn] Incoming connection from", conn.peer);
             let myKey = null;
             const contact = ChatApp.contacts.find(c => c.userId === conn.peer);
             if (contact && contact.keypair) {
                 myKey = contact.keypair;
-                console.log(`[PeerConn] Receiver loaded keypair for ${conn.peer}, fp=${Crypto.keyFingerprint(myKey.publicKey)}`);
+                PeerConn._debug && console.log(`[PeerConn] Receiver loaded keypair for ${conn.peer}, fp=${Crypto.keyFingerprint(myKey.publicKey)}`);
             }
             const state = { conn, myKey, peerKey: null, connected: false };
             this.peers[conn.peer] = state;
             
             // 注册 open 回调（PeerJS 要求在 connection 回调中立即注册）
             conn.on("open", () => {
-                console.log(`[PeerConn] Connection opened from ${conn.peer}`);
+                PeerConn._debug && console.log(`[PeerConn] Connection opened from ${conn.peer}`);
             });
             
             this._bind(conn, conn.peer, false);
         });
 
         this.peer.on("call", (call) => {
-            console.log("[PeerConn] Incoming call from", call.peer);
+            PeerConn._debug && console.log("[PeerConn] Incoming call from", call.peer);
             ChatApp._onIncomingPeerCall(call);
         });
 
         this.peer.on("error", (err) => {
             if (err.type === "peer-unavailable") {
-                console.log(`[PeerConn] ${err.message}`);
+                PeerConn._debug && console.log(`[PeerConn] ${err.message}`);
             } else {
-                console.error(`[PeerConn] Error: ${err.type} ${err.message}`);
+                PeerConn._debug && console.error(`[PeerConn] Error: ${err.type} ${err.message}`);
             }
         });
 
         this.peer.on("disconnected", () => {
-            console.log("[PeerConn] Disconnected from server, reconnecting...");
+            PeerConn._debug && console.log("[PeerConn] Disconnected from server, reconnecting...");
             this._amOffline = true;
             // Stop all reconnect timers — we'll restart them when signaling recovers
             for (const pid of Object.keys(this._reconnectTimers)) {
@@ -997,7 +997,7 @@ const PeerConn = {
     async connect(peerId) {
         // If we're recovering from offline, always force-reconnect (old DC may be in limbo)
         if (!this._amOffline && this.peers[peerId] && this.peers[peerId].conn && this.peers[peerId].conn.open) {
-            console.log(`[PeerConn] Already connected to ${peerId}`);
+            PeerConn._debug && console.log(`[PeerConn] Already connected to ${peerId}`);
             return this.peers[peerId];
         }
         // Clean up stale state
@@ -1029,7 +1029,7 @@ const PeerConn = {
     // Bind event handlers to data connection
     _bind(conn, peerId, initiator) {
         conn.on("open", async () => {
-            console.log(`[PeerConn] Connected to ${peerId}`);
+            PeerConn._debug && console.log(`[PeerConn] Connected to ${peerId}`);
             const state = this.peers[peerId];
             if (!state) return;
             state.connected = true;
@@ -1039,7 +1039,7 @@ const PeerConn = {
 
             if (initiator) {
                 const contact = ChatApp.contacts.find(c => c.userId === peerId);
-                console.log(`[PeerConn] Initiator to ${peerId}, contact found: ${!!contact}, has publicKey: ${contact && !!contact.publicKey}`);
+                PeerConn._debug && console.log(`[PeerConn] Initiator to ${peerId}, contact found: ${!!contact}, has publicKey: ${contact && !!contact.publicKey}`);
                 if (contact && contact.keypair) {
                     state.myKey = contact.keypair;
                 }
@@ -1054,7 +1054,7 @@ const PeerConn = {
             } else {
                 // 接收方：从 contact 加载密钥对和对方公钥
                 const contact = ChatApp.contacts.find(c => c.userId === peerId);
-                console.log(`[PeerConn] Receiver to ${peerId}, contact found: ${!!contact}, has publicKey: ${contact && !!contact.publicKey}`);
+                PeerConn._debug && console.log(`[PeerConn] Receiver to ${peerId}, contact found: ${!!contact}, has publicKey: ${contact && !!contact.publicKey}`);
                 if (contact && contact.keypair) {
                     state.myKey = contact.keypair;
                 }
@@ -1088,18 +1088,18 @@ const PeerConn = {
         });
 
         conn.on("error", (err) => {
-            console.log(`[PeerConn] ${peerId} connection error:`, err);
+            PeerConn._debug && console.log(`[PeerConn] ${peerId} connection error:`, err);
         });
 
         conn.on("data", async (data) => {
             try {
-                if (!data || !data.type) { console.log(`[PeerConn] ${peerId} data ignored (no type)`, data); return; }
+                if (!data || !data.type) { PeerConn._debug && console.log(`[PeerConn] ${peerId} data ignored (no type)`, data); return; }
                 if (data.type !== "_ping" && data.type !== "_pong") {
-                    console.log(`[PeerConn] ${peerId} data type=${data.type}`, data);
+                    PeerConn._debug && console.log(`[PeerConn] ${peerId} data type=${data.type}`, data);
                 }
                 const state = this.peers[peerId];
                 if (data.type === "add") {
-                    console.log(`[PeerConn] ${peerId} received add request`, data);
+                    PeerConn._debug && console.log(`[PeerConn] ${peerId} received add request`, data);
                     // Auto-close QR modal when someone scans it
                     ChatApp.closeQRModal();
                     ChatApp._onAddRequest(peerId, data);
@@ -1114,19 +1114,19 @@ const PeerConn = {
                     // Only process chat if handshake is complete (contact has publicKey)
                     const contact = ChatApp.contacts.find(c => c.userId === peerId);
                     if (!contact || !contact.publicKey) {
-                        console.log(`[PeerConn] Ignoring chat from ${peerId} - handshake not complete`);
+                        PeerConn._debug && console.log(`[PeerConn] Ignoring chat from ${peerId} - handshake not complete`);
                         return;
                     }
                     let content = data.content;
                     if (data.encrypted && state && state.myKey) {
-                        console.log(`[PeerConn] Decrypting from ${peerId}, myKey pubFp=${Crypto.keyFingerprint(state.myKey.publicKey)}`);
-                        console.log(`[PeerConn] Decrypting from ${peerId}, myKey privFp=${Crypto.keyFingerprint(state.myKey.privateKey)}`);
+                        PeerConn._debug && console.log(`[PeerConn] Decrypting from ${peerId}, myKey pubFp=${Crypto.keyFingerprint(state.myKey.publicKey)}`);
+                        PeerConn._debug && console.log(`[PeerConn] Decrypting from ${peerId}, myKey privFp=${Crypto.keyFingerprint(state.myKey.privateKey)}`);
 
 
                         try { content = await Crypto.decryptChunks(state.myKey.privateKey, data.content); }
-                        catch(e) { console.warn(`[PeerConn] RSA decrypt failed for ${peerId}, falling back to plaintext:`, e.message, '| privKeyLen:', state.myKey.privateKey.length, '| dataLen:', data.content.length); }
+                        catch(e) { PeerConn._debug && console.warn(`[PeerConn] RSA decrypt failed for ${peerId}, falling back to plaintext:`, e.message, '| privKeyLen:', state.myKey.privateKey.length, '| dataLen:', data.content.length); }
                     } else {
-                        console.log(`[PeerConn] Not decrypting from ${peerId}, encrypted=${data.encrypted}, hasMyKey=${!!(state && state.myKey)}`);
+                        PeerConn._debug && console.log(`[PeerConn] Not decrypting from ${peerId}, encrypted=${data.encrypted}, hasMyKey=${!!(state && state.myKey)}`);
                     }
                     ChatApp.onChatMsg(peerId, content, data.ts);
                     // Dispatch custom event for extensions
@@ -1173,11 +1173,11 @@ const PeerConn = {
                     // Transfer messages routed to transfer handler
                     await ChatApp._handleTransferInData(data);
                 }
-            } catch (err) { console.error("[PeerConn] parse:", err); }
+            } catch (err) { PeerConn._debug && console.error("[PeerConn] parse:", err); }
         });
 
         conn.on("close", () => {
-            console.log(`[PeerConn] Disconnected from ${peerId}`);
+            PeerConn._debug && console.log(`[PeerConn] Disconnected from ${peerId}`);
             const state = this.peers[peerId];
             if (state) state.connected = false;
             PeerConn._stopHeartbeat(peerId);
@@ -1189,7 +1189,7 @@ const PeerConn = {
         });
 
         conn.on("error", (err) => {
-            console.error(`[PeerConn] Connection error (${peerId}):`, err);
+            PeerConn._debug && console.error(`[PeerConn] Connection error (${peerId}):`, err);
         });
     },
 
@@ -1209,10 +1209,10 @@ const PeerConn = {
             const elapsed = Date.now() - hb.lastPong;
             if (elapsed > this.HB_TIMEOUT) {
                 hb.missCount++;
-                console.warn(`[PeerConn] Heartbeat timeout for ${peerId}, miss=${hb.missCount}, elapsed=${elapsed}ms`);
+                PeerConn._debug && console.warn(`[PeerConn] Heartbeat timeout for ${peerId}, miss=${hb.missCount}, elapsed=${elapsed}ms`);
                 if (hb.missCount >= 2) {
                     // DC is dead
-                    console.warn(`[PeerConn] DC dead for ${peerId}, closing`);
+                    PeerConn._debug && console.warn(`[PeerConn] DC dead for ${peerId}, closing`);
                     this._stopHeartbeat(peerId);
                     if (state.conn) { try { state.conn.close(); } catch(e) {} }
                     state.connected = false;
@@ -1253,20 +1253,23 @@ const PeerConn = {
             rt.delay = 20000;  // cap at 20s
         }
         rt.attempts++;
-        console.log(`[PeerConn] Scheduling reconnect to ${peerId}, attempt=${rt.attempts}, delay=${rt.delay}ms`);
+        PeerConn._debug && console.log(`[PeerConn] Scheduling reconnect to ${peerId}, attempt=${rt.attempts}, delay=${rt.delay}ms`);
 
         rt.timer = setTimeout(async () => {
-            delete this._reconnectTimers[peerId];  // clear current entry, will be re-created if needed
+            const wasAttempts = rt.attempts;  // save before delete
+            delete this._reconnectTimers[peerId];
             if (!this._amOffline) {
                 try {
                     await this.connect(peerId);
                 } catch(e) {
-                    console.warn(`[PeerConn] Reconnect failed for ${peerId}:`, e.message);
+                    PeerConn._debug && console.warn(`[PeerConn] Reconnect failed for ${peerId}:`, e.message);
                 }
             }
-            // If still not connected, schedule next retry
             const s = this.peers[peerId];
             if (!s || !s.connected) {
+                // Pass saved attempts so counter doesn't reset
+                const nextRt = { attempts: wasAttempts, delay: 0, timer: null };
+                this._reconnectTimers[peerId] = nextRt;
                 this._scheduleReconnect(peerId);
             }
         }, rt.delay);
@@ -1296,18 +1299,18 @@ const PeerConn = {
     async send(peerId, content, msgId) {
         const s = this.peers[peerId];
         if (!s || !s.conn || !s.conn.open) {
-            console.log(`[PeerConn] Cannot send to ${peerId}, conn.open=${s ? s.conn?.open : false}`);
+            PeerConn._debug && console.log(`[PeerConn] Cannot send to ${peerId}, conn.open=${s ? s.conn?.open : false}`);
             return false;
         }
-        console.log(`[PeerConn] Sending chat to ${peerId}: ${content.substring(0, 50)}`);
+        PeerConn._debug && console.log(`[PeerConn] Sending chat to ${peerId}: ${content.substring(0, 50)}`);
         // 公钥交换完成后用 RSA 加密
         let sendContent = content;
         if (s.peerKey) {
-            console.log(`[PeerConn] Encrypting for ${peerId}, peerKey fp=${Crypto.keyFingerprint(s.peerKey)}`);
+            PeerConn._debug && console.log(`[PeerConn] Encrypting for ${peerId}, peerKey fp=${Crypto.keyFingerprint(s.peerKey)}`);
             try { sendContent = await Crypto.encryptChunks(s.peerKey, content); }
-            catch(e) { console.warn('[PeerConn] Encrypt failed:', e.message); }
+            catch(e) { PeerConn._debug && console.warn('[PeerConn] Encrypt failed:', e.message); }
         } else {
-            console.log(`[PeerConn] No peerKey for ${peerId}, sending plaintext`);
+            PeerConn._debug && console.log(`[PeerConn] No peerKey for ${peerId}, sending plaintext`);
         }
         s.conn.send({ type: "chat", id: msgId, content: sendContent, ts: Date.now(), encrypted: sendContent !== content });
         return true;
@@ -1319,7 +1322,7 @@ const PeerConn = {
         const pending = msgs.filter(m => m.direction === "sent" && !m.sent && m.type !== "call-log");
         const state = this.peers[peerId];
         if (!state || !state.conn || !state.conn.open) return;
-        console.log(`[PeerConn] Flushing ${pending.length} pending messages to ${peerId}`);
+        PeerConn._debug && console.log(`[PeerConn] Flushing ${pending.length} pending messages to ${peerId}`);
         for (const m of pending) {
             if (m.type === "voice" && m.content) {
                 state.conn.send({ type: "voice", content: m.content, ts: m.ts, duration: m.duration || 0 });
@@ -1332,7 +1335,7 @@ const PeerConn = {
                 let sendContent = m.content;
                 if (state.peerKey) {
                     try { sendContent = await Crypto.encryptChunks(state.peerKey, m.content); }
-                    catch(e) { console.warn('[PeerConn] Flush encrypt failed:', e.message); }
+                    catch(e) { PeerConn._debug && console.warn('[PeerConn] Flush encrypt failed:', e.message); }
                 }
                 state.conn.send({ type: "chat", id: m.id, content: sendContent, ts: m.ts, encrypted: sendContent !== m.content });
                 m.sent = true;
@@ -1372,7 +1375,7 @@ const PeerConn = {
             ChatApp._onOutgoingPeerCall(call, peerId);
             return call;
         } catch (err) {
-            console.error("[PeerConn] Call error:", err);
+            PeerConn._debug && console.error("[PeerConn] Call error:", err);
             ChatApp.showAlert(_i18n.t('pchat.alert.callError'));
             return null;
         }
@@ -1633,7 +1636,7 @@ const ChatApp = {
         const { peerId, nickname, data } = pending;
         const state = PeerConn.peers[peerId];
         if (!state || !state.conn || !state.conn.open) {
-            console.log('[PeerConn] Cannot accept, no connection');
+            PeerConn._debug && console.log('[PeerConn] Cannot accept, no connection');
             return;
         }
 
@@ -1703,32 +1706,32 @@ const ChatApp = {
         const nickname = data.nickname || peerId;
         const state = PeerConn.peers[peerId];
         if (!state) {
-            console.log(`[PeerConn] No state for ${peerId}, skipping`);
+            PeerConn._debug && console.log(`[PeerConn] No state for ${peerId}, skipping`);
             return;
         }
 
         // 如果已经是好友（有公钥），忽略重复请求
         const existing = this.contacts.find(c => c.userId === peerId);
         if (existing && existing.publicKey) {
-            console.log(`[PeerConn] Already friends with ${peerId}, ignoring add`);
+            PeerConn._debug && console.log(`[PeerConn] Already friends with ${peerId}, ignoring add`);
             return;
         }
 
         // 新联系人，显示接受卡片
-        console.log(`[PeerConn] Add request from ${peerId} (${nickname}), publicKey present: ${!!data.publicKey}`);
+        PeerConn._debug && console.log(`[PeerConn] Add request from ${peerId} (${nickname}), publicKey present: ${!!data.publicKey}`);
         this._pendingFriendRequest = { peerId, nickname, data: { publicKey: data.publicKey } };
 
         // 显示内联卡片
-        console.log(`[PeerConn] Showing friend request card for ${nickname}`);
+        PeerConn._debug && console.log(`[PeerConn] Showing friend request card for ${nickname}`);
         const card = document.getElementById('friend-request-card');
-        console.log(`[PeerConn] friend-request-card element:`, card);
+        PeerConn._debug && console.log(`[PeerConn] friend-request-card element:`, card);
         if (card) {
             document.getElementById('friend-request-nick').textContent = nickname;
             document.getElementById('friend-request-id').textContent = peerId;
             card.style.display = 'block';
-            console.log(`[PeerConn] Card display set to:`, card.style.display);
+            PeerConn._debug && console.log(`[PeerConn] Card display set to:`, card.style.display);
         } else {
-            console.warn(`[PeerConn] friend-request-card not found in DOM!`);
+            PeerConn._debug && console.warn(`[PeerConn] friend-request-card not found in DOM!`);
         }
     },
 
@@ -2190,7 +2193,7 @@ const ChatApp = {
             
             // Check if ID was taken by someone else
             if (id !== this.my.id) {
-                console.warn("[PeerConn] ID conflict: your ID", this.my.id, "is taken");
+                PeerConn._debug && console.warn("[PeerConn] ID conflict: your ID", this.my.id, "is taken");
                 const oldId = this.my.id;
                 const peer = PeerConn.peer;
                 if (peer) peer.destroy();
@@ -3276,6 +3279,10 @@ const ChatApp = {
 
         const state = PeerConn.peers[peerId];
         if (!state || !state.conn || !state.conn.open) return;
+
+        // Close old Binary DC if still running (from original send)
+        const oldConn = this._binarySendChannels[fid];
+        if (oldConn) { try { oldConn.close(); } catch(e) {}; delete this._binarySendChannels[fid]; }
 
         let file = await DB.getOutgoingFile(fid);
         if (!file) {
