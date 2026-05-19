@@ -1493,6 +1493,92 @@ const ChatApp = {
         this.showAlert('OPFS 已清空');
     },
 
+    // ---- Notification helpers ----
+    async _notifySystem(title, body) {
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'default') {
+            await Notification.requestPermission();
+        }
+        if (Notification.permission === 'granted') {
+            new Notification(title, { body, icon: '/icon-192.png' });
+        }
+    },
+
+    _playBeep() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.frequency.value = 800;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.2);
+        } catch(e) {}
+    },
+
+    _playRingtone() {
+        this._stopRingtone();
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.type = 'square';
+            gain.gain.value = 0.2;
+            let high = true;
+            const interval = setInterval(() => {
+                osc.frequency.value = high ? 1000 : 800;
+                high = !high;
+            }, 500);
+            osc.start();
+            this.call._ringOsc = { osc, gain, ctx, interval };
+        } catch(e) {}
+    },
+
+    _stopRingtone() {
+        if (this.call._ringOsc) {
+            clearInterval(this.call._ringOsc.interval);
+            try { this.call._ringOsc.osc.stop(); } catch(e) {}
+            this.call._ringOsc = null;
+        }
+    },
+
+    _shouldNotify(peerId) {
+        if (this.activeConv && this.activeConv.id === peerId) return false;
+        const contact = this.contacts.find(c => c.userId === peerId);
+        if (!contact) return false;
+        return contact.notifyEnabled !== false;
+    },
+
+    async _sendMessageNotification(peerId, title, body) {
+        if (!this._shouldNotify(peerId)) return;
+        this._notifySystem(title, body);
+        this._playBeep();
+        if (navigator.vibrate) navigator.vibrate(200);
+    },
+
+    toggleNotify() {
+        if (!this.activeConv || this.activeConv.type !== 'contact') return;
+        const contact = this.contacts.find(c => c.userId === this.activeConv.id);
+        if (!contact) return;
+        contact.notifyEnabled = contact.notifyEnabled !== false ? false : true;
+        this.saveContact(contact);
+        this._updateNotifyBtn(contact.notifyEnabled !== false);
+    },
+
+    _updateNotifyBtn(enabled) {
+        const btn = document.getElementById('notify-btn');
+        if (!btn) return;
+        if (enabled) {
+            btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M16 4c-4 0-7 3-7 7v5l-3 4h20l-3-4v-5c0-4-3-7-7-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><line x1="13" y1="26" x2="19" y2="26" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="26" x2="16" y2="30" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+        } else {
+            btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M16 4c-4 0-7 3-7 7v5l-3 4h20l-3-4v-5c0-4-3-7-7-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><line x1="13" y1="26" x2="19" y2="26" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="26" x2="16" y2="30" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="8" x2="24" y2="24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
+        }
+    },
+
     call: {
         active: false,
         peerId: null,
@@ -2706,6 +2792,7 @@ const ChatApp = {
 
     // ---- Save contact to IndexedDB ----
     async saveContact(contact) {
+        if (contact.notifyEnabled === undefined) contact.notifyEnabled = true;
         console.log("[SaveContact]", contact.contactId, contact.userId, "publicKey:", !!contact.publicKey);
         await DB.put("contacts", contact, this.my.aesKey);
     },
@@ -2734,6 +2821,14 @@ const ChatApp = {
             this.unreadCount[peerId] = (this.unreadCount[peerId] || 0) + 1;
         }
         this._renderContacts();
+        // Notification
+        if (contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+            const title = contact.nickname || peerId;
+            const body = typeof rawContent === 'string' ? (rawContent.length > 50 ? rawContent.substring(0, 50) : rawContent) : '';
+            this._notifySystem(title, body);
+            this._playBeep();
+            if (navigator.vibrate) navigator.vibrate(200);
+        }
     },
 
     // ---- Handle incoming receipt ----
@@ -2854,6 +2949,13 @@ const ChatApp = {
             this.unreadCount[peerId] = (this.unreadCount[peerId] || 0) + 1;
         }
         this._renderContacts();
+        // Notification
+        if (contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+            const title = contact.nickname || peerId;
+            this._notifySystem(title, _i18n.t('pchat.msg.voice'));
+            this._playBeep();
+            if (navigator.vibrate) navigator.vibrate(200);
+        }
     },
 
     // ---- File receive: header ----
@@ -2914,6 +3016,15 @@ const ChatApp = {
                 this._savePendingReceives();
                 console.log(`[File] Saved pending receive: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB) from ${peerId}, fileId=${d.fileId}`);
             }
+        }
+        // Notification for incoming file
+        const fContact = this.contacts.find(c => c.userId === peerId);
+        if (fContact && fContact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+            const title = fContact.nickname || peerId;
+            const body = (_i18n.t('pchat.file.prefixFile') + ' ' + d.name).length > 50 ? (_i18n.t('pchat.file.prefixFile') + ' ' + d.name).substring(0, 50) : (_i18n.t('pchat.file.prefixFile') + ' ' + d.name);
+            this._notifySystem(title, body);
+            this._playBeep();
+            if (navigator.vibrate) navigator.vibrate(200);
         }
     },
 
@@ -3096,6 +3207,16 @@ const ChatApp = {
             this.unreadCount[peerId] = (this.unreadCount[peerId] || 0) + 1;
         }
         this._renderContacts();
+        // Notification for file completion
+        if (contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+            const title = contact.nickname || peerId;
+            const body = (info.isImage ? '📷 ' + info.name : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name)).length > 50
+                ? (info.isImage ? '📷 ' + info.name : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name)).substring(0, 50)
+                : (info.isImage ? '📷 ' + info.name : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name));
+            this._notifySystem(title, body);
+            this._playBeep();
+            if (navigator.vibrate) navigator.vibrate(200);
+        }
 
         // Calculate average receive speed for final ack
         let finalSpeed = '';
@@ -3169,6 +3290,14 @@ const ChatApp = {
                 };
                 this.saveContact(contact);
                 this._renderContacts();
+                // Notification for file completion
+                if (contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+                    const title = contact.nickname || peerId;
+                    const body = (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).length > 50 ? (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).substring(0, 50) : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name);
+                    this._notifySystem(title, body);
+                    this._playBeep();
+                    if (navigator.vibrate) navigator.vibrate(200);
+                }
             }
 
             const ackPeer = PeerConn.peers[peerId];
@@ -3890,8 +4019,17 @@ const ChatApp = {
                 const reconnecting = !connOpen && !!PeerConn._reconnectTimers[id];
                 if (reconnecting) status.textContent = _i18n.t('pchat.status.reconnecting');
                 else status.textContent = connOpen ? _i18n.t('pchat.status.peerJSOnline') : _i18n.t('pchat.status.offline');
+                // Update notify button state
+                const notifyBtn = document.getElementById('notify-btn');
+                if (notifyBtn) {
+                    notifyBtn.style.display = '';
+                    this._updateNotifyBtn(c.notifyEnabled !== false);
+                }
             }
         } else if (type === "group") {
+            // Hide notify button for groups
+            const notifyBtn = document.getElementById('notify-btn');
+            if (notifyBtn) notifyBtn.style.display = 'none';
             const g = this.groups.find(x => x.id === id);
             if (g) {
                 title.textContent = g.name;
@@ -4312,6 +4450,14 @@ const ChatApp = {
             contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + info.name, ts: now, fromId: info.peerId };
             this.saveContact(contact);
             this._renderContacts();
+            // Notification for file completion
+            if (contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === info.peerId)) {
+                const title = contact.nickname || info.peerId;
+                const body = (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).length > 50 ? (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).substring(0, 50) : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name);
+                this._notifySystem(title, body);
+                this._playBeep();
+                if (navigator.vibrate) navigator.vibrate(200);
+            }
         }
     },
 
@@ -4507,6 +4653,12 @@ const ChatApp = {
         this.incomingCallPeerId = peerId;
         this._pendingCall = call;
         this._showIncomingCallModal(name);
+        // Call notification
+        if (contact && contact.notifyEnabled !== false) {
+            this._notifySystem(_i18n.t('pchat.call.incoming') + ': ' + name, name);
+            this._playRingtone();
+            if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200]);
+        }
     },
 
     // 显示来电 modal（接收方）
@@ -4581,6 +4733,7 @@ const ChatApp = {
 
     answerCall() {
         const peerId = this.incomingCallPeerId;
+        this._stopRingtone();
         this._hideCallModal(); this._closeAlertModal(); this._hideFriendRequestModal();
         if (!peerId) return;
         const call = this._pendingCall; this._pendingCall = null;
@@ -4621,6 +4774,7 @@ const ChatApp = {
     },
 
     rejectCall() {
+        this._stopRingtone();
         this._hideCallModal(); this._closeAlertModal(); this._hideFriendRequestModal();
         if (this._pendingCall) { this._pendingCall.close(); this._pendingCall = null; }
     },
@@ -4659,6 +4813,9 @@ const ChatApp = {
             // Call was in reconnect mode but now truly ended
             c._reconnecting = false;
         }
+        
+        // Stop ringtone if active
+        this._stopRingtone();
         
         // 计算通话时长并记录
         if (c.startTime) {
