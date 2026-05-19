@@ -1111,10 +1111,7 @@ const PeerConn = {
             if (ChatApp.call._reconnecting) {
                 console.log("[Call] Reconnecting call to", peerId);
                 ChatApp.call._reconnecting = false;
-                if (ChatApp.call.direction === "sent") {
-                    PeerConn.call(peerId);
-                }
-                // received calls: caller will re-initiate
+                ChatApp._reconnectCall(peerId);
             }
         });
 
@@ -1526,20 +1523,25 @@ const ChatApp = {
             const gain = ctx.createGain();
             gain.connect(ctx.destination);
             gain.gain.value = 0.15;
-            // Gentle 2-note chime: C5→E5, 800ms cycle
-            const notes = [523, 659];
+            // Pattern: 3 quick notes (ding-ding-ding) → 1 beat pause, repeat
+            // C5(523Hz) E5(659Hz) G5(784Hz), each 200ms, gap 150ms, pause 800ms
+            const notes = [523, 659, 784];
             let noteIdx = 0;
             const playNote = () => {
-                const osc = ctx.createOscillator();
-                osc.type = 'sine';
-                osc.frequency.value = notes[noteIdx];
-                osc.connect(gain);
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.35);
-                noteIdx = 1 - noteIdx;
+                if (noteIdx < 3) {
+                    const osc = ctx.createOscillator();
+                    osc.type = 'sine';
+                    osc.frequency.value = notes[noteIdx];
+                    osc.connect(gain);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.2);
+                    noteIdx++;
+                }
+                // After 3 notes, pause 1 beat (~800ms), then reset
+                if (noteIdx >= 3) noteIdx = -1;  // -1 skips one interval (the pause beat)
             };
             playNote();
-            const interval = setInterval(playNote, 750);
+            const interval = setInterval(playNote, 350);
             this.call._ringOsc = { gain, ctx, interval };
         } catch(e) {}
     },
@@ -4655,6 +4657,13 @@ const ChatApp = {
     _onIncomingPeerCall(call) {
         const peerId = call.peer;
         console.log("[Call] Incoming call from", peerId);
+        // Auto-answer if we were waiting for reconnection
+        if (this.call._reconnecting && this.call.peerId === peerId) {
+            console.log("[Call] Auto-answering reconnect call");
+            this.call._reconnecting = false;
+            this._autoAnswerReconnect(call, peerId);
+            return;
+        }
         const contact = this.contacts.find(c => c.userId === peerId);
         const name = contact ? (contact.nickname || peerId) : peerId;
         this.incomingCallPeerId = peerId;
@@ -4677,6 +4686,18 @@ const ChatApp = {
         document.getElementById("call-timer").textContent = "";
         modal.style.display = "flex";
         this._pushNav(() => this.hangupCall());
+        
+        // Listen for caller cancelling before we answer
+        if (this._pendingCall) {
+            const pendingCall = this._pendingCall;
+            this._pendingCall.on("close", () => {
+                if (this._pendingCall !== pendingCall) return;  // already answered/rejected
+                console.log("[Call] Caller cancelled, cleaning up");
+                this._stopRingtone();
+                this._hideCallModal();
+                this._pendingCall = null;
+            });
+        }
         
         // 接收方：显示接听 + 挂断按钮
         const actionsEl = document.getElementById("call-actions");
@@ -4796,6 +4817,117 @@ const ChatApp = {
         this._onCallEnd();
     },
 
+    // Re-establish call after DC reconnection
+    async _reconnectCall(peerId) {
+        const c = this.call;
+        if (!c.active) return;
+        console.log("[Call] _reconnectCall to", peerId);
+        try {
+            // Stop old local stream
+            if (c.localStream) {
+                c.localStream.getTracks().forEach(t => t.stop());
+                c.localStream = null;
+            }
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            c.localStream = stream;
+            
+            const call = PeerConn.peer.call(peerId, stream);
+            // Clean up old media connection
+            if (c.mediaConnection) {
+                try { c.mediaConnection.close(); } catch(e) {}
+            }
+            c.mediaConnection = call;
+            
+            call.on("stream", (remoteStream) => {
+                if (c.audio) { c.audio.pause(); c.audio.srcObject = null; }
+                c.audio = new Audio(); c.audio.srcObject = remoteStream; c.audio.play();
+                // Restore connected state if was reconnecting
+                if (c.state !== "connected") {
+                    c.state = "connected";
+                }
+                if (!c.startTime) c.startTime = Date.now();
+                this._updateCallStatus(_i18n.t('pchat.status.peerJSOnline'), false);
+                // Ensure header status bar is visible
+                this._showCallInHeader();
+                // Restart timer if needed
+                if (!c.timerInterval) {
+                    c.timerInterval = setInterval(() => {
+                        const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
+                        const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                        const sec = (elapsed % 60).toString().padStart(2, '0');
+                        const el = document.getElementById("call-status-timer");
+                        if (el) el.textContent = `${min}:${sec}`;
+                    }, 1000);
+                }
+            });
+            call.on("close", () => {
+                const state = PeerConn.peers[peerId];
+                const dcAlive = state && state.conn && state.conn.open;
+                this._onCallEnd(!dcAlive);
+            });
+            call.on("error", (err) => { console.error("[Call] Reconnect error:", err); this.hangupCall(); });
+            console.log("[Call] Reconnect call sent to", peerId);
+        } catch (err) {
+            console.error("[Call] Reconnect failed:", err);
+            this.hangupCall();
+        }
+    },
+
+    // Auto-answer an incoming reconnection call (receiver side)
+    async _autoAnswerReconnect(call, peerId) {
+        const c = this.call;
+        console.log("[Call] _autoAnswerReconnect from", peerId);
+        
+        // Clean up old state
+        if (c._pendingCall) {
+            try { c._pendingCall.close(); } catch(e) {}
+            c._pendingCall = null;
+        }
+        this._hideCallModal(); this._closeAlertModal(); this._hideFriendRequestModal();
+        
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then((localStream) => {
+            if (c.localStream) {
+                c.localStream.getTracks().forEach(t => t.stop());
+            }
+            c.localStream = localStream;
+            if (c.mediaConnection) {
+                try { c.mediaConnection.close(); } catch(e) {}
+            }
+            c.mediaConnection = call;
+            c.active = true;
+            c.peerId = peerId;
+            c.state = "connected";
+            c.direction = "received";
+            if (!c.startTime) c.startTime = Date.now();
+            call.answer(localStream);
+            
+            call.on("stream", (remoteStream) => {
+                if (c.audio) { c.audio.pause(); c.audio.srcObject = null; }
+                c.audio = new Audio(); c.audio.srcObject = remoteStream; c.audio.play();
+                this._updateCallStatus(_i18n.t('pchat.status.peerJSOnline'), false);
+                this._showCallInHeader();
+                if (!c.timerInterval) {
+                    c.timerInterval = setInterval(() => {
+                        const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
+                        const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                        const sec = (elapsed % 60).toString().padStart(2, '0');
+                        const el = document.getElementById("call-status-timer");
+                        if (el) el.textContent = `${min}:${sec}`;
+                    }, 1000);
+                }
+            });
+            call.on("close", () => {
+                const state = PeerConn.peers[peerId];
+                const dcAlive = state && state.conn && state.conn.open;
+                this._onCallEnd(!dcAlive);
+            });
+            call.on("error", (err) => { console.error("[Call] Auto-answer error:", err); this.hangupCall(); });
+        }).catch((err) => {
+            console.error("[Call] Auto-answer mic error:", err);
+            this.hangupCall();
+        });
+    },
+
     _updateCallStatus(text, animating) {
         const el = document.getElementById("call-status");
         if (el) {
@@ -4823,12 +4955,6 @@ const ChatApp = {
         
         // Stop ringtone if active
         this._stopRingtone();
-        
-        // 计算通话时长并记录
-        if (c.startTime) {
-            const duration = Math.floor((Date.now() - c.startTime) / 1000);
-            await this._recordCallMessage(c.peerId, duration, c.direction || "received");
-        }
         
         this._stopCallMedia();
         this._hideCallModal();
