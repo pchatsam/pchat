@@ -1199,6 +1199,14 @@ const PeerConn = {
                     // Heartbeat: update lastPong timestamp
                     const hb = PeerConn._heartbeats[peerId];
                     if (hb) { hb.lastPong = Date.now(); hb.missCount = 0; }
+                } else if (data.type === "call-ping") {
+                    // Call-specific ping: reply pong immediately with same timestamp
+                    if (state && state.conn && state.conn.open) {
+                        state.conn.send({ type: "call-pong", ts: data.ts });
+                    }
+                } else if (data.type === "call-pong") {
+                    // Call-specific pong: calculate and display latency
+                    ChatApp._onCallPong(data.ts);
                 } else if (data.type === "call-cancelled") {
                     // Caller hung up before we answered
                     console.log("[Call] Received call-cancelled from", peerId);
@@ -2456,6 +2464,8 @@ const ChatApp = {
                     }
                 }
             }
+            // Restore any active call state from before refresh/logout
+            this._restoreCallState();
             // If there's a pending invite, initiate friend request
             if (this.pendingInviteId) {
                 console.log("[Init] Pending invite to", this.pendingInviteId);
@@ -4864,6 +4874,9 @@ const ChatApp = {
             textEl.textContent = _i18n.t('pchat.call.active');
             textEl.style.color = "#2e7d32";
         }
+        // Start call-specific ping/pong for latency + disconnect detection
+        this._startCallPing();
+        this._saveCallState();
     },
     
     // 通话结束：隐藏通话状态栏，恢复拨打按钮
@@ -4878,6 +4891,9 @@ const ChatApp = {
         
         const textEl = document.getElementById("call-status-text");
         if (textEl) textEl.textContent = _i18n.t('pchat.call.active');
+        
+        this._stopCallPing();
+        this._clearCallState();
     },
 
     // Update call status bar text and color
@@ -4991,6 +5007,164 @@ const ChatApp = {
             '#fff3e0',
             '#e65100'
         );
+        // Update latency area to show reconnecting
+        const latEl = document.getElementById('call-latency');
+        if (latEl) latEl.textContent = _i18n.t('pchat.status.reconnecting');
+        // Stop call ping
+        this._stopCallPing();
+        // Set 30-second timeout to force-end call if not reconnected
+        if (c._interruptTimer) clearTimeout(c._interruptTimer);
+        c._interruptStart = Date.now();
+        this._saveCallState();
+        c._interruptTimer = setTimeout(() => {
+            console.log('[Call] Interrupt timeout (30s), ending call');
+            this.hangupCall();
+        }, 30000);
+    },
+
+    // ---- Call-specific ping/pong (5s interval, 2s timeout) ----
+    _startCallPing() {
+        this._stopCallPing();
+        const c = this.call;
+        c._callPingInterval = setInterval(() => this._sendCallPing(), 5000);
+        this._sendCallPing();  // send first immediately
+    },
+
+    _stopCallPing() {
+        const c = this.call;
+        if (c._callPingInterval) { clearInterval(c._callPingInterval); c._callPingInterval = null; }
+        if (c._callPingTimer) { clearTimeout(c._callPingTimer); c._callPingTimer = null; }
+        if (c._interruptTimer) { clearTimeout(c._interruptTimer); c._interruptTimer = null; }
+        const latEl = document.getElementById('call-latency');
+        if (latEl) latEl.textContent = '';
+    },
+
+    _sendCallPing() {
+        const c = this.call;
+        if (!c.peerId) return;
+        const state = PeerConn.peers[c.peerId];
+        if (!state || !state.conn || !state.conn.open) return;
+        const now = Date.now();
+        c._callPingSent = now;
+        state.conn.send({ type: "call-ping", ts: now });
+        // 2-second timeout: if no pong, treat as disconnected
+        if (c._callPingTimer) clearTimeout(c._callPingTimer);
+        c._callPingTimer = setTimeout(() => {
+            console.log('[Call] Call ping timeout for', c.peerId);
+            this._onPeerDisconnected(c.peerId);
+        }, 2000);
+    },
+
+    _onCallPong(pingTs) {
+        const c = this.call;
+        if (!c._callPingInterval) return;  // not in a call
+        if (c._callPingTimer) { clearTimeout(c._callPingTimer); c._callPingTimer = null; }
+        const latency = Date.now() - pingTs;
+        const latEl = document.getElementById('call-latency');
+        if (latEl) latEl.textContent = latency + 'ms';
+    },
+
+    // ---- Call state persistence (localStorage) ----
+    _saveCallState() {
+        const c = this.call;
+        if (!c.active || !c.peerId) { this._clearCallState(); return; }
+        const state = {
+            active: true,
+            peerId: c.peerId,
+            direction: c.direction,
+            startTime: c.startTime,
+            callState: c.state,
+            reconnecting: !!c._reconnecting,
+            interruptStart: c._interruptStart || null,
+        };
+        localStorage.setItem('pchat_call_state', JSON.stringify(state));
+    },
+
+    _loadCallState() {
+        try {
+            const raw = localStorage.getItem('pchat_call_state');
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch(e) { return null; }
+    },
+
+    _clearCallState() {
+        localStorage.removeItem('pchat_call_state');
+    },
+
+    // Restore call after page refresh / re-login
+    async _restoreCallState() {
+        const saved = this._loadCallState();
+        if (!saved || !saved.active) return;
+        console.log('[Call] Restoring call state:', saved);
+        
+        const c = this.call;
+        c.active = true;
+        c.peerId = saved.peerId;
+        c.direction = saved.direction;
+        c.startTime = saved.startTime;
+        c.state = saved.callState || 'connected';
+        c._reconnecting = saved.reconnecting || false;
+        c._interruptStart = saved.interruptStart;
+        
+        // Show call status bar (will be hidden if not in header, but we set state)
+        this._showCallInHeader();
+        
+        if (c._reconnecting || c.state === 'interrupted') {
+            // Restore interrupted UI
+            this._updateCallBarStatus(
+                _i18n.t('pchat.call.interrupted'),
+                '#fff3e0',
+                '#e65100'
+            );
+            const latEl = document.getElementById('call-latency');
+            if (latEl) latEl.textContent = _i18n.t('pchat.status.reconnecting');
+            // Calculate remaining 30s timeout
+            const elapsed = c._interruptStart ? (Date.now() - c._interruptStart) : 0;
+            const remaining = Math.max(1000, 30000 - elapsed);
+            c._interruptTimer = setTimeout(() => {
+                console.log('[Call] Interrupt timeout (restored), ending call');
+                this.hangupCall();
+            }, remaining);
+        } else {
+            // Was connected, start ping
+            this._startCallPing();
+            // Resume timer display
+            if (c.timerInterval) clearInterval(c.timerInterval);
+            c.timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
+                const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                const sec = (elapsed % 60).toString().padStart(2, '0');
+                const el = document.getElementById("call-status-timer");
+                if (el) el.textContent = `${min}:${sec}`;
+            }, 1000);
+        }
+        
+        // If we're the initiator and in interrupted state, try to reconnect
+        if (c._reconnecting || c.state === 'interrupted') {
+            if (c.direction === 'sent') {
+                // Caller: keep checking if peer is online, then re-initiate
+                this._pollForReconnect();
+            }
+            // Receiver: caller will re-initiate, our _onIncomingPeerCall will auto-answer
+        }
+    },
+
+    _pollForReconnect() {
+        const c = this.call;
+        if (!c.active || !c.peerId) return;
+        const check = () => {
+            if (!c.active) return;
+            const state = PeerConn.peers[c.peerId];
+            if (state && state.conn && state.conn.open) {
+                console.log('[Call] Peer online, reconnecting...');
+                c._reconnecting = false;
+                this._reconnectCall(c.peerId);
+            } else {
+                c._pollTimer = setTimeout(check, 2000);
+            }
+        };
+        check();
     },
 
     hangupCall() {
@@ -5030,6 +5204,10 @@ const ChatApp = {
                     '#e8f5e9',
                     '#2e7d32'
                 );
+                // Restart call ping for latency tracking
+                this._startCallPing();
+                c._interruptStart = null;
+                this._saveCallState();
                 // Restart timer
                 if (c.timerInterval) { clearInterval(c.timerInterval); }
                 c.timerInterval = setInterval(() => {
@@ -5089,6 +5267,9 @@ const ChatApp = {
                     '#e8f5e9',
                     '#2e7d32'
                 );
+                this._startCallPing();
+                c._interruptStart = null;
+                this._saveCallState();
                 if (c.timerInterval) { clearInterval(c.timerInterval); }
                 c.timerInterval = setInterval(() => {
                     const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
