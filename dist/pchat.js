@@ -1661,23 +1661,25 @@ const ChatApp = {
     _keepAliveAudio: null,
     _keepAliveTimer: null,
     _setupBackgroundKeepAlive() {
-        // Silent 1-second WAV for keep-alive pulse
         const silentSrc = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+        const reconnect = () => {
+            if (!this.my || !this.my.id) return;  // not logged in
+            if (!PeerConn.peer || PeerConn.peer.destroyed) {
+                this._initPeer();
+            } else if (PeerConn._amOffline) {
+                PeerConn.peer.reconnect();
+            } else {
+                PeerConn._reconnectAll();
+            }
+        };
 
         const handleVisibility = () => {
             if (document.visibilityState === 'visible') {
-                // Came back to foreground: stop keep-alive, reconnect
                 this._stopKeepAlive();
                 console.log('[KeepAlive] Page visible, reconnecting...');
-                if (!PeerConn.peer || PeerConn.peer.destroyed) {
-                    this._initPeer();
-                } else if (PeerConn._amOffline) {
-                    PeerConn.peer.reconnect();
-                } else {
-                    PeerConn._reconnectAll();
-                }
+                reconnect();
             } else {
-                // Went to background: pulse silent audio every 20s
                 this._startKeepAlive();
                 console.log('[KeepAlive] Page hidden, keep-alive pulse started');
             }
@@ -1691,11 +1693,7 @@ const ChatApp = {
         window.addEventListener('pageshow', () => {
             console.log('[KeepAlive] Page shown (pageshow), reconnecting...');
             this._stopKeepAlive();
-            if (!PeerConn.peer || PeerConn.peer.destroyed) {
-                this._initPeer();
-            } else {
-                PeerConn._reconnectAll();
-            }
+            reconnect();
         });
     },
 
