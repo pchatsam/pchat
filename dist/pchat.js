@@ -1114,8 +1114,9 @@ const PeerConn = {
             // Resume voice call if it was in reconnect mode
             if (ChatApp.call._reconnecting && ChatApp.call.peerId === peerId) {
                 console.log("[Call] DC reconnected, call in reconnect mode, direction=", ChatApp.call.direction);
-                // Only the original caller re-initiates the call
+                // Only the original caller re-initiates the call (once)
                 if (ChatApp.call.direction === "sent") {
+                    ChatApp.call._reconnecting = false;
                     ChatApp._reconnectCall(peerId);
                 }
                 // Receiver: _reconnecting stays true until auto-answered in _onIncomingPeerCall
