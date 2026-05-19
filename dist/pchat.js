@@ -1105,6 +1105,8 @@ const PeerConn = {
             }
 
             this.flushPending(peerId);
+            // Resend recent messages that were sent but never acked
+            ChatApp._resendUnacked(peerId);
             // Request resume for any incomplete file transfers
             ChatApp._requestFileResume(peerId);
             // Resume voice call if it was in reconnect mode
@@ -1660,8 +1662,19 @@ const ChatApp = {
     // ---- Background keep-alive (mobile) ----
     _keepAliveAudio: null,
     _keepAliveTimer: null,
+
+    _lockPortrait() {
+        // Try Screen Orientation API
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('portrait').catch(() => {});
+        }
+    },
+
     _setupBackgroundKeepAlive() {
         const silentSrc = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+        // Try to lock screen orientation to portrait
+        this._lockPortrait();
 
         const reconnect = () => {
             if (!this.my || !this.my.id) return;  // not logged in
@@ -3509,6 +3522,35 @@ const ChatApp = {
             state.conn.on("data", h);
         });
         if (acked) { msg.sent = true; await DB.put("messages", msg, this.my.aesKey); console.log(`[File] Retry success: ${msg.fileName}`); }
+    },
+
+    // ---- Resend recently-sent messages that were never acknowledged on reconnect ----
+    async _resendUnacked(peerId) {
+        const state = PeerConn.peers[peerId];
+        if (!state || !state.conn || !state.conn.open) return;
+        const msgs = await ChatApp.getMessages(peerId);
+        let count = 0;
+        for (const m of msgs) {
+            if (m.direction !== "sent") continue;
+            if (m.type === "call-log") continue;
+            // Skip if already acknowledged by this peer
+            if (m.receipts && m.receipts[peerId]) continue;
+            // Skip file/image — handled by _retryPendingFile
+            if (m.type === "file" || m.type === "image") continue;
+            count++;
+            console.log(`[Resend] Resending unacked msg ${m.id} to ${peerId}`, m.content?.substring(0, 30));
+            if (m.type === "voice" && m.content) {
+                state.conn.send({ type: "voice", content: m.content, ts: m.ts, duration: m.duration || 0 });
+            } else if (m.content !== undefined) {
+                let sendContent = m.content;
+                if (state.peerKey) {
+                    try { sendContent = await Crypto.encryptChunks(state.peerKey, m.content); }
+                    catch(e) { console.warn('[Resend] Encrypt failed:', e.message); continue; }
+                }
+                state.conn.send({ type: "chat", id: m.id, content: sendContent, ts: m.ts, encrypted: sendContent !== m.content });
+            }
+        }
+        if (count > 0) console.log(`[Resend] Resent ${count} unacked messages to ${peerId}`);
     },
 
     // ---- Receiver asks sender to resume incomplete Binary DC transfer ----

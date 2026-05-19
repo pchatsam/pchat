@@ -451,3 +451,8 @@ body {
     .modal-actions button,.modal-content button{min-height:44px;padding:10px 20px;}
     .msg-delete-btn{display:flex!important;opacity:.6!important;width:28px;height:28px;}
 }
+
+/* Portrait-only lock for handheld devices */
+@media screen and (max-width:900px) and (orientation:landscape){
+    #portrait-lock{display:flex!important;}
+}
