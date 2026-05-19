@@ -1112,10 +1112,13 @@ const PeerConn = {
             // Request resume for any incomplete file transfers
             ChatApp._requestFileResume(peerId);
             // Resume voice call if it was in reconnect mode
-            if (ChatApp.call._reconnecting) {
-                console.log("[Call] Reconnecting call to", peerId);
-                ChatApp.call._reconnecting = false;
-                ChatApp._reconnectCall(peerId);
+            if (ChatApp.call._reconnecting && ChatApp.call.peerId === peerId) {
+                console.log("[Call] DC reconnected, call in reconnect mode, direction=", ChatApp.call.direction);
+                // Only the original caller re-initiates the call
+                if (ChatApp.call.direction === "sent") {
+                    ChatApp._reconnectCall(peerId);
+                }
+                // Receiver: _reconnecting stays true until auto-answered in _onIncomingPeerCall
             }
         });
 
