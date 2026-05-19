@@ -925,11 +925,15 @@ const PeerConn = {
                                         const deltaBytes = info.totalRawReceived - lastAckBytes;
                                         const deltaSec = Math.max((nowMs - lastAckTime) / 1000, 0.01);
                                         const spd = deltaBytes / deltaSec;
-                                        // Sliding window average filter (100 samples) for smooth display
+                                        // Sliding window average filter — seed with first sample, then FIFO
                                         info._speedWindow = info._speedWindow || [];
-                                        info._speedWindow.push(spd);
-                                        if (info._speedWindow.length > 100) info._speedWindow.shift();
-                                        const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / info._speedWindow.length;
+                                        if (info._speedWindow.length === 0) {
+                                            for (let i = 0; i < 100; i++) info._speedWindow.push(spd);
+                                        } else {
+                                            info._speedWindow.push(spd);
+                                            info._speedWindow.shift();
+                                        }
+                                        const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / 100;
                                         const speedStr = avgSpd > 1048576 ? `${(avgSpd/1048576).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
                                         const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / avgSpd) : 0;
                                         info._binaryLastAckBytes = info.totalRawReceived;
@@ -2936,11 +2940,15 @@ const ChatApp = {
                 const deltaBytes = rawReceived - lastAckAt;
                 const deltaSec = Math.max((nowMs - lastAckTime) / 1000, 0.01);
                 const spd = deltaBytes / deltaSec;
-                // Sliding window average filter (100 samples) for smooth display
+                // Sliding window average filter — seed with first sample, then FIFO
                 info._speedWindow = info._speedWindow || [];
-                info._speedWindow.push(spd);
-                if (info._speedWindow.length > 100) info._speedWindow.shift();
-                const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / info._speedWindow.length;
+                if (info._speedWindow.length === 0) {
+                    for (let i = 0; i < 100; i++) info._speedWindow.push(spd);
+                } else {
+                    info._speedWindow.push(spd);
+                    info._speedWindow.shift();
+                }
+                const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / 100;
                 const speedStr = avgSpd > 1024*1024 ? `${(avgSpd/1024/1024).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
                 const etaSec = info.size > rawReceived ? Math.round((info.size - rawReceived) / avgSpd) : 0;
                 info.lastAckBytes = rawReceived;
