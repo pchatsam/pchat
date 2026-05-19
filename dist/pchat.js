@@ -1523,34 +1523,37 @@ const ChatApp = {
         this._stopRingtone();
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
             const gain = ctx.createGain();
-            osc.connect(gain); gain.connect(ctx.destination);
-            osc.type = 'square';
-            gain.gain.value = 0.2;
-            let high = true;
-            const interval = setInterval(() => {
-                osc.frequency.value = high ? 1000 : 800;
-                high = !high;
-            }, 500);
-            osc.start();
-            this.call._ringOsc = { osc, gain, ctx, interval };
+            gain.connect(ctx.destination);
+            gain.gain.value = 0.15;
+            // Gentle 2-note chime: C5→E5, 800ms cycle
+            const notes = [523, 659];
+            let noteIdx = 0;
+            const playNote = () => {
+                const osc = ctx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.value = notes[noteIdx];
+                osc.connect(gain);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.35);
+                noteIdx = 1 - noteIdx;
+            };
+            playNote();
+            const interval = setInterval(playNote, 750);
+            this.call._ringOsc = { gain, ctx, interval };
         } catch(e) {}
     },
 
     _stopRingtone() {
         if (this.call._ringOsc) {
             clearInterval(this.call._ringOsc.interval);
-            try { this.call._ringOsc.osc.stop(); } catch(e) {}
             this.call._ringOsc = null;
         }
     },
 
     _shouldNotify(peerId) {
-        // Page is active/visible → skip notification
+        // Page visible → no notification
         if (document.visibilityState === 'visible') return false;
-        // Currently viewing this conversation → skip
-        if (this.activeConv && this.activeConv.id === peerId) return false;
         const contact = this.contacts.find(c => c.userId === peerId);
         if (!contact) return false;
         return contact.notifyEnabled !== false;
@@ -2826,7 +2829,7 @@ const ChatApp = {
         }
         this._renderContacts();
         // Notification
-        if (document.visibilityState !== 'visible' && contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+        if (contact && contact.notifyEnabled !== false && document.visibilityState !== 'visible') {
             const title = contact.nickname || peerId;
             const body = typeof rawContent === 'string' ? (rawContent.length > 50 ? rawContent.substring(0, 50) : rawContent) : '';
             this._notifySystem(title, body);
@@ -2954,7 +2957,7 @@ const ChatApp = {
         }
         this._renderContacts();
         // Notification
-        if (document.visibilityState !== 'visible' && contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+        if (contact && contact.notifyEnabled !== false && document.visibilityState !== 'visible') {
             const title = contact.nickname || peerId;
             this._notifySystem(title, _i18n.t('pchat.msg.voice'));
             this._playBeep();
@@ -3023,7 +3026,7 @@ const ChatApp = {
         }
         // Notification for incoming file
         const fContact = this.contacts.find(c => c.userId === peerId);
-        if (document.visibilityState !== 'visible' && fContact && fContact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+        if (fContact && fContact.notifyEnabled !== false && document.visibilityState !== 'visible') {
             const title = fContact.nickname || peerId;
             const body = (_i18n.t('pchat.file.prefixFile') + ' ' + d.name).length > 50 ? (_i18n.t('pchat.file.prefixFile') + ' ' + d.name).substring(0, 50) : (_i18n.t('pchat.file.prefixFile') + ' ' + d.name);
             this._notifySystem(title, body);
@@ -3212,7 +3215,7 @@ const ChatApp = {
         }
         this._renderContacts();
         // Notification for file completion
-        if (document.visibilityState !== 'visible' && contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+        if (contact && contact.notifyEnabled !== false && document.visibilityState !== 'visible') {
             const title = contact.nickname || peerId;
             const body = (info.isImage ? '📷 ' + info.name : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name)).length > 50
                 ? (info.isImage ? '📷 ' + info.name : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name)).substring(0, 50)
@@ -3295,7 +3298,7 @@ const ChatApp = {
                 this.saveContact(contact);
                 this._renderContacts();
                 // Notification for file completion
-                if (document.visibilityState !== 'visible' && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+                if (contact.notifyEnabled !== false && document.visibilityState !== 'visible') {
                     const title = contact.nickname || peerId;
                     const body = (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).length > 50 ? (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).substring(0, 50) : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name);
                     this._notifySystem(title, body);
@@ -4455,7 +4458,7 @@ const ChatApp = {
             this.saveContact(contact);
             this._renderContacts();
             // Notification for file completion
-            if (document.visibilityState !== 'visible' && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === info.peerId)) {
+            if (contact.notifyEnabled !== false && document.visibilityState !== 'visible') {
                 const title = contact.nickname || info.peerId;
                 const body = (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).length > 50 ? (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).substring(0, 50) : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name);
                 this._notifySystem(title, body);
@@ -5044,6 +5047,10 @@ const ChatApp = {
         if (!fullData && item.thumbData) fullData = item.thumbData;
         if (fullData) {
             item.fullSrc = `data:${mime || 'image/jpeg'};base64,${fullData}`;
+            // Update viewer URL so download button gets full-res
+            if (idx === iv.swipeIndex) {
+                iv.url = item.fullSrc;
+            }
             // If this is the currently displayed image, swap to full-res
             if (idx === iv.swipeIndex) {
                 const img = document.getElementById("image-viewer-img");
@@ -5579,8 +5586,15 @@ const ChatApp = {
 
     downloadImage(event) {
         if (event) event.stopPropagation();
-        const iv = this.imageViewer; if (!iv.url) return;
-        const a = document.createElement('a'); a.href = iv.url; a.download = 'image_' + Date.now(); a.click();
+        const iv = this.imageViewer;
+        // Prefer full-res image from swiped image cache
+        let src = iv.url;
+        if (iv.swipeImages && iv.swipeIndex >= 0 && iv.swipeImages[iv.swipeIndex]) {
+            const item = iv.swipeImages[iv.swipeIndex];
+            if (item.fullSrc) src = item.fullSrc;
+        }
+        if (!src) return;
+        const a = document.createElement('a'); a.href = src; a.download = 'image_' + Date.now(); a.click();
     },
 
     logout() {
