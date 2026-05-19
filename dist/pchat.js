@@ -3354,6 +3354,7 @@ const ChatApp = {
                         const ah = (d) => {
                             if (d.type==='file-ack'&&d.fileId===fid) {
                                 state.conn.off('data',ah);
+                                console.log(`[File] Ack rcvd — progress=${d.progress}, speed=${d.speed || '(none)'}`);
                                 if (d.progress != null) {
                                     ChatApp._transferAckPct = ChatApp._transferAckPct || {};
                                     ChatApp._transferAckPct[fid] = d.progress;
@@ -3728,6 +3729,7 @@ const ChatApp = {
                                 const ah = (d) => {
                                     if (d.type==='file-ack'&&d.fileId===fileId) {
                                         conn.off('data',ah);
+                                        console.log(`[File] Ack rcvd — progress=${d.progress}, speed=${d.speed || '(none)'}`);
                                         // Track ack progress for sender-side speed fallback
                                         if (d.progress != null) {
                                             ChatApp._transferAckPct = ChatApp._transferAckPct || {};
@@ -4105,6 +4107,7 @@ const ChatApp = {
             const ackSpeed = this._transferAckSpeed?.[transferId];
             if (ackSpeed && pctNum < 99) {
                 // Use receiver-measured speed directly — no calculation needed
+                console.log(`[Transfer] Speed from ACK: ${ackSpeed}`);
                 const remaining = pctNum > 0 ? (100 - pctNum) / pctNum * ((now - this._transferStartTimes[transferId]) / 1000) : 0;
                 const etaStr = remaining > 3600 ? `${Math.round(remaining/3600)}h${Math.round(remaining%3600/60)}m` : remaining > 60 ? `${Math.round(remaining/60)}分` : `${Math.round(remaining)}秒`;
                 spdEl.textContent = `${ackSpeed} · 剩余${etaStr}`;
