@@ -5122,6 +5122,17 @@ const ChatApp = {
         
         if (c._reconnecting || c.state === 'interrupted') {
             // Restore interrupted UI
+            // Calculate remaining 30s timeout
+            const elapsed = c._interruptStart ? (Date.now() - c._interruptStart) : 0;
+            const remaining = 30000 - elapsed;
+            if (remaining <= 0) {
+                // Already expired — clean up without restoring
+                console.log('[Call] Interrupt already expired on restore, clearing');
+                this._clearCallState();
+                this._hideCallInHeader();
+                c.active = false;
+                return;
+            }
             this._updateCallBarStatus(
                 _i18n.t('pchat.call.interrupted'),
                 '#fff3e0',
@@ -5129,9 +5140,6 @@ const ChatApp = {
             );
             const latEl = document.getElementById('call-latency');
             if (latEl) latEl.textContent = _i18n.t('pchat.status.reconnecting');
-            // Calculate remaining 30s timeout
-            const elapsed = c._interruptStart ? (Date.now() - c._interruptStart) : 0;
-            const remaining = Math.max(1000, 30000 - elapsed);
             c._interruptTimer = setTimeout(() => {
                 console.log('[Call] Interrupt timeout (restored), ending call');
                 this.hangupCall();
@@ -5197,8 +5205,9 @@ const ChatApp = {
             c.localStream = stream;
             
             const call = PeerConn.peer.call(peerId, stream);
-            // Clean up old media connection
+            // Clean up old media connection without triggering _onCallEnd UI cleanup
             if (c.mediaConnection) {
+                c._reconnectingCall = true;
                 try { c.mediaConnection.close(); } catch(e) {}
             }
             c.mediaConnection = call;
@@ -5259,6 +5268,7 @@ const ChatApp = {
             }
             c.localStream = localStream;
             if (c.mediaConnection) {
+                c._reconnectingCall = true;
                 try { c.mediaConnection.close(); } catch(e) {}
             }
             c.mediaConnection = call;
@@ -5312,6 +5322,14 @@ const ChatApp = {
     // 通话结束统一处理
     async _onCallEnd(reconnecting) {
         const c = this.call;
+        
+        // Active reconnection in progress — let it handle UI, just clean up media
+        if (c._reconnectingCall) {
+            c._reconnectingCall = false;
+            if (c.mediaConnection) { c.mediaConnection.close(); c.mediaConnection = null; }
+            if (c.audio) { c.audio.pause(); c.audio.srcObject = null; c.audio = null; }
+            return;
+        }
         
         if (reconnecting && c.active) {
             // DC dropped but call was active — stop media, show interrupted, keep UI
