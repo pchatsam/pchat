@@ -6037,7 +6037,14 @@ const ChatApp = {
         location.reload();
     },
 
-    _scroll() { const el = document.getElementById("message-list"); if (el) el.scrollTop = el.scrollHeight; },
+    _scroll() {
+        const el = document.getElementById("message-list");
+        if (!el) return;
+        // Use rAF so DOM layout settles before measuring scrollHeight (avoids showing half-message)
+        requestAnimationFrame(() => {
+            el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        });
+    },
 
     // ---- Render lists ----
     // Update sidebar transfer progress for a specific contact (no full re-render)
