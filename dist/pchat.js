@@ -905,44 +905,35 @@ const PeerConn = {
                             if (info) {
                                 info.chunkCount = (info.chunkCount || 0) + 1;
                                 info.totalRawReceived = (info.totalRawReceived || 0) + (arr.byteLength || arr.length);
-                                // Record first-chunk time for speed calculation
                                 info._recvStartTime = info._recvStartTime || Date.now();
                                 const netPct = info.size > 0 ? (info.totalRawReceived / info.size * 100) : 0;
                                 info._written = info._written || 0;
                                 const pct = netPct;
-                                if (info.chunkCount % 100 === 0) {
-                                    // Progress log (silent, tracked via _updateTransferProgress)
-                                }
                                 _chunkCount++;
-                                // Mini-ack every 10 chunks for sender flow control (with receiver-measured speed)
+                                // Calculate speed from elapsed time (receiver's own display, every chunk)
+                                const nowMs = Date.now();
+                                const elapsedSec = Math.max((nowMs - info._recvStartTime) / 1000, 0.01);
+                                const currentSpd = info.totalRawReceived / elapsedSec;
+                                // Sliding window avg filter — seed with first sample, then FIFO
+                                info._speedWindow = info._speedWindow || [];
+                                if (info._speedWindow.length === 0) {
+                                    for (let i = 0; i < 100; i++) info._speedWindow.push(currentSpd);
+                                } else {
+                                    info._speedWindow.push(currentSpd);
+                                    info._speedWindow.shift();
+                                }
+                                const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / 100;
+                                const speedStr = avgSpd > 1048576 ? `${(avgSpd/1048576).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
+                                const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / avgSpd) : 0;
+                                // Store for receiver's own display (available from chunk 1)
+                                ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {};
+                                ChatApp._transferAckSpeed[fileId] = speedStr;
+                                ChatApp._transferAckEta = ChatApp._transferAckEta || {};
+                                ChatApp._transferAckEta[fileId] = etaSec;
+                                // Every 10 chunks: send ack to sender with speed and ETA
                                 if (info.chunkCount % 10 === 0) {
                                     const ackPeer = PeerConn.peers[info.peerId];
                                     if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
-                                        // Calculate instantaneous receive speed since last ack
-                                        const nowMs = Date.now();
-                                        const lastAckBytes = info._binaryLastAckBytes || 0;
-                                        const lastAckTime = info._binaryLastAckTime || info._recvStartTime || nowMs;
-                                        const deltaBytes = info.totalRawReceived - lastAckBytes;
-                                        const deltaSec = Math.max((nowMs - lastAckTime) / 1000, 0.01);
-                                        const spd = deltaBytes / deltaSec;
-                                        // Sliding window average filter — seed with first sample, then FIFO
-                                        info._speedWindow = info._speedWindow || [];
-                                        if (info._speedWindow.length === 0) {
-                                            for (let i = 0; i < 100; i++) info._speedWindow.push(spd);
-                                        } else {
-                                            info._speedWindow.push(spd);
-                                            info._speedWindow.shift();
-                                        }
-                                        const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / 100;
-                                        const speedStr = avgSpd > 1048576 ? `${(avgSpd/1048576).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
-                                        const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / avgSpd) : 0;
-                                        info._binaryLastAckBytes = info.totalRawReceived;
-                                        info._binaryLastAckTime = nowMs;
-                                        // Store for receiver's own display too
-                                        ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {};
-                                        ChatApp._transferAckSpeed[fileId] = speedStr;
-                                        ChatApp._transferAckEta = ChatApp._transferAckEta || {};
-                                        ChatApp._transferAckEta[fileId] = etaSec;
                                         ackPeer.conn.send({ type: 'file-ack', fileId, progress: Math.round(netPct), speed: speedStr, etaSec });
                                     }
                                 }
@@ -3069,8 +3060,7 @@ const ChatApp = {
         const progressRow = document.getElementById(`transfer-${fileId}`);
         if (progressRow) progressRow.remove();
         delete this._transferThrottle[fileId];
-        delete this._transferSpeedCalcAt[fileId];
-        delete this._transferStartTimes[fileId]; delete this._transferLastBytes?.[fileId]; delete this._transferLastSpeedTime?.[fileId]; delete this._transferAckPct?.[fileId]; delete this._transferLastBytes?.[fileId]; delete this._transferLastSpeedTime?.[fileId]; 
+        delete this._transferStartTimes[fileId]; 
         delete this._transferSizes?.[fileId];
         delete this._activeReceives[peerId];
         this._renderContacts();
@@ -3148,8 +3138,7 @@ const ChatApp = {
             const progressRow = document.getElementById(`transfer-${d.fileId}`);
             if (progressRow) progressRow.remove();
             delete this._transferThrottle[d.fileId];
-            delete this._transferSpeedCalcAt[d.fileId];
-            delete this._transferStartTimes[d.fileId]; delete this._transferLastBytes?.[d.fileId]; delete this._transferLastSpeedTime?.[d.fileId]; delete this._transferAckPct?.[d.fileId]; delete this._transferLastBytes?.[d.fileId]; delete this._transferLastSpeedTime?.[d.fileId]; 
+            delete this._transferStartTimes[d.fileId]; 
             delete this._transferSizes?.[d.fileId];
             delete this._activeReceives[peerId];
             this._renderContacts();
@@ -3363,11 +3352,6 @@ const ChatApp = {
         this._renderContacts();
         // Reset speed timer for resume (don't count pre-resume bytes in speed calc)
         this._transferStartTimes[fid] = Date.now();
-        // Reset delta tracking so resume speed starts fresh
-        if (!this._transferLastBytes) this._transferLastBytes = {};
-        if (!this._transferLastSpeedTime) this._transferLastSpeedTime = {};
-        delete this._transferLastBytes[fid];
-        delete this._transferLastSpeedTime[fid];
         this._updateTransferProgress(fid, startPct, `续传中 ${startPct}%`);
         this._updateSidebarTransfer(peerId, `📤 ${pending.name.substring(0,15)}${pending.name.length>15?'...':''} ${startPct}%`);
 
@@ -3395,10 +3379,6 @@ const ChatApp = {
                             if (d.type==='file-ack'&&d.fileId===fid) {
                                 state.conn.off('data',ah);
                                 console.log(`[File] Ack rcvd — progress=${d.progress}, speed=${d.speed || '(none)'}, eta=${d.etaSec}s`);
-                                if (d.progress != null) {
-                                    ChatApp._transferAckPct = ChatApp._transferAckPct || {};
-                                    ChatApp._transferAckPct[fid] = d.progress;
-                                }
                                 if (d.speed) {
                                     ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {};
                                     ChatApp._transferAckSpeed[fid] = d.speed;
@@ -3435,8 +3415,7 @@ const ChatApp = {
         const pr = document.getElementById(`transfer-${fid}`);
         if (pr) pr.remove();
         delete this._transferThrottle[fid];
-        delete this._transferSpeedCalcAt[fid];
-        delete this._transferStartTimes[fid]; delete this._transferLastBytes?.[fid]; delete this._transferLastSpeedTime?.[fid]; delete this._transferAckPct?.[fid]; delete this._transferAckSpeed?.[fid]; delete this._transferAckEta?.[fid]; delete this._transferLastBytes?.[fid]; delete this._transferLastSpeedTime?.[fid]; 
+        delete this._transferStartTimes[fid]; delete this._transferAckSpeed?.[fid]; delete this._transferAckEta?.[fid]; 
         delete this._transferSizes?.[fid];
         delete this._activeSends[peerId];
 
@@ -3774,11 +3753,6 @@ const ChatApp = {
                                     if (d.type==='file-ack'&&d.fileId===fileId) {
                                         conn.off('data',ah);
                                         console.log(`[File] Ack rcvd — progress=${d.progress}, speed=${d.speed || '(none)'}, eta=${d.etaSec}s`);
-                                        // Track ack progress for sender-side speed fallback
-                                        if (d.progress != null) {
-                                            ChatApp._transferAckPct = ChatApp._transferAckPct || {};
-                                            ChatApp._transferAckPct[fileId] = d.progress;
-                                        }
                                         // Use receiver-measured speed and ETA directly
                                         if (d.speed) {
                                             ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {};
@@ -3836,8 +3810,7 @@ const ChatApp = {
             const progressRow = document.getElementById(`transfer-${fileId}`);
             if (progressRow) progressRow.remove();
             delete this._transferThrottle[fileId];
-            delete this._transferSpeedCalcAt[fileId];
-            delete this._transferStartTimes[fileId]; delete this._transferLastBytes?.[fileId]; delete this._transferLastSpeedTime?.[fileId]; delete this._transferAckPct?.[fileId]; delete this._transferAckSpeed?.[fileId]; delete this._transferAckEta?.[fileId]; delete this._transferLastBytes?.[fileId]; delete this._transferLastSpeedTime?.[fileId]; 
+            delete this._transferStartTimes[fileId]; delete this._transferAckSpeed?.[fileId]; delete this._transferAckEta?.[fileId]; 
             delete this._transferSizes?.[fileId];
             delete this._activeSends[peerId];
             if (finalOk) { this._clearPendingSend(fileId, true); DB.deleteOutgoingFile(fileId).catch(() => {}); }
@@ -4149,43 +4122,15 @@ const ChatApp = {
         if (bar) bar.style.width = `${Math.min(100, Math.round(pct))}%`;
         if (pctEl) pctEl.textContent = `${Number(pct).toFixed(1)}%`;
         if (stEl && status) stEl.textContent = status;
-        // Speed & ETA — prefer receiver-computed values from ack; fallback to local delta calc
+        // Speed & ETA — only from receiver-computed values (via ACK or local calculation)
         if (spdEl && this._transferStartTimes[transferId]) {
             const pctNum = parseFloat(pct);
             const ackSpeed = this._transferAckSpeed?.[transferId];
             const ackEta = this._transferAckEta?.[transferId];
-            // Helper: format seconds to human-readable
             const fmtEta = (s) => s > 3600 ? `${Math.round(s/3600)}h${Math.round(s%3600/60)}m` : s > 60 ? `${Math.round(s/60)}分` : `${Math.round(s)}秒`;
             if (ackSpeed && pctNum < 99) {
-                // Use receiver-computed speed and ETA — no local calculation
-                console.log(`[Transfer] Speed from ACK: ${ackSpeed}, eta=${ackEta}s`);
                 const etaStr = ackEta != null && ackEta > 0 ? fmtEta(ackEta) : '';
                 spdEl.textContent = etaStr ? `${ackSpeed} · 剩余${etaStr}` : ackSpeed;
-            } else {
-                const lastSpeedCalc = this._transferSpeedCalcAt[transferId] || 0;
-                if (now - lastSpeedCalc >= 500) {
-                    const totalSize = this._transferSizes?.[transferId] || 0;
-                    // Sender: use ack progress for speed. Receiver: use own pct.
-                    const ackPct = this._transferAckPct?.[transferId];
-                    const speedPct = ackPct != null ? ackPct : pctNum;
-                    const bytesNow = totalSize * speedPct / 100;
-                    const lastBytes = this._transferLastBytes?.[transferId] || 0;
-                    const lastTime = this._transferLastSpeedTime?.[transferId] || now;
-                    const deltaBytes = bytesNow - lastBytes;
-                    const deltaTime = (now - lastTime) / 1000;
-                    if (deltaTime > 0 && deltaBytes > 0) {
-                        const speed = deltaBytes / deltaTime;
-                        const spdStr = speed > 1024*1024 ? `${(speed/1024/1024).toFixed(1)} MB/s` : `${(speed/1024).toFixed(0)} KB/s`;
-                        const remaining = pctNum > 0 ? (100 - pctNum) / pctNum * ((now - this._transferStartTimes[transferId]) / 1000) : 0;
-                        const etaStr = remaining > 3600 ? `${Math.round(remaining/3600)}h${Math.round(remaining%3600/60)}m` : remaining > 60 ? `${Math.round(remaining/60)}分` : `${Math.round(remaining)}秒`;
-                        spdEl.textContent = pctNum < 99 ? `${spdStr} · 剩余${etaStr}` : '';
-                    }
-                    if (!this._transferLastBytes) this._transferLastBytes = {};
-                    if (!this._transferLastSpeedTime) this._transferLastSpeedTime = {};
-                    this._transferLastBytes[transferId] = bytesNow;
-                    this._transferLastSpeedTime[transferId] = now;
-                    this._transferSpeedCalcAt[transferId] = now;
-                }
             }
         }
         try { this._scroll(); } catch(e) {}
@@ -4214,8 +4159,7 @@ const ChatApp = {
         }
         // Clean up throttle state for this transfer
         delete this._transferThrottle[transferId];
-        delete this._transferSpeedCalcAt[transferId];
-        delete this._transferStartTimes[transferId]; delete this._transferLastBytes?.[transferId]; delete this._transferLastSpeedTime?.[transferId]; delete this._transferAckPct?.[transferId]; delete this._transferAckSpeed?.[transferId]; delete this._transferAckEta?.[transferId]; delete this._transferLastBytes?.[transferId]; delete this._transferLastSpeedTime?.[transferId]; 
+        delete this._transferStartTimes[transferId]; delete this._transferAckSpeed?.[transferId]; delete this._transferAckEta?.[transferId]; 
         delete this._transferSizes?.[transferId];
     },
 
@@ -4259,8 +4203,7 @@ const ChatApp = {
         const row = document.getElementById(`transfer-${fileId}`);
         if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
         delete this._transferThrottle[fileId];
-        delete this._transferSpeedCalcAt[fileId];
-        delete this._transferStartTimes[fileId]; delete this._transferLastBytes?.[fileId]; delete this._transferLastSpeedTime?.[fileId]; delete this._transferAckPct?.[fileId]; delete this._transferLastBytes?.[fileId]; delete this._transferLastSpeedTime?.[fileId]; 
+        delete this._transferStartTimes[fileId]; 
         delete this._transferSizes?.[fileId];
 
         // ---- Delete DB messages (both sent:false chunked, and receive-side direct-file) ----
@@ -4316,8 +4259,7 @@ const ChatApp = {
         const progressRow = document.getElementById(`transfer-${fileId}`);
         if (progressRow) progressRow.remove();
         delete this._transferThrottle[fileId];
-        delete this._transferSpeedCalcAt[fileId];
-        delete this._transferStartTimes[fileId]; delete this._transferLastBytes?.[fileId]; delete this._transferLastSpeedTime?.[fileId]; delete this._transferAckPct?.[fileId]; delete this._transferLastBytes?.[fileId]; delete this._transferLastSpeedTime?.[fileId]; 
+        delete this._transferStartTimes[fileId]; 
         delete this._transferSizes?.[fileId];
         delete this._activeReceives[info.peerId];
         delete this._pendingReceives[fileId];
