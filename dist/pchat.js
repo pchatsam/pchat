@@ -1547,6 +1547,9 @@ const ChatApp = {
     },
 
     _shouldNotify(peerId) {
+        // Page is active/visible → skip notification
+        if (document.visibilityState === 'visible') return false;
+        // Currently viewing this conversation → skip
         if (this.activeConv && this.activeConv.id === peerId) return false;
         const contact = this.contacts.find(c => c.userId === peerId);
         if (!contact) return false;
@@ -1564,9 +1567,10 @@ const ChatApp = {
         if (!this.activeConv || this.activeConv.type !== 'contact') return;
         const contact = this.contacts.find(c => c.userId === this.activeConv.id);
         if (!contact) return;
-        contact.notifyEnabled = contact.notifyEnabled !== false ? false : true;
+        // Explicit toggle: true→false, false→true (also handles undefined→false)
+        contact.notifyEnabled = !contact.notifyEnabled;
         this.saveContact(contact);
-        this._updateNotifyBtn(contact.notifyEnabled !== false);
+        this._updateNotifyBtn(!!contact.notifyEnabled);
     },
 
     _updateNotifyBtn(enabled) {
@@ -2822,7 +2826,7 @@ const ChatApp = {
         }
         this._renderContacts();
         // Notification
-        if (contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+        if (document.visibilityState !== 'visible' && contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
             const title = contact.nickname || peerId;
             const body = typeof rawContent === 'string' ? (rawContent.length > 50 ? rawContent.substring(0, 50) : rawContent) : '';
             this._notifySystem(title, body);
@@ -2950,7 +2954,7 @@ const ChatApp = {
         }
         this._renderContacts();
         // Notification
-        if (contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+        if (document.visibilityState !== 'visible' && contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
             const title = contact.nickname || peerId;
             this._notifySystem(title, _i18n.t('pchat.msg.voice'));
             this._playBeep();
@@ -3019,7 +3023,7 @@ const ChatApp = {
         }
         // Notification for incoming file
         const fContact = this.contacts.find(c => c.userId === peerId);
-        if (fContact && fContact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+        if (document.visibilityState !== 'visible' && fContact && fContact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
             const title = fContact.nickname || peerId;
             const body = (_i18n.t('pchat.file.prefixFile') + ' ' + d.name).length > 50 ? (_i18n.t('pchat.file.prefixFile') + ' ' + d.name).substring(0, 50) : (_i18n.t('pchat.file.prefixFile') + ' ' + d.name);
             this._notifySystem(title, body);
@@ -3208,7 +3212,7 @@ const ChatApp = {
         }
         this._renderContacts();
         // Notification for file completion
-        if (contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+        if (document.visibilityState !== 'visible' && contact && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
             const title = contact.nickname || peerId;
             const body = (info.isImage ? '📷 ' + info.name : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name)).length > 50
                 ? (info.isImage ? '📷 ' + info.name : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name)).substring(0, 50)
@@ -3291,7 +3295,7 @@ const ChatApp = {
                 this.saveContact(contact);
                 this._renderContacts();
                 // Notification for file completion
-                if (contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
+                if (document.visibilityState !== 'visible' && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === peerId)) {
                     const title = contact.nickname || peerId;
                     const body = (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).length > 50 ? (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).substring(0, 50) : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name);
                     this._notifySystem(title, body);
@@ -4451,7 +4455,7 @@ const ChatApp = {
             this.saveContact(contact);
             this._renderContacts();
             // Notification for file completion
-            if (contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === info.peerId)) {
+            if (document.visibilityState !== 'visible' && contact.notifyEnabled !== false && !(this.activeConv && this.activeConv.id === info.peerId)) {
                 const title = contact.nickname || info.peerId;
                 const body = (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).length > 50 ? (_i18n.t('pchat.file.prefixFile') + ' ' + info.name).substring(0, 50) : (_i18n.t('pchat.file.prefixFile') + ' ' + info.name);
                 this._notifySystem(title, body);
