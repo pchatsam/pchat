@@ -1657,6 +1657,76 @@ const ChatApp = {
         }
     },
 
+    // ---- Background keep-alive (mobile) ----
+    _keepAliveAudio: null,
+    _keepAliveTimer: null,
+    _setupBackgroundKeepAlive() {
+        // Silent 1-second WAV for keep-alive pulse
+        const silentSrc = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                // Came back to foreground: stop keep-alive, reconnect
+                this._stopKeepAlive();
+                console.log('[KeepAlive] Page visible, reconnecting...');
+                if (!PeerConn.peer || PeerConn.peer.destroyed) {
+                    this._initPeer();
+                } else if (PeerConn._amOffline) {
+                    PeerConn.peer.reconnect();
+                } else {
+                    PeerConn._reconnectAll();
+                }
+            } else {
+                // Went to background: pulse silent audio every 20s
+                this._startKeepAlive();
+                console.log('[KeepAlive] Page hidden, keep-alive pulse started');
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        window.addEventListener('pagehide', () => {
+            console.log('[KeepAlive] Page hidden (pagehide)');
+        });
+        window.addEventListener('pageshow', () => {
+            console.log('[KeepAlive] Page shown (pageshow), reconnecting...');
+            this._stopKeepAlive();
+            if (!PeerConn.peer || PeerConn.peer.destroyed) {
+                this._initPeer();
+            } else {
+                PeerConn._reconnectAll();
+            }
+        });
+    },
+
+    _startKeepAlive() {
+        this._stopKeepAlive();
+        const audio = new Audio();
+        audio.volume = 0.001;
+        audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+        this._keepAliveAudio = audio;
+        // Play one silent pulse every 20 seconds
+        audio.play().catch(e => console.warn('[KeepAlive] Pulse play failed:', e.message));
+        this._keepAliveTimer = setInterval(() => {
+            const a = new Audio();
+            a.volume = 0.001;
+            a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+            a.play().catch(() => {});
+            this._keepAliveAudio = a;
+        }, 20000);
+    },
+
+    _stopKeepAlive() {
+        if (this._keepAliveTimer) {
+            clearInterval(this._keepAliveTimer);
+            this._keepAliveTimer = null;
+        }
+        if (this._keepAliveAudio) {
+            this._keepAliveAudio.pause();
+            this._keepAliveAudio = null;
+        }
+    },
+
     showAlert(text) {
         document.getElementById('alert-text').textContent = text;
         this._show('alert-modal');
@@ -1920,6 +1990,9 @@ const ChatApp = {
         }
 
         this._initBackButton();
+
+        // Setup background keep-alive for mobile
+        this._setupBackgroundKeepAlive();
 
         _i18n.applyUI();
 
