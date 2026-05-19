@@ -1195,6 +1195,17 @@ const PeerConn = {
                     // Heartbeat: update lastPong timestamp
                     const hb = PeerConn._heartbeats[peerId];
                     if (hb) { hb.lastPong = Date.now(); hb.missCount = 0; }
+                } else if (data.type === "call-cancelled") {
+                    // Caller hung up before we answered
+                    console.log("[Call] Received call-cancelled from", peerId);
+                    ChatApp._stopRingtone();
+                    ChatApp._hideCallModal();
+                    ChatApp._closeAlertModal();
+                    ChatApp._hideFriendRequestModal();
+                    if (ChatApp._pendingCall) {
+                        try { ChatApp._pendingCall.close(); } catch(e) {}
+                        ChatApp._pendingCall = null;
+                    }
                 } else if (data.type === "transfer-request" || data.type === "transfer-start" ||
                            data.type === "table-start" || data.type === "table-done" ||
                            data.type === "transfer-chunk" || data.type === "transfer-complete") {
@@ -1523,25 +1534,22 @@ const ChatApp = {
             const gain = ctx.createGain();
             gain.connect(ctx.destination);
             gain.gain.value = 0.15;
-            // Pattern: 3 quick notes (ding-ding-ding) → 1 beat pause, repeat
-            // C5(523Hz) E5(659Hz) G5(784Hz), each 200ms, gap 150ms, pause 800ms
-            const notes = [523, 659, 784];
-            let noteIdx = 0;
+            // Pattern: 3 notes → rest, 1.5s total cycle
+            const notes = [523, 659, 784];  // C5, E5, G5
+            let step = 0;  // 0,1,2 = notes, 3 = quiet beat
             const playNote = () => {
-                if (noteIdx < 3) {
+                if (step < 3) {
                     const osc = ctx.createOscillator();
                     osc.type = 'sine';
-                    osc.frequency.value = notes[noteIdx];
+                    osc.frequency.value = notes[step];
                     osc.connect(gain);
                     osc.start(ctx.currentTime);
                     osc.stop(ctx.currentTime + 0.2);
-                    noteIdx++;
                 }
-                // After 3 notes, pause 1 beat (~800ms), then reset
-                if (noteIdx >= 3) noteIdx = -1;  // -1 skips one interval (the pause beat)
+                step = (step + 1) % 4;
             };
             playNote();
-            const interval = setInterval(playNote, 350);
+            const interval = setInterval(playNote, 375);  // 375ms × 4 = 1500ms
             this.call._ringOsc = { gain, ctx, interval };
         } catch(e) {}
     },
@@ -4955,6 +4963,15 @@ const ChatApp = {
         
         // Stop ringtone if active
         this._stopRingtone();
+        
+        // If caller hung up before answer, notify receiver via DC
+        if (c.state === "waiting" && c.peerId && c.direction === "sent") {
+            const state = PeerConn.peers[c.peerId];
+            if (state && state.conn && state.conn.open) {
+                state.conn.send({ type: "call-cancelled" });
+                console.log("[Call] Sent call-cancelled to", c.peerId);
+            }
+        }
         
         this._stopCallMedia();
         this._hideCallModal();
