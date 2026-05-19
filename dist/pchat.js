@@ -907,13 +907,20 @@ const PeerConn = {
                                 // Snapshot base bytes before adding chunk (for resume: exclude pre-resume bytes)
                                 info._resumeBaseBytes = info._resumeBaseBytes ?? (info.totalRawReceived || 0);
                                 info.totalRawReceived = (info.totalRawReceived || 0) + (arr.byteLength || arr.length);
-                                info._recvStartTime = info._recvStartTime || Date.now();
+                                const nowMs = Date.now();
+                                // Detect reconnection gap: if >5s since last chunk, reset speed tracking
+                                if (info._lastChunkTime && nowMs - info._lastChunkTime > 5000) {
+                                    info._recvStartTime = nowMs;
+                                    info._resumeBaseBytes = info.totalRawReceived;
+                                    info._speedWindow = [];
+                                }
+                                info._recvStartTime = info._recvStartTime || nowMs;
+                                info._lastChunkTime = nowMs;
                                 const netPct = info.size > 0 ? (info.totalRawReceived / info.size * 100) : 0;
                                 info._written = info._written || 0;
                                 const pct = netPct;
                                 _chunkCount++;
                                 // Calculate speed from NEW bytes only (exclude pre-resume data)
-                                const nowMs = Date.now();
                                 const elapsedSec = Math.max((nowMs - info._recvStartTime) / 1000, 0.01);
                                 const currentSpd = (info.totalRawReceived - info._resumeBaseBytes) / elapsedSec;
                                 // Sliding window avg filter — seed with first sample, then FIFO
