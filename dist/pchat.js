@@ -929,6 +929,11 @@ const PeerConn = {
                                         const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / spd) : 0;
                                         info._binaryLastAckBytes = info.totalRawReceived;
                                         info._binaryLastAckTime = nowMs;
+                                        // Store for receiver's own display too
+                                        ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {};
+                                        ChatApp._transferAckSpeed[fileId] = speedStr;
+                                        ChatApp._transferAckEta = ChatApp._transferAckEta || {};
+                                        ChatApp._transferAckEta[fileId] = etaSec;
                                         ackPeer.conn.send({ type: 'file-ack', fileId, progress: Math.round(netPct), speed: speedStr, etaSec });
                                     }
                                 }
@@ -2931,6 +2936,11 @@ const ChatApp = {
                 const etaSec = info.size > rawReceived ? Math.round((info.size - rawReceived) / spd) : 0;
                 info.lastAckBytes = rawReceived;
                 info.lastAckTime = nowMs;
+                // Store for receiver's own display too
+                ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {};
+                ChatApp._transferAckSpeed[d.fileId] = speedStr;
+                ChatApp._transferAckEta = ChatApp._transferAckEta || {};
+                ChatApp._transferAckEta[d.fileId] = etaSec;
                 const ackPeer = PeerConn.peers[info.peerId];
                 if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
                     ackPeer.conn.send({ type: "file-ack", fileId: d.fileId, progress: Math.round(rawReceived / info.size * 100), speed: speedStr, etaSec });
