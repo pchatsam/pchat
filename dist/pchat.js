@@ -4799,12 +4799,18 @@ const ChatApp = {
     _onIncomingPeerCall(call) {
         const peerId = call.peer;
         console.log("[Call] Incoming call from", peerId);
-        // Auto-answer if we were waiting for reconnection
-        if (this.call._reconnecting && this.call.peerId === peerId) {
-            console.log("[Call] Auto-answering reconnect call");
-            this.call._reconnecting = false;
-            this._autoAnswerReconnect(call, peerId);
-            return;
+        // Auto-answer if within 30s interrupt window for same peer
+        const c = this.call;
+        if (c.active && c.peerId === peerId && c._interruptStart) {
+            const elapsed = Date.now() - c._interruptStart;
+            if (elapsed < 30000) {
+                console.log("[Call] Auto-answering reconnect (interrupt elapsed", elapsed + "ms)");
+                c._reconnecting = false;
+                this._autoAnswerReconnect(call, peerId);
+                return;
+            }
+            // Over 30s: treat as new call, fall through to modal
+            console.log("[Call] Interrupt timeout expired, treating as new call");
         }
         const contact = this.contacts.find(c => c.userId === peerId);
         const name = contact ? (contact.nickname || peerId) : peerId;
