@@ -120,6 +120,8 @@ _i18n.dict = {
     'pchat.msg.deleteTitle':             { zh: '删除', en: 'Delete', ja: '削除', de: 'Löschen', fr: 'Supprimer', es: 'Eliminar', pt: 'Excluir', he: 'מחק', ko: '삭제', it: 'Elimina' },
     'pchat.call.incoming':               { zh: '来电中...', en: 'Incoming call...', ja: '着信中...', de: 'Eingehender Anruf...', fr: 'Appel entrant...', es: 'Llamada entrante...', pt: 'Chamada recebida...', he: 'שיחה נכנסת...', ko: '발신전화...', it: 'Chiamata in arrivo...' },
     'pchat.call.waitingAnswer':          { zh: '等待接听...', en: 'Waiting for answer...', ja: '応答を待機中...', de: 'Warten auf Antwort...', fr: 'En attente de réponse...', es: 'Esperando respuesta...', pt: 'Aguardando resposta...', he: 'ממתין לתשובה...', ko: '대기 중...', it: 'In attesa di risposta...' },
+    'pchat.call.active':                 { zh: '通话中', en: 'On call', ja: '通話中', de: 'Im Gespräch', fr: 'En appel', es: 'En llamada', pt: 'Em chamada', he: 'בשיחה', ko: '통화중', it: 'In chiamata' },
+    'pchat.call.interrupted':            { zh: '通话中断', en: 'Call interrupted', ja: '通話中断', de: 'Anruf unterbrochen', fr: 'Appel interrompu', es: 'Llamada interrumpida', pt: 'Chamada interrompida', he: 'שיחה הופסקה', ko: '통화 중단', it: 'Chiamata interrotta' },
     'pchat.call.log':                    { zh: '📞 通话 {dur}', en: '📞 Call {dur}', ja: '📞 通話 {dur}', de: '📞 Anruf {dur}', fr: '📞 Appel {dur}', es: '📞 Llamada {dur}', pt: '📞 Chamada {dur}', he: '📞 שיחה {dur}', ko: '📞 통화 {dur}', it: '📞 Chiamata {dur}' },
     'pchat.duration.seconds':            { zh: '{n}秒', en: '{n}s', ja: '{n}秒', de: '{n}s', fr: '{n}s', es: '{n}s', pt: '{n}s', he: '{n}ש"', ko: '{n}초', it: '{n}s' },
     'pchat.duration.minutes':            { zh: '{n}分钟', en: '{n}min', ja: '{n}分', de: '{n} Min', fr: '{n} min', es: '{n} min', pt: '{n} min', he: '{n} דק', ko: '{n}분', it: '{n} min' },
@@ -4851,10 +4853,16 @@ const ChatApp = {
         
         const callBtn = document.getElementById("call-btn");
         const statusBar = document.getElementById("call-status-bar");
-        console.log("[Call] _showCallInHeader: callBtn=", !!callBtn, "statusBar=", !!statusBar);
         if (callBtn) callBtn.style.display = "none";
-        if (statusBar) statusBar.style.display = "flex";
-        else console.error("[Call] call-status-bar not found!");
+        if (statusBar) {
+            statusBar.style.display = "flex";
+            statusBar.style.background = "#e8f5e9";
+        }
+        const textEl = document.getElementById("call-status-text");
+        if (textEl) {
+            textEl.textContent = _i18n.t('pchat.call.active');
+            textEl.style.color = "#2e7d32";
+        }
     },
     
     // 通话结束：隐藏通话状态栏，恢复拨打按钮
@@ -4866,6 +4874,20 @@ const ChatApp = {
         
         const timerEl = document.getElementById("call-status-timer");
         if (timerEl) timerEl.textContent = "";
+        
+        const textEl = document.getElementById("call-status-text");
+        if (textEl) textEl.textContent = _i18n.t('pchat.call.active');
+    },
+
+    // Update call status bar text and color
+    _updateCallBarStatus(text, bg, color) {
+        const el = document.getElementById("call-status-text");
+        const bar = document.getElementById("call-status-bar");
+        if (el) el.textContent = text;
+        if (bar) {
+            if (bg) bar.style.background = bg;
+            if (color) el.style.color = color;
+        }
     },
     
     // 更新 header 中计时器
@@ -4977,24 +4999,23 @@ const ChatApp = {
             call.on("stream", (remoteStream) => {
                 if (c.audio) { c.audio.pause(); c.audio.srcObject = null; }
                 c.audio = new Audio(); c.audio.srcObject = remoteStream; c.audio.play();
-                // Restore connected state if was reconnecting
-                if (c.state !== "connected") {
-                    c.state = "connected";
-                }
+                if (c.state !== "connected") c.state = "connected";
                 if (!c.startTime) c.startTime = Date.now();
-                this._updateCallStatus(_i18n.t('pchat.status.peerJSOnline'), false);
-                // Ensure header status bar is visible
-                this._showCallInHeader();
-                // Restart timer if needed
-                if (!c.timerInterval) {
-                    c.timerInterval = setInterval(() => {
-                        const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
-                        const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
-                        const sec = (elapsed % 60).toString().padStart(2, '0');
-                        const el = document.getElementById("call-status-timer");
-                        if (el) el.textContent = `${min}:${sec}`;
-                    }, 1000);
-                }
+                // Restore call bar to active state
+                this._updateCallBarStatus(
+                    _i18n.t('pchat.call.active'),
+                    '#e8f5e9',
+                    '#2e7d32'
+                );
+                // Restart timer
+                if (c.timerInterval) { clearInterval(c.timerInterval); }
+                c.timerInterval = setInterval(() => {
+                    const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
+                    const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                    const sec = (elapsed % 60).toString().padStart(2, '0');
+                    const el = document.getElementById("call-status-timer");
+                    if (el) el.textContent = `${min}:${sec}`;
+                }, 1000);
             });
             call.on("close", () => {
                 const state = PeerConn.peers[peerId];
@@ -5040,17 +5061,19 @@ const ChatApp = {
             call.on("stream", (remoteStream) => {
                 if (c.audio) { c.audio.pause(); c.audio.srcObject = null; }
                 c.audio = new Audio(); c.audio.srcObject = remoteStream; c.audio.play();
-                this._updateCallStatus(_i18n.t('pchat.status.peerJSOnline'), false);
-                this._showCallInHeader();
-                if (!c.timerInterval) {
-                    c.timerInterval = setInterval(() => {
-                        const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
-                        const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
-                        const sec = (elapsed % 60).toString().padStart(2, '0');
-                        const el = document.getElementById("call-status-timer");
-                        if (el) el.textContent = `${min}:${sec}`;
-                    }, 1000);
-                }
+                this._updateCallBarStatus(
+                    _i18n.t('pchat.call.active'),
+                    '#e8f5e9',
+                    '#2e7d32'
+                );
+                if (c.timerInterval) { clearInterval(c.timerInterval); }
+                c.timerInterval = setInterval(() => {
+                    const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
+                    const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                    const sec = (elapsed % 60).toString().padStart(2, '0');
+                    const el = document.getElementById("call-status-timer");
+                    if (el) el.textContent = `${min}:${sec}`;
+                }, 1000);
             });
             call.on("close", () => {
                 const state = PeerConn.peers[peerId];
@@ -5077,10 +5100,21 @@ const ChatApp = {
         const c = this.call;
         
         if (reconnecting && c.active) {
-            // DC dropped but call was active — show reconnecting, keep UI
+            // DC dropped but call was active — stop media, show interrupted, keep UI
             console.log("[Call] Entering reconnect mode");
             c._reconnecting = true;
-            this._updateCallStatus(_i18n.t('pchat.status.reconnecting'), true);
+            // Close audio and mic during interruption
+            if (c.audio) { c.audio.pause(); c.audio.srcObject = null; c.audio = null; }
+            if (c.localStream) {
+                c.localStream.getTracks().forEach(t => t.stop());
+                c.localStream = null;
+            }
+            if (c.timerInterval) { clearInterval(c.timerInterval); c.timerInterval = null; }
+            this._updateCallBarStatus(
+                _i18n.t('pchat.call.interrupted'),
+                '#fff3e0',
+                '#e65100'
+            );
             return;
         }
         
