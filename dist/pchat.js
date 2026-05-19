@@ -1208,6 +1208,10 @@ const PeerConn = {
                         try { ChatApp._pendingCall.close(); } catch(e) {}
                         ChatApp._pendingCall = null;
                     }
+                } else if (data.type === "call-rejected") {
+                    // Receiver rejected our call
+                    console.log("[Call] Call rejected by", peerId);
+                    ChatApp.hangupCall();
                 } else if (data.type === "transfer-request" || data.type === "transfer-start" ||
                            data.type === "table-start" || data.type === "table-done" ||
                            data.type === "transfer-chunk" || data.type === "transfer-complete") {
@@ -1414,6 +1418,7 @@ const PeerConn = {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             const call = this.peer.call(peerId, stream);
+            ChatApp.call.localStream = stream;
             ChatApp._onOutgoingPeerCall(call, peerId);
             return call;
         } catch (err) {
@@ -4924,6 +4929,16 @@ const ChatApp = {
 
     rejectCall() {
         this._stopRingtone();
+        // Notify caller that we rejected via DC
+        const peerId = this.incomingCallPeerId;
+        if (peerId) {
+            const state = PeerConn.peers[peerId];
+            if (state && state.conn && state.conn.open) {
+                state.conn.send({ type: "call-rejected" });
+                console.log("[Call] Sent call-rejected to", peerId);
+            }
+        }
+        this._stopCallMedia();
         this._hideCallModal(); this._closeAlertModal(); this._hideFriendRequestModal();
         if (this._pendingCall) { this._pendingCall.close(); this._pendingCall = null; }
     },
