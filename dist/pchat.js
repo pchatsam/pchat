@@ -940,6 +940,11 @@ const PeerConn = {
                                     }
                                 }
                                 ChatApp._updateTransferProgress(fileId, pct, null);
+                                // Restore status if reconnected (was "重连中...")
+                                const stEl = document.getElementById(`transfer-status-${fileId}`);
+                                if (stEl && stEl.textContent === '重连中...') {
+                                    stEl.textContent = '接收中...';
+                                }
                                 // Update sidebar progress (throttled: every 500ms or every 100th chunk)
                                 const ar = ChatApp._activeReceives[info.peerId];
                                 if (ar) {
@@ -1200,8 +1205,8 @@ const PeerConn = {
             const state = this.peers[peerId];
             if (state) state.connected = false;
             PeerConn._stopHeartbeat(peerId);
-            // If WE went offline, reconnect state is handled by peer.on(open).
-            // If PEER went offline, don't reconnect — wait for them to reconnect.
+            // Update active transfer cards: receiving → reconnecting, speed → 0
+            ChatApp._markTransfersReconnecting(peerId);
             if (!PeerConn._amOffline) {
                 ChatApp._renderContacts();
             }
@@ -1235,6 +1240,7 @@ const PeerConn = {
                     this._stopHeartbeat(peerId);
                     if (state.conn) { try { state.conn.close(); } catch(e) {} }
                     state.connected = false;
+                    ChatApp._markTransfersReconnecting(peerId);
                     ChatApp._renderContacts();
                     // If our signaling is still up, try to reconnect (covers network partition)
                     if (!this._amOffline) {
@@ -4136,6 +4142,26 @@ const ChatApp = {
             }
         }
         try { this._scroll(); } catch(e) {}
+    },
+
+    // Update all transfer cards for a peer to "reconnecting" state on disconnect
+    _markTransfersReconnecting(peerId) {
+        // Receiving
+        const ar = this._activeReceives[peerId];
+        if (ar) {
+            const stEl = document.getElementById(`transfer-status-${ar.fileId}`);
+            const spdEl = document.getElementById(`transfer-speed-${ar.fileId}`);
+            if (stEl) stEl.textContent = '重连中...';
+            if (spdEl) spdEl.textContent = '0 KB/s';
+        }
+        // Sending
+        const as = this._activeSends[peerId];
+        if (as) {
+            const stEl = document.getElementById(`transfer-status-${as.fileId}`);
+            const spdEl = document.getElementById(`transfer-speed-${as.fileId}`);
+            if (stEl) stEl.textContent = '重连中...';
+            if (spdEl) spdEl.textContent = '0 KB/s';
+        }
     },
 
     _finishTransferCard(transferId, fileId, fileName, isSender) {
