@@ -918,15 +918,20 @@ const PeerConn = {
                                 if (info.chunkCount % 10 === 0) {
                                     const ackPeer = PeerConn.peers[info.peerId];
                                     if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
-                                        // Calculate receive speed since last ack
+                                        // Calculate instantaneous receive speed since last ack
                                         const nowMs = Date.now();
                                         const lastAckBytes = info._binaryLastAckBytes || 0;
                                         const lastAckTime = info._binaryLastAckTime || info._recvStartTime || nowMs;
                                         const deltaBytes = info.totalRawReceived - lastAckBytes;
                                         const deltaSec = Math.max((nowMs - lastAckTime) / 1000, 0.01);
                                         const spd = deltaBytes / deltaSec;
-                                        const speedStr = spd > 1048576 ? `${(spd/1048576).toFixed(1)} MB/s` : `${(spd/1024).toFixed(0)} KB/s`;
-                                        const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / spd) : 0;
+                                        // Sliding window average filter (100 samples) for smooth display
+                                        info._speedWindow = info._speedWindow || [];
+                                        info._speedWindow.push(spd);
+                                        if (info._speedWindow.length > 100) info._speedWindow.shift();
+                                        const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / info._speedWindow.length;
+                                        const speedStr = avgSpd > 1048576 ? `${(avgSpd/1048576).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
+                                        const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / avgSpd) : 0;
                                         info._binaryLastAckBytes = info.totalRawReceived;
                                         info._binaryLastAckTime = nowMs;
                                         // Store for receiver's own display too
@@ -2925,15 +2930,19 @@ const ChatApp = {
             const rawReceived = Math.round(info.totalBase64Received * 0.75);
             const lastAckAt = info.lastAckBytes || 0;
             if (rawReceived - lastAckAt >= 10 * 1024 * 1024) {
-                // Calculate receive speed since last ack (receiver-side measurement)
+                // Calculate instantaneous receive speed since last ack
                 const nowMs = Date.now();
-                // Use first-chunk time for initial ack, last-ack time for subsequent ones
                 const lastAckTime = info.lastAckTime || info._recvStartTime || nowMs;
                 const deltaBytes = rawReceived - lastAckAt;
                 const deltaSec = Math.max((nowMs - lastAckTime) / 1000, 0.01);
                 const spd = deltaBytes / deltaSec;
-                const speedStr = spd > 1024*1024 ? `${(spd/1024/1024).toFixed(1)} MB/s` : `${(spd/1024).toFixed(0)} KB/s`;
-                const etaSec = info.size > rawReceived ? Math.round((info.size - rawReceived) / spd) : 0;
+                // Sliding window average filter (100 samples) for smooth display
+                info._speedWindow = info._speedWindow || [];
+                info._speedWindow.push(spd);
+                if (info._speedWindow.length > 100) info._speedWindow.shift();
+                const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / info._speedWindow.length;
+                const speedStr = avgSpd > 1024*1024 ? `${(avgSpd/1024/1024).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
+                const etaSec = info.size > rawReceived ? Math.round((info.size - rawReceived) / avgSpd) : 0;
                 info.lastAckBytes = rawReceived;
                 info.lastAckTime = nowMs;
                 // Store for receiver's own display too
