@@ -2468,8 +2468,6 @@ const ChatApp = {
                     }
                 }
             }
-            // Restore any active call state from before refresh/logout
-            this._restoreCallState();
             // If there's a pending invite, initiate friend request
             if (this.pendingInviteId) {
                 console.log("[Init] Pending invite to", this.pendingInviteId);
@@ -4886,7 +4884,6 @@ const ChatApp = {
         }
         // Start call-specific ping/pong for latency + disconnect detection
         this._startCallPing();
-        this._saveCallState();
     },
     
     // 通话结束：隐藏通话状态栏，恢复拨打按钮
@@ -4903,7 +4900,6 @@ const ChatApp = {
         if (textEl) textEl.textContent = _i18n.t('pchat.call.active');
         
         this._stopCallPing();
-        this._clearCallState();
     },
 
     // Update call status bar text and color
@@ -5025,7 +5021,6 @@ const ChatApp = {
         // Set 30-second timeout to force-end call if not reconnected
         if (c._interruptTimer) clearTimeout(c._interruptTimer);
         c._interruptStart = Date.now();
-        this._saveCallState();
         c._interruptTimer = setTimeout(() => {
             console.log('[Call] Interrupt timeout (30s), ending call');
             this.hangupCall();
@@ -5072,100 +5067,6 @@ const ChatApp = {
         const latency = Date.now() - pingTs;
         const latEl = document.getElementById('call-latency');
         if (latEl) latEl.textContent = latency + 'ms';
-    },
-
-    // ---- Call state persistence (localStorage) ----
-    _saveCallState() {
-        const c = this.call;
-        if (!c.active || !c.peerId) { this._clearCallState(); return; }
-        const state = {
-            active: true,
-            peerId: c.peerId,
-            direction: c.direction,
-            startTime: c.startTime,
-            callState: c.state,
-            reconnecting: !!c._reconnecting,
-            interruptStart: c._interruptStart || null,
-        };
-        localStorage.setItem('pchat_call_state', JSON.stringify(state));
-    },
-
-    _loadCallState() {
-        try {
-            const raw = localStorage.getItem('pchat_call_state');
-            if (!raw) return null;
-            return JSON.parse(raw);
-        } catch(e) { return null; }
-    },
-
-    _clearCallState() {
-        localStorage.removeItem('pchat_call_state');
-    },
-
-    // Restore call after page refresh / re-login
-    async _restoreCallState() {
-        const saved = this._loadCallState();
-        if (!saved || !saved.active) return;
-        console.log('[Call] Restoring call state:', saved);
-        
-        const c = this.call;
-        c.active = true;
-        c.peerId = saved.peerId;
-        c.direction = saved.direction;
-        c.startTime = saved.startTime;
-        c.state = saved.callState || 'connected';
-        c._reconnecting = saved.reconnecting || false;
-        c._interruptStart = saved.interruptStart;
-        
-        // Show call status bar (will be hidden if not in header, but we set state)
-        this._showCallInHeader();
-        
-        if (c._reconnecting || c.state === 'interrupted') {
-            // Restore interrupted UI
-            // Calculate remaining 30s timeout
-            const elapsed = c._interruptStart ? (Date.now() - c._interruptStart) : 0;
-            const remaining = 30000 - elapsed;
-            if (remaining <= 0) {
-                // Already expired — clean up without restoring
-                console.log('[Call] Interrupt already expired on restore, clearing');
-                this._clearCallState();
-                this._hideCallInHeader();
-                c.active = false;
-                return;
-            }
-            this._updateCallBarStatus(
-                _i18n.t('pchat.call.interrupted'),
-                '#fff3e0',
-                '#e65100'
-            );
-            const latEl = document.getElementById('call-latency');
-            if (latEl) latEl.textContent = _i18n.t('pchat.status.reconnecting');
-            c._interruptTimer = setTimeout(() => {
-                console.log('[Call] Interrupt timeout (restored), ending call');
-                this.hangupCall();
-            }, remaining);
-        } else {
-            // Was connected, start ping
-            this._startCallPing();
-            // Resume timer display
-            if (c.timerInterval) clearInterval(c.timerInterval);
-            c.timerInterval = setInterval(() => {
-                const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
-                const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
-                const sec = (elapsed % 60).toString().padStart(2, '0');
-                const el = document.getElementById("call-status-timer");
-                if (el) el.textContent = `${min}:${sec}`;
-            }, 1000);
-        }
-        
-        // If we're the initiator and in interrupted state, try to reconnect
-        if (c._reconnecting || c.state === 'interrupted') {
-            if (c.direction === 'sent') {
-                // Caller: keep checking if peer is online, then re-initiate
-                this._pollForReconnect();
-            }
-            // Receiver: caller will re-initiate, our _onIncomingPeerCall will auto-answer
-        }
     },
 
     _pollForReconnect() {
@@ -5226,7 +5127,6 @@ const ChatApp = {
                 // Restart call ping for latency tracking
                 this._startCallPing();
                 c._interruptStart = null;
-                this._saveCallState();
                 // Restart timer
                 if (c.timerInterval) { clearInterval(c.timerInterval); }
                 c.timerInterval = setInterval(() => {
@@ -5289,7 +5189,6 @@ const ChatApp = {
                 );
                 this._startCallPing();
                 c._interruptStart = null;
-                this._saveCallState();
                 if (c.timerInterval) { clearInterval(c.timerInterval); }
                 c.timerInterval = setInterval(() => {
                     const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
