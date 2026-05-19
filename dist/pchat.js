@@ -1228,8 +1228,8 @@ const PeerConn = {
             const state = this.peers[peerId];
             if (state) state.connected = false;
             PeerConn._stopHeartbeat(peerId);
-            // Update active transfer cards: receiving → reconnecting, speed → 0
             ChatApp._markTransfersReconnecting(peerId);
+            ChatApp._onPeerDisconnected(peerId);
             if (!PeerConn._amOffline) {
                 ChatApp._renderContacts();
             }
@@ -1264,8 +1264,9 @@ const PeerConn = {
                     if (state.conn) { try { state.conn.close(); } catch(e) {} }
                     state.connected = false;
                     ChatApp._markTransfersReconnecting(peerId);
+                    ChatApp._onPeerDisconnected(peerId);
                     ChatApp._renderContacts();
-                    // If our signaling is still up, try to reconnect (covers network partition)
+                    // If our signaling is still up, try to reconnect
                     if (!this._amOffline) {
                         this._scheduleReconnect(peerId);
                     }
@@ -4968,6 +4969,28 @@ const ChatApp = {
     startCall(peerId) {
         if (this.call.active) { this.hangupCall(); return; }
         PeerConn.call(peerId);
+    },
+
+    // Called when a peer's DC is detected as dead (heartbeat timeout or on-close)
+    _onPeerDisconnected(peerId) {
+        const c = this.call;
+        if (!c.active || c.peerId !== peerId) return;
+        // Don't re-enter if already interrupted
+        if (c._reconnecting) return;
+        console.log("[Call] Peer", peerId, "disconnected, interrupting call");
+        c._reconnecting = true;
+        // Close audio and mic
+        if (c.audio) { c.audio.pause(); c.audio.srcObject = null; c.audio = null; }
+        if (c.localStream) {
+            c.localStream.getTracks().forEach(t => t.stop());
+            c.localStream = null;
+        }
+        if (c.timerInterval) { clearInterval(c.timerInterval); c.timerInterval = null; }
+        this._updateCallBarStatus(
+            _i18n.t('pchat.call.interrupted'),
+            '#fff3e0',
+            '#e65100'
+        );
     },
 
     hangupCall() {
