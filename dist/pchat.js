@@ -903,9 +903,10 @@ const PeerConn = {
                             const ft = ChatApp.fileTransfer;
                             const info = ft.pending[fileId];
                             if (info) {
-                                const rawReceived = info.totalRawReceived;
                                 info.chunkCount = (info.chunkCount || 0) + 1;
                                 info.totalRawReceived = (info.totalRawReceived || 0) + (arr.byteLength || arr.length);
+                                // Record first-chunk time for speed calculation
+                                info._recvStartTime = info._recvStartTime || Date.now();
                                 const netPct = info.size > 0 ? (info.totalRawReceived / info.size * 100) : 0;
                                 info._written = info._written || 0;
                                 const pct = netPct;
@@ -913,11 +914,21 @@ const PeerConn = {
                                     // Progress log (silent, tracked via _updateTransferProgress)
                                 }
                                 _chunkCount++;
-                                // Mini-ack every 10 chunks for sender flow control
+                                // Mini-ack every 10 chunks for sender flow control (with receiver-measured speed)
                                 if (info.chunkCount % 10 === 0) {
                                     const ackPeer = PeerConn.peers[info.peerId];
                                     if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
-                                        ackPeer.conn.send({ type: 'file-ack', fileId, progress: Math.round(netPct) });
+                                        // Calculate receive speed since last ack
+                                        const nowMs = Date.now();
+                                        const lastAckBytes = info._binaryLastAckBytes || 0;
+                                        const lastAckTime = info._binaryLastAckTime || info._recvStartTime || nowMs;
+                                        const deltaBytes = info.totalRawReceived - lastAckBytes;
+                                        const deltaSec = Math.max((nowMs - lastAckTime) / 1000, 0.01);
+                                        const spd = deltaBytes / deltaSec;
+                                        const speedStr = spd > 1048576 ? `${(spd/1048576).toFixed(1)} MB/s` : `${(spd/1024).toFixed(0)} KB/s`;
+                                        info._binaryLastAckBytes = info.totalRawReceived;
+                                        info._binaryLastAckTime = nowMs;
+                                        ackPeer.conn.send({ type: 'file-ack', fileId, progress: Math.round(netPct), speed: speedStr });
                                     }
                                 }
                                 ChatApp._updateTransferProgress(fileId, pct, null);
