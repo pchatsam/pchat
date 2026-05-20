@@ -2042,9 +2042,8 @@ const ChatApp = {
         try {
             // 用密码派生密钥，尝试读取 user 记录验证密码
             await DB.openFor(userId);
-            // 读取 salt（老账户无 salt 则回退到固定盐）
-            const saltRecord = await DB.get("user", "_salt");
-            const salt = saltRecord ? saltRecord.salt : null;
+            // Read salt (old accounts without salt fall back to fixed salt)
+            const salt = await DB.getSalt();
             const testKey = await Crypto.deriveAesKey(inputPw, salt);
             const user = await DB.get("user", "current", testKey);
             if (user && user.userId) {
@@ -2463,9 +2462,8 @@ const ChatApp = {
             this._showLoading(10, _i18n.t('pchat.loading.openDB'));
             await DB.openFor(this._selectedAccountId);
 
-            // 读取 salt（老账户无 salt 则回退到固定盐）
-            const saltRecord = await DB.get("user", "_salt");
-            const salt = saltRecord ? saltRecord.salt : null;
+            // Read salt (old accounts without salt fall back to fixed salt)
+            const salt = await DB.getSalt();
 
             // Verify password
             this._showLoading(30, _i18n.t('pchat.loading.deriveVerifyKey'));
