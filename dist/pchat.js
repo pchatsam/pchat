@@ -946,60 +946,102 @@ const DB = {
     },
 };
 
+// ==================== PublicDB — Shared Unencrypted IndexedDB ====================
+// Stores common unencrypted data in a single shared IndexedDB (PChat_public)
+// Object stores: accounts (keyPath: userId)
+//
+const PublicDB = {
+    NAME: "PChat_public",
+    VER: 1,
+    db: null,
+
+    async open() {
+        if (this.db) return this.db;
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(this.NAME, this.VER);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("accounts")) {
+                    const store = db.createObjectStore("accounts", { keyPath: "userId" });
+                    // Migrate from localStorage
+                    try {
+                        const data = localStorage.getItem("pchat_accounts");
+                        if (data) {
+                            const accounts = JSON.parse(data);
+                            for (const acc of accounts) {
+                                store.put({ userId: acc.userId, nickname: acc.nickname, ts: acc.ts || Date.now() });
+                            }
+                        }
+                    } catch(e) {
+                        console.warn('[PublicDB] Migration from localStorage failed:', e);
+                    }
+                }
+            };
+            req.onsuccess = (e) => {
+                this.db = e.target.result;
+                // Clean up localStorage after successful migration
+                if (localStorage.getItem("pchat_accounts")) {
+                    localStorage.removeItem("pchat_accounts");
+                }
+                resolve(this.db);
+            };
+            req.onerror = () => reject(req.error);
+        });
+    },
+
+    _store(name, mode) {
+        return this.db.transaction(name, mode || "readonly").objectStore(name);
+    },
+};
+
 // ==================== AccountManager — Multi-Account Management ====================
-// Stores account list in localStorage under key "pchat_accounts"
-// Each account has its own IndexedDB (PChat_{userId})
+// Stores account list in PublicDB (unencrypted IndexedDB) under "accounts" store
+// Each account has its own encrypted IndexedDB (PChat_{userId})
 //
 // Functions:
-//   listAccounts()                    — Get all saved accounts from localStorage
-//   addAccount(userId, nickname)      — Add or update account in localStorage
-//   removeAccount(userId)             — Remove account from localStorage + delete IndexedDB
-//   openDBFor(userId)                 — Open the IndexedDB for a specific account
+//   listAccounts()                    — Get all saved accounts from PublicDB
+//   addAccount(userId, nickname)      — Add or update account in PublicDB
+//   removeAccount(userId)             — Remove account from PublicDB + delete encrypted IndexedDB
 //
-// Manages multiple user accounts in localStorage + per-account IndexedDB
+// Manages multiple user accounts in shared IndexedDB + per-account encrypted IndexedDB
 const AccountManager = {
-    STORAGE_KEY: "pchat_accounts",
-
     // Get all saved accounts
-    listAccounts() {
-        const data = localStorage.getItem(this.STORAGE_KEY);
-        if (!data) return [];
-        try { return JSON.parse(data); } catch(e) { return []; }
+    async listAccounts() {
+        await PublicDB.open();
+        return new Promise((resolve) => {
+            const req = PublicDB._store("accounts").getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => resolve([]);
+        });
     },
 
     // Add account
-    addAccount(userId, nickname) {
-        const accounts = this.listAccounts();
-        const existing = accounts.find(a => a.userId === userId);
-        if (existing) {
-            existing.nickname = nickname;
-        } else {
-            accounts.push({ userId, nickname, ts: Date.now() });
-        }
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(accounts));
+    async addAccount(userId, nickname) {
+        await PublicDB.open();
+        return new Promise((resolve, reject) => {
+            const tx = PublicDB.db.transaction("accounts", "readwrite");
+            const store = tx.objectStore("accounts");
+            store.put({ userId, nickname, ts: Date.now() });
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
     },
 
-    // Remove account
+    // Remove account from PublicDB + delete encrypted IndexedDB
     async removeAccount(userId) {
-        const accounts = this.listAccounts();
-        const filtered = accounts.filter(a => a.userId !== userId);
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered));
         // Close DB connection before deleting
         if (DB.db) { try { DB.db.close(); } catch(e) {} DB.db = null; }
-        // Delete the IndexedDB for this account
+        // Delete the encrypted IndexedDB for this account
         const dbName = DB.BASE_NAME + "_" + userId;
-        try {
-            const dbNames = await indexedDB.databases();
-            for (const db of dbNames) {
-                if (db.name === dbName) {
-                    indexedDB.deleteDatabase(dbName);
-                    break;
-                }
-            }
-        } catch(e) {
-            // Fallback: delete by name directly
-            indexedDB.deleteDatabase(dbName);
-        }
+        indexedDB.deleteDatabase(dbName);
+        // Remove from accounts store
+        await PublicDB.open();
+        return new Promise((resolve, reject) => {
+            const tx = PublicDB.db.transaction("accounts", "readwrite");
+            tx.objectStore("accounts").delete(userId);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
     },
 
     // Check if account has data (DB exists with user record)
@@ -2049,7 +2091,7 @@ const ChatApp = {
             if (user && user.userId) {
                 // 密码正确，执行删除
                 this._hide("delete-confirm-modal");
-                AccountManager.removeAccount(userId);
+                await AccountManager.removeAccount(userId);
                 this.init();
             } else {
                 this.showAlert(_i18n.t('pchat.alert.passwordError'));
@@ -2247,7 +2289,7 @@ const ChatApp = {
         }
 
         // Load account list
-        const accounts = AccountManager.listAccounts();
+        const accounts = await AccountManager.listAccounts();
         this._show("setup-panel");
 
         // Render account list
@@ -2404,7 +2446,7 @@ const ChatApp = {
         await DB.put("user", { id: "current", userId: this.my.id, nickname: nick, ts: Date.now(), cachedKey: this.my.aesKey }, verifyKey);
 
         // Save to account list
-        AccountManager.addAccount(this.my.id, nick);
+        await AccountManager.addAccount(this.my.id, nick);
 
         // 保存邀请人 ID（PeerJS 初始化后发送好友请求）
         const inv = JSON.parse(localStorage.getItem("pchat_invite") || "null");
@@ -6525,7 +6567,7 @@ const ChatApp = {
     _transferOutId: null,
 
     // ---- UI: Show Transfer Out Modal ----
-    showTransferOut() {
+    async showTransferOut() {
         const pwForm = document.getElementById("login-password-panel");
         if (pwForm) pwForm.style.display = "none";
         const modal = document.getElementById("transfer-out-panel");
@@ -6536,7 +6578,7 @@ const ChatApp = {
         const container = document.getElementById("transfer-out-account-select");
         if (!container) return;
 
-        const accounts = AccountManager.listAccounts();
+        const accounts = await AccountManager.listAccounts();
         container.innerHTML = "";
 
         const label = document.createElement("p");
@@ -7108,7 +7150,7 @@ const ChatApp = {
             }
 
             // Register the account with original userId and nickname
-            AccountManager.addAccount(userId || this._transferTargetUserId, nickname);
+            await AccountManager.addAccount(userId || this._transferTargetUserId, nickname);
 
             const progress = document.getElementById("transfer-in-progress");
             if (progress) {

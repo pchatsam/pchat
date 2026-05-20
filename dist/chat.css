@@ -370,7 +370,7 @@ body {
 .transfer-progress-info{font-size:13px;color:var(--text2);}
 
 /* ===== Account List ===== */
-.account-list{max-height:240px;overflow-y:auto;}
+.account-list{max-height:55vh;overflow-y:auto;}
 .account-item{
     display:flex;align-items:center;justify-content:space-between;
     padding:14px 16px;margin-bottom:6px;border-radius:10px;cursor:pointer;
