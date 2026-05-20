@@ -8,7 +8,6 @@
 
 | Status | Description |
 |--------|-------------|
-| ✅ Fixed | Fixed in current version |
 | 🔴 Critical | Directly affects functionality correctness or security |
 | 🟠 High | Significantly affects reliability or data integrity |
 | 🟡 Medium | Affects performance/UX, has workaround |
@@ -18,84 +17,27 @@
 
 ## Bug Summary
 
-| Severity | Total | Fixed | Pending |
-|----------|-------|-------|---------|
-| 🔴 Critical | 3 | 3 | 0 |
-| 🟠 High | 4 | 2 | 2 |
-| 🟡 Medium | 5 | 0 | 5 |
-| 🟢 Low | 4 | 0 | 4 |
+| Severity | Count |
+|----------|-------|
+| 🔴 Critical | 0 |
+| 🟠 High | 2 |
+| 🟡 Medium | 6 |
+| 🟢 Low | 5 |
 
 ---
 
-## 🔴 Critical
+## 🟠 High
 
-### ✅ BUG-001: ID Change Notification Cannot Decrypt (Fixed)
+### BUG-004: `_onFileFooter` missing base64 length check
 
-- **File**: `dist/pchat.js`
-- **Fixed in**: `20260520.x`
-- **Fix**: `_onIdChangeNotification` now correctly uses `senderContact.keypair.privateKey`
-
-### ✅ BUG-002: File Transfer SHA-256 Hash Check Completely Broken (Fixed)
-
-- **File**: `dist/pchat.js`
-- **Fixed in**: `20260520.x`
-- **Fix**: `_hashBase64` now uses `CryptoJS.enc.Base64.parse()` correctly
-
-### ✅ BUG-003: Transfer contacts table schema mismatch (Fixed)
-
-- **File**: `dist/pchat.js`
-- **Fixed in**: `20260520.x`
-- **Fix**: `_ensureTransferDb` now uses same keyPath and indexes as main DB
-
----
-
-## 🟠 High (2)
-
-### ✅ BUG-006: deriveAesKey salt is fixed value (Fixed)
-
-- **File**: `dist/pchat.js` L258
-- **Severity**: 🟠 High → ✅ Fixed
-
-**Original issue:**
-```javascript
-deriveAesKey(password, userId) {
-    const salt = CryptoJS.enc.Utf8.parse("pchat-salt" + (userId || ""));
-    ...
-}
-```
-
-All callers used `Crypto.deriveAesKey(pw)` without userId. Documentation claimed salt was `"pchat-salt"+userId`, but it was always `"pchat-salt"`.
-
-**Impact**: All users shared the same salt, reducing password security. Two users with the same password would have the same encryption key.
-
-**Fix:**
-- Register: `Crypto.randomSalt()` generates 16-byte random hex salt
-- Store as plaintext record in IndexedDB `user` table (`id: "_salt"`), unencrypted
-- Login/delete/transfer: Read salt from DB, pass to `deriveAesKey(pw, salt)`
-- Old accounts without salt record → fallback to `"pchat-salt"` (backward compatible)
-- Salt does not change with userId (userId is mutable, salt is fixed)
-- Account transfer copies `_salt` record with `user` table to new device
-
----
-
-### BUG-004: _onFileFooter missing base64 length check
-
-- **File**: `dist/pchat.js` ~L3364
+- **File**: `dist/pchat.js` ~L3579
 - **Severity**: 🟠 High
 
-`_onFileHeader` stores `info.expectedBase64Len`, but `_onFileFooter` never checks if the assembled base64 length matches. SHA-256 hash check is the main defense, but length check is the last redundant check.
-
-**Fix suggestion**: Add in `_onFileFooter`:
-```javascript
-if (fullBase64.length !== info.expectedBase64Len) {
-    this.showAlert(_i18n.t('pchat.file.incomplete'));
-    return;
-}
-```
+`_onFileHeader` stores `info.expectedBase64Len`, but in the traditional path of `_onFileFooter`, length check is handled by `_finalizeChunkedReceive` (`fullBase64.length !== info.expectedBase64Len`). The Binary DC path's `file-footer` only checks `totalRawReceived >= size`, lacking exact length match.
 
 ---
 
-### BUG-007: deleteAccount() is dead code
+### BUG-007: `deleteAccount()` is dead code
 
 - **File**: `dist/pchat.js` L2337
 - **Severity**: 🟠 High
@@ -106,7 +48,7 @@ if (fullBase64.length !== info.expectedBase64Len) {
 
 ---
 
-## 🟡 Medium (5)
+## 🟡 Medium
 
 ### BUG-008: Message list decrypts all messages every time
 
@@ -124,7 +66,7 @@ Every message needs AES decryption. As message count grows (thousands), switchin
 
 ---
 
-### BUG-009: _openImageFromDb reads message twice
+### BUG-009: `_openImageFromDb` reads message twice
 
 - **File**: `dist/pchat.js` ~L2748
 - **Severity**: 🟡 Medium
@@ -132,21 +74,6 @@ Every message needs AES decryption. As message count grows (thousands), switchin
 Method calls `DB.get("messages", msgId)` twice — first as fallback, then again to get thumbnail.
 
 **Fix suggestion**: Cache the first read result, reuse it.
-
----
-
-### BUG-010: Call log direction always "received"
-
-- **File**: `dist/pchat.js` `_recordCallMessage()`
-- **Severity**: 🟡 Medium
-
-```javascript
-direction: "received",  // Fixed value
-```
-
-Call logs are marked `received` regardless of caller/callee. Caller's call log direction is wrong.
-
-**Fix suggestion**: Set direction based on caller/callee role.
 
 ---
 
@@ -161,7 +88,7 @@ Call logs are marked `received` regardless of caller/callee. Caller's call log d
 
 ---
 
-### BUG-012: Large number of console.log not cleaned
+### BUG-012: Large number of `console.log` not cleaned
 
 - **File**: `dist/pchat.js` (241 occurrences)
 - **Severity**: 🟡 Medium
@@ -175,9 +102,36 @@ Call logs are marked `received` regardless of caller/callee. Caller's call log d
 
 ---
 
-## 🟢 Low (4)
+### BUG-015: `_formatTime` hardcodes `zh-CN` locale
 
-### BUG-013: DB.put fire-and-forget
+- **File**: `dist/pchat.js` L2173-2181
+- **Severity**: 🟡 Medium
+
+```javascript
+const h = new Date(ts).toLocaleTimeString("zh-CN", {hour:'2-digit', minute:'2-digit'});
+const d = new Date(ts).toLocaleDateString("zh-CN", {month:'numeric', day:'numeric'});
+```
+
+All time formatting hardcodes `"zh-CN"` locale. Non-Chinese users see Chinese time formats (e.g. `下午3:00` instead of `3:00 PM`). 4 call sites in `_formatTime`.
+
+**Fix suggestion**: Use `_i18n.lang` or `navigator.language` instead of hardcoded locale.
+
+---
+
+### BUG-017: `_recordCallMessage` is never called
+
+- **File**: `dist/pchat.js` L5511
+- **Severity**: 🟡 Medium
+
+`_recordCallMessage(peerId, durationSeconds, direction)` is defined with full implementation (stores call-log message to IndexedDB) but is **never invoked** from any code path. `_onCallEnd` does not call it. The `initiateCall()` comment says "5. Record call log message with duration" but step 5 never executes.
+
+**Fix suggestion**: Call `_recordCallMessage` from `_onCallEnd` when call truly ends (not reconnecting). Compute duration from `c.startTime` to `Date.now()`.
+
+---
+
+## 🟢 Low
+
+### BUG-013: `DB.put` fire-and-forget
 
 - **File**: `dist/pchat.js` multiple places
 - **Severity**: 🟢 Low
@@ -187,24 +141,6 @@ DB.put("messages", msg, this.my.aesKey).then(...)  // Not awaited
 ```
 
 Messages may be displayed in UI but fail to persist. Probability is extremely low in normal scenarios.
-
----
-
-### BUG-014: _onCallEnd not cleaning _pendingCall
-
-- **File**: `dist/pchat.js`
-- **Severity**: 🟢 Low
-
-When call ends abnormally (not via rejectCall), `_pendingCall` is not cleared, may cause subsequent incoming call handling issues.
-
----
-
-### BUG-015: Transfer target table missing indexes
-
-- **File**: `dist/pchat.js` Transfer DB creation
-- **Severity**: 🟢 Low
-
-Handled in BUG-003 fix. Target device now creates correct indexes.
 
 ---
 
@@ -219,14 +155,53 @@ If `PeerConn.send(memberId, content)` fails in group chat, message is silently l
 
 ---
 
-## Cleaned Issues (2026-05-20)
+### BUG-018: `_onReceiptReceived` full DB scan
 
-| Issue | Status | Description |
-|-------|--------|-------------|
-| `mr_invite` remnants | ✅ Cleaned | All `localStorage.getItem("mr_invite")` changed to `"pchat_invite"` |
-| MindRender branding | ✅ Cleaned | Recorded in CHANGELOG, no remnants in code |
-| BUG-001 ID change decrypt | ✅ Fixed | Uses correct keypair |
-| BUG-002 SHA-256 hash | ✅ Fixed | Uses CryptoJS built-in conversion |
-| BUG-003 Transfer schema | ✅ Fixed | Unified keyPath and indexes |
-| BUG-005 Session Lock | ✅ Fixed | Uses PeerConn.peer correctly |
-| BUG-006 deriveAesKey salt | ✅ Fixed | Per-account random salt in IndexedDB |
+- **File**: `dist/pchat.js` L3221
+- **Severity**: 🟢 Low
+
+```javascript
+async _onReceiptReceived(peerId, msgId) {
+    const allMsgs = await DB.list("messages", this.my.aesKey);  // Full scan!
+    for (const m of allMsgs) {
+        if (m.id === msgId && m.direction === "sent") { ... }
+    }
+}
+```
+
+Every message receipt triggers full DB decrypt + full table scan. High frequency in group chats (one per member receipt).
+
+**Fix suggestion**: Use `DB.get("messages", msgId)` for direct primary key lookup, or maintain in-memory message cache.
+
+---
+
+### BUG-019: `playVoice` Blob URL leak on error path
+
+- **File**: `dist/pchat.js` L4072
+- **Severity**: 🟢 Low
+
+```javascript
+audio.onerror = () => {
+    element.classList.remove('playing');
+    // Missing URL.revokeObjectURL(url)
+};
+audio.play().catch(err => {
+    element.classList.remove('playing');
+    // Missing URL.revokeObjectURL(url)
+});
+```
+
+`audio.onended` path properly revokes the Blob URL, but `onerror` and `play().catch()` paths do not. On playback errors (unsupported codec, etc.), Blob URLs accumulate.
+
+**Fix suggestion**: Add `URL.revokeObjectURL(url)` in both error handlers.
+
+---
+
+### BUG-020: Voice recording mic tracks not closed on error
+
+- **File**: `dist/pchat.js` `startRecording()`
+- **Severity**: 🟢 Low
+
+The `v.mediaStream` tracks from `navigator.mediaDevices.getUserMedia()` are only stopped in `recorder.onstop`. If `MediaRecorder` errors during recording (device removed, permission revoked), `onstop` is not triggered and the microphone stays open.
+
+**Fix suggestion**: Add `recorder.onerror` handler to close tracks, or force-close in `stopRecording()`.

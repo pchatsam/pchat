@@ -307,15 +307,24 @@ Initiator                               Receiver
 5. Auto-send `receipt` read confirmation
 
 **Message Type Enum:**
-| type | Description | Encrypted |
-|------|-------------|-----------|
-| `chat` | Text message / HTML message | ✅ RSA |
-| `voice` | Voice message (audio/webm base64) | ❌ Plain (DTLS only) |
-| `file-header` | File metadata | ❌ Plain |
-| `file-chunk` | File data chunk | ❌ Plain |
-| `file-footer` | File transfer complete | ❌ Plain |
-| `receipt` | Read confirmation | ❌ Plain |
-| `id-change` | ID change notification | ❌ Plain |
+
+| type | Description | Encrypted | Channel |
+|------|-------------|-----------|---------|
+| `chat` | Text message / HTML message | ✅ RSA | Main DC |
+| `voice` | Voice message (audio/webm base64) | ❌ Plain | Main DC |
+| `file-header` | File metadata | ❌ Plain | Main DC |
+| `file-chunk` | File data chunk (traditional path) | ❌ Plain | Main DC |
+| `file-footer` | File transfer complete | ❌ Plain | Main DC |
+| `file-ack` | File receive ack (progress/speed/ETA) | ❌ Plain | Main DC |
+| `file-resume` | File resume request (received bytes) | ❌ Plain | Main DC |
+| `file-cancel` | File cancel | ❌ Plain | Main DC |
+| `receipt` | Read receipt (with msgId) | ❌ Plain | Main DC |
+| `id-change` | ID change notification (RSA encrypted payload) | ✅ RSA | Main DC |
+| `_ping` / `_pong` | Heartbeat | ❌ Plain | Main DC |
+| `call-ping` / `call-pong` | Call latency check | ❌ Plain | Main DC |
+| `call-cancelled` | Caller hung up before answer | ❌ Plain | Main DC |
+| `call-rejected` | Callee rejected call | ❌ Plain | Main DC |
+| Binary DC data | ≥10MB file raw binary stream | ❌ Plain | Dedicated Binary DC |
 
 ### 4.4 Group Chat
 
@@ -336,48 +345,134 @@ Initiator                               Receiver
 ```
 
 **Key points:**
-1. Create group → `group.members[]` stores member contactId list
-2. Send group message → iterate members, RSA encrypt + send to each
+1. Create group → `group.memberIds[]` stores member userId list
+2. Send group message → iterate `memberIds`, RSA encrypt + `PeerConn.send()` to each
 3. Unified `msgId` links all member send records (owner side)
-4. Each message has `receipts` field: `{memberId: timestamp}` tracking reads
-5. Offline member messages queued → `flushPending()` on reconnect
-6. Member receives group message → `fromId` identifies sender
+4. Each message has `receipts` field: `{memberId: timestamp}` tracking reads. Initialized on send as `{memberId: sent ? Date.now() : null}`
+5. Offline member messages queued (`sent: false`) → `flushPending()` on reconnect
+6. Member receives group message → `fromId` identifies sender → auto-replies with `receipt`
+7. Owner receives `receipt` → `_onReceiptReceived()` updates `receipts` → UI shows member receipt list in real-time (`receipt-yes` / `receipt-no` styles)
+8. Owner-side UI: Below each sent message, shows member list with green for read (`receipt-yes`) and gray for unread (`receipt-no`)
 
 **Message routing:**
-- `activeConv.type === "group"` → iterate group.members to send
+- `activeConv.type === "group"` → iterate `group.memberIds` to send
 - `activeConv.type === "contact"` → direct send to userId
 
-### 4.5 File Transfer (Chunking)
+### 4.5 File Transfer (Dual-Path Chunking)
 
-#### Image Transfer
+File transfer uses two different paths based on file size, threshold at **10MB**.
+
+| Size | Path | Encoding | Storage | Resume |
+|------|------|----------|---------|--------|
+| <10MB | Traditional Chunking | Base64 chunks + main DC | IndexedDB (AES encrypted) | Full resend |
+| ≥10MB | Binary DC | Raw binary + dedicated DC | OPFS (plaintext) | Supported (seekable) |
+
+#### 4.5.1 Traditional Chunking Path (<10MB)
+
+**Sender flow (`_sendFileInternal`):**
+
+1. `FileReader.readAsArrayBuffer()` reads entire file
+2. `arrayBufferToBase64()` converts to base64 string
+3. `SHA-256` computes base64 hash (`_hashBase64`)
+4. `file-header`: metadata (fileId, name, mime, size, totalChunks, isImage, base64Len, hash)
+5. Send `file-chunk` in **256KB** slices (with index)
+6. `file-footer`: transfer end marker
+7. Wait for `file-ack` (timeout 120s)
+8. Store message record in IndexedDB (`DB.put` AES encrypted)
 
 ```
-Sender:
-  1. FileReader.readAsDataURL() → base64
-  2. _generateThumbnail(200px JPEG) → thumbnail base64
-  3. SHA-256 hash of full original image
-  4. Split base64 into 16KB chunks (DataChannel limit)
-  5. file-header → N× file-chunk → file-footer
-
-Receiver:
-  1. file-header → create receive record (_pendingFileReceives)
-  2. file-chunk → buffer to chunks[] (dedup by index)
-  3. file-footer → verify length + SHA-256 hash
-  4. Concat full base64 → store in IndexedDB (AES encrypted)
-  5. Render thumbnail in message list
+file-header → chunk-0 → chunk-1 → ... → chunk-N → file-footer
+    ↓                                                            ↓
+  metadata (incl. hash)                                    file-ack
 ```
 
-#### File Transfer
+**Receiver flow (`_onFileHeader` → `_onFileChunk` → `_finalizeChunkedReceive`):**
 
-- Same mechanism as images, no thumbnail
-- Shown as file card (filename + size + icon)
-- Click download → read from DB → `URL.createObjectURL` → trigger download
+1. `file-header` → create receive record `ft.pending[fileId]` (with `parts[]` array)
+2. `file-chunk` → store in `parts[index]`, duplicate index auto-skipped
+3. All chunks arrived (`chunkCount >= totalChunks`) → trigger `_finalizeChunkedReceive`
+4. `_finalizeChunkedReceive`:
+   - Assemble `fullBase64 = parts.join('')`
+   - Length check: `fullBase64.length === info.expectedBase64Len`
+   - SHA-256 hash check
+   - Image: generate 200px JPEG thumbnail (`DB.generateThumbnail`), full image stored in `files` store (`DB.putFile` AES encrypted)
+   - Message record stored in `messages` store (`DB.put` AES encrypted)
+   - Send `file-ack`
 
-#### Integrity Verification
+#### 4.5.2 Binary DC Path (≥10MB)
 
-- **Length check**: Concatenated base64 length vs sender declaration
-- **Hash check**: SHA-256 hash comparison (prevent corruption)
-- **Dedup**: Duplicate index chunks auto-skipped
+Uses a dedicated **binary DataChannel** for raw file bytes, zero base64 encoding overhead.
+
+**Sender flow (`_sendFileInternal` ≥10MB):**
+
+1. `file-header` via main DC (with `directTransfer: true`, `binaryChannel: true`)
+2. Open binary DC: `PeerConn.peer.connect(peerId, {label: 'file-'+fileId, serialization: 'binary'})`
+3. Save file to OPFS (`DB.saveOutgoingFile`) for resume capability
+4. Read file in **10MB segments** via `file.slice()`
+5. Each segment split into **256KB chunks** → sent over binary DC
+6. Every 10 chunks: wait for `file-ack` (flow control)
+7. `file-footer` via main DC
+8. Wait for final `file-ack` (timeout 600s)
+9. Message record stored in `messages` store (plaintext, `type: "direct-file"`)
+
+**Receiver flow:**
+
+1. `file-header` → `DB.openDirectFile()` (prepare OPFS segment files)
+2. Binary DC `data` event → `DB.bufferRawChunk()` → buffer raw bytes
+3. Buffer flush (~100MB threshold) → `_flushRawBuffer()` → write OPFS segment file
+4. `file-footer` → `_finalizeDirectReceive`:
+   - Flush remaining buffer (`DB._flushRawBuffer`)
+   - Merge OPFS segments into final file (`DB.closeDirectFile`)
+   - Verify `totalRawReceived >= size`
+   - Message record stored (plaintext, `type: "direct-file"`)
+   - Send `file-ack`
+
+**Resume flow (on disconnect/reconnect):**
+
+1. Receiver: `_requestFileResume()` sends `file-resume` with `receivedBytes` (OPFS size)
+2. Sender: `_handleFileResume()` reads file from OPFS, seeks to offset, opens new binary DC
+3. Transfer continues from the last received byte
+4. If receiver refreshed page: `_pendingReceives` (localStorage) restores transfer state
+
+#### 4.5.3 Storage
+
+| File Type | Storage | Encryption | Details |
+|-----------|---------|------------|---------|
+| <10MB file/image | IndexedDB `files` store | AES-256-CBC | Full base64 data encrypted |
+| <10MB message | IndexedDB `messages` store | AES-256-CBC | Thumbnail (image) or base64 (file) in `fileData` |
+| ≥10MB file | OPFS `pchat-${fileId}` | None | Raw binary, merged from segments |
+| ≥10MB message | IndexedDB `messages` store | None | `type: "direct-file"`, stored via `DB.putRaw` |
+| Image thumbnail | `fileData` field in message | AES-256-CBC | 200px JPEG embedded |
+
+#### 4.5.4 Integrity Verification
+
+| Check | Traditional Path | Binary DC |
+|-------|-----------------|----------|
+| Length check | ✅ base64 length vs `expectedBase64Len` | ✅ `totalRawReceived >= size` |
+| Hash check | ✅ SHA-256 comparison | ❌ None |
+| Dedup protection | ✅ Duplicate index skipped | ✅ OPFS segment overwrite |
+
+#### 4.5.5 Parameters Summary
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Size threshold | 10MB (10485760 bytes) | `SHOW_PROGRESS` constant |
+| Traditional chunk size | 256KB (262144 bytes) | Base64 string slice |
+| Binary DC segment size | 10MB (10485760 bytes) | `file.slice` segment |
+| Binary DC chunk size | 256KB (262144 bytes) | Per-segment slice |
+| Binary DC flow control | Wait for ack every 10 chunks | Prevent sender flooding receiver |
+| Traditional ack interval | Every ~10MB received | Receiver sends `file-ack` |
+| Transfer timeout | 120s (traditional) / 600s (binary DC) | Wait for final `file-ack` |
+| Binary DC flush threshold | ~100MB | `DB.bufferedSize` triggers OPFS write |
+| OPFS segment naming | `pchat-${fileId}-${segIndex}` | Receiver temp segments |
+| OPFS final file | `pchat-${fileId}` | Merged complete file |
+| OPFS send temp file | `send-${fileId}` | Sender resume source |
+
+#### 4.5.6 Rendering Differences
+
+- **Image message** (`type: "image"`): Thumbnail inline render, click opens fullscreen image viewer
+- **Traditional file** (`type: "file"`): File card (icon + filename + size), click to download
+- **Direct transfer file** (`type: "direct-file"`): File card with "直传" marker, downloads from OPFS
 
 ### 4.6 Voice Messages
 
@@ -410,14 +505,17 @@ Caller                                Callee
   ◄════ Bidirectional Opus audio (WebRTC) ═══►
   │                                     │
   │ call.close() ──────────────────────►│  Hangup
-  │ _logCall(duration)                  │  _logCall(duration)
+  │ _onCallEnd()                        │  _onCallEnd()
 ```
 
 **Features:**
 - Incoming call modal (`#call-modal`): Shows nickname + ID + accept/reject
 - Call timer: Real-time `mm:ss`
-- Call log: Auto-write `type:"call-log"` message
+- Call log: `_recordCallMessage()` function defined but **never called** (BUG-017)
 - States: `idle → waiting → connected → closed`
+- **DC reconnect**: On disconnect, call enters `interrupted` state. On DC recovery, `_reconnectCall()` rebuilds the MediaConnection. Timer continues from `c.startTime`, timer interval not interrupted.
+- **Auto-answer reconnect**: Same peer call within 30s is auto-answered (`_autoAnswerReconnect`)
+- **Heartbeat**: During call, sends `call-ping` every 5s, receives `call-pong` for latency measurement
 
 ### 4.8 Image Viewer
 
@@ -673,6 +771,7 @@ _i18n.applyUI() → sets all input placeholders + button titles
 | No forward secrecy | Long-term RSA key pairs, no PFS |
 | Key storage | Private key AES-encrypted in IndexedDB, depends on device security |
 | WebRTC metadata | IP address exposed via ICE to peer |
+| OPFS plaintext | ≥10MB files stored in OPFS without encryption (`pchat-${fileId}`); message records stored via `DB.putRaw` (unencrypted) |
 
 ---
 

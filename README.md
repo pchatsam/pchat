@@ -2,6 +2,8 @@
 
 Pure frontend peer-to-peer messaging. No backend, no data center, no tracking. Messages flow directly between browsers via WebRTC with end-to-end encryption.
 
+**Try it now**: [pchatsam.github.io/pchat](https://pchatsam.github.io/pchat/) — open in browser, no download needed.
+
 ## Features
 
 - **End-to-end encryption** — RSA-2048-OAEP for message encryption, AES-256 for local storage
