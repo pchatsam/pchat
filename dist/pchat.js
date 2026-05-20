@@ -4005,6 +4005,7 @@ const ChatApp = {
             // Show completed message
             const now = Date.now();
             const msg = { id: `msg_direct_${fid}`, peerId, ts: now, direction: "sent", sent: true, fromId: this.my.id, type: "direct-file", fileName: pending.name, mimeType: pending.mime, fileSize: pending.size, fileId: fid };
+            await DB.put("messages", msg, this.my.aesKey);
             if (this.activeConv && this.activeConv.id === peerId) this._appendMsg(msg);
             const contact = this.contacts.find(c => c.userId === peerId);
             if (contact) { contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + pending.name, ts: now, fromId: this.my.id }; this.saveContact(contact); }
@@ -4394,6 +4395,8 @@ const ChatApp = {
             delete this._activeSends[peerId];
             if (finalOk) { this._clearPendingSend(fileId, true); DB.deleteOutgoingFile(fileId).catch(() => {}); }
             this._renderContacts();
+            // Store message in DB (needed for persistence and delete)
+            await DB.put("messages", sentMsg, this.my.aesKey);
             this._appendMsg(sentMsg);
 
             const contact = this.contacts.find(c => c.userId === peerId);
