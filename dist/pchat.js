@@ -2454,7 +2454,7 @@ const ChatApp = {
         }
 
         const btn = document.getElementById("login-btn");
-        const origText = btn ? btn.textContent : _i18n.t('pchat.login.btn.loggingIn');
+        const origText = btn ? btn.innerHTML : _i18n.t('pchat.login.btn.loggingIn');
         if (btn) { btn.textContent = _i18n.t('pchat.login.btn.loggingIn'); btn.disabled = true; }
         this._showLoading(5, _i18n.t('pchat.loading.verify'));
 
@@ -2475,7 +2475,7 @@ const ChatApp = {
             const user = await DB.get("user", "current", testKey);
             if (!user || !user.userId) {
                 this._hideLoading();
-                if (btn) { btn.textContent = origText; btn.disabled = false; }
+                if (btn) { btn.innerHTML = origText; btn.disabled = false; }
                 this.showAlert(_i18n.t('pchat.alert.passwordError'));
                 return;
             }
