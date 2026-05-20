@@ -34,7 +34,7 @@
     <!-- 竖屏锁定：横屏时覆盖全屏提示 -->
     <div id="portrait-lock" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#1a1a2e;z-index:99999;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
         <svg width="64" height="64" viewBox="0 0 32 32"><rect x="6" y="4" width="20" height="24" rx="3" fill="none" stroke="#4ecca3" stroke-width="2"/><line x1="12" y1="7" x2="20" y2="7" stroke="#4ecca3" stroke-width="1.5" stroke-linecap="round"/><polyline points="13,16 16,19 19,16" fill="none" stroke="#4ecca3" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span style="color:#ccc;font-size:18px;" class="zh">请竖屏使用</span>
+        <span style="color:#ccc;font-size:18px;" class="de">Im Hochformat verwenden</span><span style="color:#ccc;font-size:18px;" class="en">Use in portrait mode</span><span style="color:#ccc;font-size:18px;" class="es">Usar en modo vertical</span><span style="color:#ccc;font-size:18px;" class="fr">Utiliser en mode portrait</span><span style="color:#ccc;font-size:18px;" class="he">השתמש במצב אנכי</span><span style="color:#ccc;font-size:18px;" class="it">Usa in modalità verticale</span><span style="color:#ccc;font-size:18px;" class="ja">縦向きでご利用ください</span><span style="color:#ccc;font-size:18px;" class="ko">세로 모드로 사용하세요</span><span style="color:#ccc;font-size:18px;" class="pt">Usar em modo retrato</span><span style="color:#ccc;font-size:18px;" class="zh">请竖屏使用</span>
     </div>
     <!-- 注册/登录面板 -->
     <div id="setup-panel" class="panel">
@@ -50,7 +50,7 @@
                 <input type="text" id="nickname-input" placeholder="" maxlength="20" style="margin:0 auto;">
                 <input type="password" id="password-input" placeholder="" style="margin-top: 8px;display:block;margin-left:auto;margin-right:auto;">
                 <button id="register-btn" onclick="ChatApp.registerUser()" style="margin-top: 8px;">
-                    <span class="zh">注册并登录</span>
+                    <span class="de">Registrieren & Anmelden</span><span class="en">Register & Login</span><span class="es">Registrar e Iniciar</span><span class="fr">S'inscrire et Se connecter</span><span class="he">הרשמה וכניסה</span><span class="it">Registrati e Accedi</span><span class="ja">登録してログイン</span><span class="ko">등록 및 로그인</span><span class="pt">Registrar e Entrar</span><span class="zh">注册并登录</span>
                 </button>
             </div>
 
@@ -63,17 +63,17 @@
             <div id="login-password-panel" style="display:none;text-align:center;margin-top:12px;">
                 <input type="password" id="login-password-input" placeholder="" style="display:block;margin-left:auto;margin-right:auto;">
                 <button id="login-btn" onclick="ChatApp.loginUser()" style="margin-top: 8px;">
-                    <span class="zh">登录</span>
+                    <span class="de">Anmelden</span><span class="en">Login</span><span class="es">Iniciar sesión</span><span class="fr">Se connecter</span><span class="he">התחבר</span><span class="it">Accedi</span><span class="ja">ログイン</span><span class="ko">로그인</span><span class="pt">Entrar</span><span class="zh">登录</span>
                 </button>
             </div>
 
             <!-- 左上角：转移账户 -->
             <button id="transfer-out-btn" class="corner-btn corner-btn-left" style="display:none;" onclick="ChatApp.showTransferOut()">
-                <span class="zh">转移账户</span>
+                <span class="de">Konto übertragen</span><span class="en">Transfer Account</span><span class="es">Transferir cuenta</span><span class="fr">Transférer le compte</span><span class="he">העבר חשבון</span><span class="it">Trasferisci account</span><span class="ja">アカウント移行</span><span class="ko">계정 이전</span><span class="pt">Transferir conta</span><span class="zh">转移账户</span>
             </button>
             <!-- 右上角：新建账户 -->
             <button id="new-account-btn" class="corner-btn corner-btn-right" style="display:none;" onclick="ChatApp.showNewAccount()">
-                <span class="zh">新建账户</span>
+                <span class="de">Neues Konto</span><span class="en">New Account</span><span class="es">Nueva cuenta</span><span class="fr">Nouveau compte</span><span class="he">חשבון חדש</span><span class="it">Nuovo account</span><span class="ja">新しいアカウント</span><span class="ko">새 계정</span><span class="pt">Nova conta</span><span class="zh">新建账户</span>
             </button>
 
             <!-- Loading 进度条 -->
@@ -94,19 +94,19 @@
     <div id="transfer-out-panel" class="modal" style="display:none;">
         <div class="modal-content" style="max-width:400px;">
             <span class="close-btn" onclick="ChatApp.hideTransferOut()">&times;</span>
-            <h3><span class="zh">转移账户</span></h3>
+            <h3><span class="de">Konto übertragen</span><span class="en">Transfer Account</span><span class="es">Transferir cuenta</span><span class="fr">Transférer le compte</span><span class="he">העבר חשבון</span><span class="it">Trasferisci account</span><span class="ja">アカウント移行</span><span class="ko">계정 이전</span><span class="pt">Transferir conta</span><span class="zh">转移账户</span></h3>
             <div style="text-align:center;margin:16px 0;">
                 <div id="transfer-out-account-select" style="margin-bottom:12px;"></div>
                 <input type="password" id="transfer-out-password" placeholder="" style="width:100%;box-sizing:border-box;text-align:center;">
                 <button id="transfer-out-verify-btn" onclick="ChatApp.transferOutVerify()" style="margin-top:8px;">
-                    <span class="zh">验证</span>
+                    <span class="de">Überprüfen</span><span class="en">Verify</span><span class="es">Verificar</span><span class="fr">Vérifier</span><span class="he">אימות</span><span class="it">Verifica</span><span class="ja">確認</span><span class="ko">확인</span><span class="pt">Verificar</span><span class="zh">验证</span>
                 </button>
             </div>
             <div id="transfer-out-qr" style="display:none;text-align:center;margin:12px 0;">
                 <div id="transfer-out-qr-canvas"></div>
                 <div id="transfer-out-id-display" style="margin-top:8px;font-size:12px;color:#888;word-break:break-all;"></div>
                 <button id="transfer-out-copy-btn" onclick="ChatApp.copyTransferId()" style="margin-top:6px;padding:4px 12px;font-size:12px;display:none;">
-                    <span class="zh">复制 ID</span>
+                    <span class="de">ID kopieren</span><span class="en">Copy ID</span><span class="es">Copiar ID</span><span class="fr">Copier l'ID</span><span class="he">העתק ID</span><span class="it">Copia ID</span><span class="ja">IDをコピー</span><span class="ko">ID 복사</span><span class="pt">Copiar ID</span><span class="zh">复制 ID</span>
                 </button>
                 <p style="color:#888;font-size:12px;margin-top:8px;"></p>
             </div>
@@ -121,16 +121,16 @@
     <div id="transfer-in-panel" class="modal" style="display:none;">
         <div class="modal-content" style="max-width:400px;">
             <span class="close-btn" onclick="ChatApp.hideTransferIn()">&times;</span>
-            <h3><span class="zh">接收转移</span></h3>
+            <h3><span class="de">Übertragung empfangen</span><span class="en">Receive Transfer</span><span class="es">Recibir transferencia</span><span class="fr">Recevoir le transfert</span><span class="he">קבל העברה</span><span class="it">Ricevi trasferimento</span><span class="ja">移行受け取り</span><span class="ko">이전 받기</span><span class="pt">Receber transferência</span><span class="zh">接收转移</span></h3>
             <div style="text-align:center;margin:16px 0;">
                 <p id="transfer-in-status" style="color:#888;font-size:14px;"></p>
                 <p style="color:#888;font-size:12px;margin-bottom:6px;">
-                    <span class="zh">用侧边栏扫码，或输入对方 ID：</span>
+                    <span class="de">QR-Code mit Seitenleiste scannen oder ID eingeben:</span><span class="en">Scan QR with sidebar, or enter their ID:</span><span class="es">Escanear QR con barra lateral, o ingresar ID:</span><span class="fr">Scanner QR avec la barre latérale, ou saisir l'ID:</span><span class="he">סרוק QR עם תפריט צדדי, או הזן ID:</span><span class="it">Scansiona QR con barra laterale, o inserisci ID:</span><span class="ja">サイドバーでQRをスキャン、またはIDを入力:</span><span class="ko">사이드바로 QR 스캔, 또는 ID 입력:</span><span class="pt">Escanear QR com barra lateral, ou digitar ID:</span><span class="zh">用侧边栏扫码，或输入对方 ID：</span>
                 </p>
                 <div style="margin-top:8px;">
                     <input type="text" id="transfer-in-id-input" placeholder="" style="width:60%;box-sizing:border-box;text-align:center;">
                     <button id="transfer-in-connect-btn" onclick="ChatApp.transferInConnect()" style="margin-left:4px;">
-                        <span class="zh">连接</span>
+                        <span class="de">Verbinden</span><span class="en">Connect</span><span class="es">Conectar</span><span class="fr">Connecter</span><span class="he">חיבור</span><span class="it">Connetti</span><span class="ja">接続</span><span class="ko">연결</span><span class="pt">Conectar</span><span class="zh">连接</span>
                     </button>
                 </div>
             </div>
@@ -166,9 +166,27 @@
             <!-- Tab 切换 -->
             <div style="display:flex;border-bottom:1px solid #e0e0e0;">
                 <div id="tab-contacts" class="tab-btn active" onclick="ChatApp.switchTab('contacts')" style="flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid #4caf50;">
+                    <span class="de">Kontakte</span> 
+                    <span class="en">Contacts</span> 
+                    <span class="es">Contactos</span> 
+                    <span class="fr">Contacts</span> 
+                    <span class="he">אנשי קשר</span> 
+                    <span class="it">Contatti</span> 
+                    <span class="ja">連絡先</span> 
+                    <span class="ko">연락처</span> 
+                    <span class="pt">Contatos</span> 
                     <span class="zh">联系人</span> 
                 </div>
                 <div id="tab-groups" class="tab-btn" onclick="ChatApp.switchTab('groups')" style="flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;">
+                    <span class="de">Gruppen</span> 
+                    <span class="en">Groups</span> 
+                    <span class="es">Grupos</span> 
+                    <span class="fr">Groupes</span> 
+                    <span class="he">קבוצות</span> 
+                    <span class="it">Gruppi</span> 
+                    <span class="ja">グループ</span> 
+                    <span class="ko">그룹</span> 
+                    <span class="pt">Grupos</span> 
                     <span class="zh">群组</span> 
                 </div>
             </div>
@@ -176,13 +194,40 @@
             <!-- 好友请求卡片 (内联) -->
             <div id="friend-request-card" style="display:none;padding:10px 12px;border-bottom:1px solid #eee;background:#f0f8ff;">
                 <div style="font-size:13px;color:#333;margin-bottom:6px;"><svg width="14" height="14" viewBox="0 0 32 32" style="vertical-align:middle;margin-right:2px"><path d="M16 4c-4 0-7 3-7 7v5l-3 4h20l-3-4v-5c0-4-3-7-7-7z" fill="none" stroke="#f39c12" stroke-width="2" stroke-linejoin="round"/><line x1="13" y1="26" x2="19" y2="26" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="26" x2="16" y2="30" stroke="#f39c12" stroke-width="1.5" stroke-linecap="round"/></svg><span id="friend-request-nick"></span> (<span id="friend-request-id"></span>)
+                    <span class="de">fordert Freundschaft an</span> 
+                    <span class="en">requests to add</span> 
+                    <span class="es">solicita agregar</span> 
+                    <span class="fr">demande d'ajout</span> 
+                    <span class="he">בקשת חברות</span> 
+                    <span class="it">richiede amicizia</span> 
+                    <span class="ja">友達リクエスト</span> 
+                    <span class="ko">친구 요청</span> 
+                    <span class="pt">solicita adicionar</span> 
                     <span class="zh">请求添加好友</span> 
                 </div>
                 <div style="display:flex;gap:6px;">
                     <button onclick="ChatApp._acceptFriendRequest()" style="flex:1;padding:4px 0;background:#4caf50;color:#fff;border:none;border-radius:4px;cursor:pointer;">
+                        <span class="de">Akzeptieren</span> 
+                        <span class="en">Accept</span> 
+                        <span class="es">Aceptar</span> 
+                        <span class="fr">Accepter</span> 
+                        <span class="he">קבל</span> 
+                        <span class="it">Accetta</span> 
+                        <span class="ja">承認</span> 
+                        <span class="ko">수락</span> 
+                        <span class="pt">Aceitar</span> 
                         <span class="zh">接受</span> 
                     </button>
                     <button onclick="ChatApp._rejectFriendRequest()" style="flex:1;padding:4px 0;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;">
+                        <span class="de">Ablehnen</span> 
+                        <span class="en">Reject</span> 
+                        <span class="es">Rechazar</span> 
+                        <span class="fr">Rejeter</span> 
+                        <span class="he">דחה</span> 
+                        <span class="it">Rifiuta</span> 
+                        <span class="ja">拒否</span> 
+                        <span class="ko">거부</span> 
+                        <span class="pt">Rejeitar</span> 
                         <span class="zh">拒绝</span> 
                     </button>
                 </div>
@@ -193,6 +238,15 @@
                     <div style="display:flex;gap:4px;">
                         <input id="add-friend-input" type="text" placeholder="" maxlength="30" style="flex:1;">
                         <button onclick="ChatApp.addFriendById()" style="padding:4px 8px;">
+                            <span class="de">Hinzufügen</span> 
+                            <span class="en">Add</span> 
+                            <span class="es">Agregar</span> 
+                            <span class="fr">Ajouter</span> 
+                            <span class="he">הוסף</span> 
+                            <span class="it">Aggiungi</span> 
+                            <span class="ja">追加</span> 
+                            <span class="ko">추가</span> 
+                            <span class="pt">Adicionar</span> 
                             <span class="zh">添加</span> 
                         </button>
                     </div>
@@ -202,6 +256,15 @@
 
             <div id="group-tab" class="tab-content">
                                 <button onclick="ChatApp.showCreateGroupModal()" style="display:block;width:100%;padding:8px;margin:8px;background:#4caf50;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">
+                                    <span class="de">+ Neue Gruppe</span> 
+                                    <span class="en">+ New Group</span> 
+                                    <span class="es">+ Nuevo grupo</span> 
+                                    <span class="fr">+ Nouveau groupe</span> 
+                                    <span class="he">+ קבוצה חדשה</span> 
+                                    <span class="it">+ Nuovo gruppo</span> 
+                                    <span class="ja">+ グループ作成</span> 
+                                    <span class="ko">+ 새 그룹</span> 
+                                    <span class="pt">+ Novo grupo</span> 
                                     <span class="zh">+ 新建群</span> 
                                 </button>
                 <div id="room-list"></div>
@@ -223,6 +286,15 @@
             <div id="chat-placeholder">
                 <div class="icon"><svg width="64" height="64" viewBox="0 0 32 32"><path d="M4 6h24a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2h-16l-8 6v-6a2 2 0 0 1-2-2v-16a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="15" r="2" fill="currentColor" opacity="0.5"/><circle cx="18" cy="15" r="2" fill="currentColor" opacity="0.5"/><circle cx="24" cy="15" r="2" fill="currentColor" opacity="0.5"/></svg></div>
                 <div>
+                    <span class="de">Wähle einen Kontakt zum Chatten</span> 
+                    <span class="en">Select a contact to start chatting</span> 
+                    <span class="es">Selecciona un contacto para chatear</span> 
+                    <span class="fr">Sélectionnez un contact pour discuter</span> 
+                    <span class="he">בחר איש קשר להתחלת צ'אט</span> 
+                    <span class="it">Seleziona un contatto per chattare</span> 
+                    <span class="ja">チャットする連絡先を選択</span> 
+                    <span class="ko">채팅할 연락처를 선택하세요</span> 
+                    <span class="pt">Selecione um contato para conversar</span> 
                     <span class="zh">选择一个联系人开始聊天</span> 
                 </div>
             </div>
@@ -237,6 +309,15 @@
                 <!-- 通话状态栏 -->
                 <div id="call-status-bar" style="display:none; align-items:center; justify-content:space-between; padding:8px 16px; background:#e8f5e9; border-bottom:1px solid #c8e6c9;">
                     <span id="call-status-text" style="font-size:13px; color:#2e7d32;">
+                        <span class="de">Im Gespräch</span> 
+                        <span class="en">On call</span> 
+                        <span class="es">En llamada</span> 
+                        <span class="fr">En appel</span> 
+                        <span class="he">בשיחה</span> 
+                        <span class="it">In chiamata</span> 
+                        <span class="ja">通話中</span> 
+                        <span class="ko">통화중</span> 
+                        <span class="pt">Em chamada</span> 
                         <span class="zh">通话中</span> 
                     </span>
                     <span id="call-latency" style="font-size:12px; color:#888; margin-left:6px;"></span>
@@ -255,6 +336,15 @@
                     <textarea id="message-input" placeholder="" rows="1"></textarea>
                     <div id="clipboard-preview" style="display:none;padding:4px 12px;border-top:1px solid var(--border);"></div>
                     <button id="send-btn" onclick="ChatApp.sendMessage()">
+                        <span class="de">Senden</span> 
+                        <span class="en">Send</span> 
+                        <span class="es">Enviar</span> 
+                        <span class="fr">Envoyer</span> 
+                        <span class="he">שלח</span> 
+                        <span class="it">Invia</span> 
+                        <span class="ja">送信</span> 
+                        <span class="ko">전송</span> 
+                        <span class="pt">Enviar</span> 
                         <span class="zh">发送</span> 
                     </button>
                     <input type="file" id="image-upload" accept="image/*" multiple style="display:none" onchange="ChatApp.sendImage(event)">
@@ -283,20 +373,56 @@
     <div id="create-room-modal" class="modal">
         <div class="modal-content create-group-modal">
             <h3>
+                <span class="de">Gruppe erstellen</span> 
+                <span class="en">Create Group</span> 
+                <span class="es">Crear grupo</span> 
+                <span class="fr">Créer un groupe</span> 
+                <span class="he">צור קבוצה</span> 
+                <span class="it">Crea gruppo</span> 
+                <span class="ja">グループ作成</span> 
+                <span class="ko">그룹 생성</span> 
+                <span class="pt">Criar grupo</span> 
                 <span class="zh">创建群组</span> 
             </h3>
             <input type="text" id="room-name-input" placeholder="">
             <div id="room-member-select">
                 <p>
+                    <span class="de">Mitglieder auswählen:</span> 
+                    <span class="en">Select members:</span> 
+                    <span class="es">Seleccionar miembros:</span> 
+                    <span class="fr">Sélectionner des membres:</span> 
+                    <span class="he">בחר חברים:</span> 
+                    <span class="it">Seleziona membri:</span> 
+                    <span class="ja">メンバー選択:</span> 
+                    <span class="ko">멤버 선택:</span> 
+                    <span class="pt">Selecionar membros:</span> 
                     <span class="zh">选择成员：</span> 
                 </p>
                 <div id="member-checklist"></div>
             </div>
             <div class="modal-actions">
                 <button class="cancel-btn" onclick="ChatApp.closeModals()">
+                    <span class="de">Abbrechen</span> 
+                    <span class="en">Cancel</span> 
+                    <span class="es">Cancelar</span> 
+                    <span class="fr">Annuler</span> 
+                    <span class="he">ביטול</span> 
+                    <span class="it">Annulla</span> 
+                    <span class="ja">キャンセル</span> 
+                    <span class="ko">취소</span> 
+                    <span class="pt">Cancelar</span> 
                     <span class="zh">取消</span> 
                 </button>
                 <button class="accept-btn" onclick="ChatApp.createGroup()">
+                    <span class="de">Erstellen</span> 
+                    <span class="en">Create</span> 
+                    <span class="es">Crear</span> 
+                    <span class="fr">Créer</span> 
+                    <span class="he">צור</span> 
+                    <span class="it">Crea</span> 
+                    <span class="ja">作成</span> 
+                    <span class="ko">생성</span> 
+                    <span class="pt">Criar</span> 
                     <span class="zh">创建</span> 
                 </button>
             </div>
@@ -309,6 +435,15 @@
             <p id="alert-text"></p>
             <div class="modal-actions">
                 <button class="accept-btn" onclick="ChatApp._closeAlert()">
+                    <span class="de">OK</span> 
+                    <span class="en">OK</span> 
+                    <span class="es">Aceptar</span> 
+                    <span class="fr">OK</span> 
+                    <span class="he">אישור</span> 
+                    <span class="it">OK</span> 
+                    <span class="ja">OK</span> 
+                    <span class="ko">확인</span> 
+                    <span class="pt">OK</span> 
                     <span class="zh">确定</span> 
                 </button>
             </div>
@@ -320,12 +455,12 @@
     <div id="qr-modal" class="modal" onclick="ChatApp.closeQRModal()">
         <div class="modal-content qr-content" onclick="event.stopPropagation()">
             <h3 style="text-align:center;margin:0 0 12px 0;">
-                <span class="zh">我的 ID 二维码</span>
+                <span class="de">Mein ID-QR-Code</span><span class="en">My ID QR Code</span><span class="es">Mi código QR</span><span class="fr">Mon QR Code</span><span class="he">קוד QR שלי</span><span class="it">Il mio QR Code</span><span class="ja">自分の QR コード</span><span class="ko">내 QR 코드</span><span class="pt">Meu QR Code</span><span class="zh">我的 ID 二维码</span>
             </h3>
             <div id="qr-canvas" style="text-align:center;padding:16px;background-color:#fff;"></div>
             <div class="modal-actions">
                 <button class="accept-btn" onclick="ChatApp.closeQRModal()">
-                    <span class="zh">关闭</span>
+                    <span class="de">Schließen</span><span class="en">Close</span><span class="es">Cerrar</span><span class="fr">Fermer</span><span class="he">סגור</span><span class="it">Chiudi</span><span class="ja">閉じる</span><span class="ko">닫기</span><span class="pt">Fechar</span><span class="zh">关闭</span>
                 </button>
             </div>
         </div>
@@ -335,14 +470,14 @@
     <div id="scan-modal" class="modal" onclick="ChatApp.closeScanModal()">
         <div class="modal-content qr-content" onclick="event.stopPropagation()">
             <h3 style="text-align:center;margin:0 0 12px 0;">
-                <span class="zh">扫描二维码</span>
+                <span class="de">QR-Code scannen</span><span class="en">Scan QR Code</span><span class="es">Escanear QR</span><span class="fr">Scanner le QR Code</span><span class="he">סרוק קוד QR</span><span class="it">Scansiona QR Code</span><span class="ja">QR コードをスキャン</span><span class="ko">QR 코드 스캔</span><span class="pt">Escanear QR Code</span><span class="zh">扫描二维码</span>
             </h3>
             <video id="scan-video" autoplay playsinline style="width:100%;max-width:300px;display:block;margin:0 auto;border-radius:8px;"></video>
             <canvas id="scan-canvas" hidden></canvas>
             <p id="scan-status" style="text-align:center;margin-top:8px;color:#888;font-size:12px;"></p>
             <div class="modal-actions">
                 <button class="accept-btn" onclick="ChatApp.closeScanModal()">
-                    <span class="zh">关闭</span>
+                    <span class="de">Schließen</span><span class="en">Close</span><span class="es">Cerrar</span><span class="fr">Fermer</span><span class="he">סגור</span><span class="it">Chiudi</span><span class="ja">閉じる</span><span class="ko">닫기</span><span class="pt">Fechar</span><span class="zh">关闭</span>
                 </button>
             </div>
         </div>
