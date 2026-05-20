@@ -1,68 +1,91 @@
-# PChat 修改日志
+# PChat Changelog
+
+## 2026-05-20
+
+### 1. Code Cleanup
+- Removed `mr_invite` remnants, unified to `pchat_invite` (5 occurrences)
+- Confirmed no MindRender branding remnants in code
+
+### 2. Security Fix: Per-Account Random Salt (BUG-006)
+- `Crypto.randomSalt()` generates 16-byte random hex salt
+- `Crypto.deriveAesKey(pw, salt)` accepts salt parameter, optional, fallback to `"pchat-salt"`
+- Registration: generate salt, store in IndexedDB `user` table (`id: "_salt"`, plaintext)
+- Login/delete/transfer: Read salt from DB, pass to key derivation
+- Old accounts without salt → fallback to `"pchat-salt"` (backward compatible)
+- Salt does not change with userId (userId is mutable, salt is fixed)
+- Account transfer copies `_salt` record with `user` table to new device
+
+### 3. Documentation Updates
+- Updated `README.md`: Complete rewrite with architecture diagram, features, quick start, security overview
+- Updated `docs/bugs.md`: Mark fixed bugs, update audit version
+- Updated `docs/pchat-project-doc.md`: Version number, file size updates
+- Added `docs/SECURITY.md`: Security audit report (threat model, known risks, cryptographic parameters)
+- Added `docs/DEPLOY.md`: Deployment guide (Nginx/Caddy/Docker/GitHub Pages/Vercel/TURN/custom signaling)
+- Added `docs/CONTRIBUTING.md`: Contribution guidelines (development workflow, code style, commit checklist)
+
+---
 
 ## 2026-05-15
 
-### 1. 移除 MindRender 品牌残留
-- 从 `dist/pchat.js` 中移除所有 "MindRender" 和 "mindrender" 引用
-- 替换为 "PChat"
-- 更新 PBKDF2 盐值从 `mindrender-chat-salt` 改为 `pchat-salt`
+### 1. Removed MindRender Branding
+- Removed all "MindRender" and "mindrender" references from `dist/pchat.js`
+- Replaced with "PChat"
+- Updated PBKDF2 salt from `mindrender-chat-salt` to `pchat-salt`
 
-### 2. 文件存储加密
-- 为 IndexedDB 中文件数据添加 AES-256 加密
-- 修改 `DB.putFile` 和 `DB.getFile` 方法，增加 `aesKey` 参数
-- 所有调用处增加 `aesKey` 传递
+### 2. File Storage Encryption
+- Added AES-256 encryption for file data in IndexedDB
+- Modified `DB.putFile` and `DB.getFile` methods to accept `aesKey` parameter
+- All call sites updated to pass `aesKey`
 
-### 3. STUN 服务器配置更新
-- 使用 `dist/ice-test.html` 测试可用 STUN 服务器
-- 移除不可用服务器（百度、网易、阿里、腾讯云、Syncthing、Google stun1）
-- 替换为实测可用的 5 个 STUN 服务器（按延迟排序）：
-  - `stun.chat.bilibili.com:3478` (95ms)
-  - `stun.miwifi.com:3478` (106ms)
-  - `stun.cloudflare.com:3478` (183ms)
-  - `stun.nextcloud.com:3478` (226ms)
-  - `stun.l.google.com:19302` (245ms)
-- 修复 `ice-test.html` ICE 触发方式（添加 `createOffer` 和 `setLocalDescription`）
+### 3. STUN Server Configuration Update
+- Tested available STUN servers using `dist/ice-test.html`
+- Removed unavailable servers (Baidu, NetEase, Alibaba, Tencent, Syncthing, Google stun1)
+- Replaced with 5 tested STUN servers (latency-sorted):
+  - `stun.chat.bilibili.com:3478` (~95ms)
+  - `stun.miwifi.com:3478` (~106ms)
+  - `stun.cloudflare.com:3478` (~183ms)
+  - `stun.nextcloud.com:3478` (~226ms)
+  - `stun.l.google.com:19302` (~245ms)
+- Fixed `ice-test.html` ICE trigger method (added `createOffer` and `setLocalDescription`)
 
-### 4. 移除 RSA 密钥对生成时的自测验证
-- 从 `generateKeypair` 函数中移除 self-test try-catch 块
-- 原因：RSA 自测是开发阶段验证库功能的，不应让每个用户注册时都执行
+### 4. Removed RSA Keypair Self-Test
+- Removed self-test try-catch block from `generateKeypair` function
+- Reason: RSA self-test is for dev library verification, should not run on every user registration
 
-### 5. 删除备份文件
-- 删除 `dist/pchat_new.js`（旧版备份文件）
+### 5. Deleted Backup Files
+- Removed `dist/pchat_new.js` (old backup file)
 
-### 6. 移除 decrypt 函数中的 inline self-test
-- 移除 `decryptWithPrivkey` 函数中每次解密都执行的 RSA 加解密自测
-- 原因：严重影响消息解密性能
-- 保留 `accept` 中的跨端加密测试（正常加密切验流程）
+### 6. Removed Inline Self-Test in Decrypt
+- Removed RSA encrypt/decrypt self-test that ran on every decryption in `decryptWithPrivkey`
+- Reason: Severely impacted message decryption performance
+- Kept cross-end encryption test in `accept` (normal encryption verification flow)
 
-### 7. 修复注册页面报错
-- `pchat.js` 第 1197 行：`document.getElementById("delete-account-btn")` 返回 null 导致报错
-- 添加空值保护，页面不存在该元素时不执行
+### 7. Fixed Registration Page Error
+- Line 1197 of `pchat.js`: `document.getElementById("delete-account-btn")` returned null
+- Added null protection, skip if element doesn't exist
 
-### 8. 修改账号删除按钮
-- CSS：尺寸从 28px 缩小到 20px，颜色加深为 `#d32f2f`
-- JS：点击时弹出确认框，确认后才会真正删除
-- 修复 CSS 优先级问题：选择器从 `.account-delete-btn` 改为 `.setup-box .account-delete-btn`
+### 8. Modified Account Delete Button
+- CSS: Size reduced from 28px to 20px, color deepened to `#d32f2f`
+- JS: Confirmation dialog on click before actual deletion
+- Fixed CSS specificity: Selector changed from `.account-delete-btn` to `.setup-box .account-delete-btn`
 
-### 9. 添加删除确认弹窗（需输入密码）
-- `index.html`：添加 `delete-confirm-modal` 弹窗 HTML
-- `pchat.js`：
-  - 添加 `_showDeleteConfirm()` 方法显示弹窗
-  - 添加 `_handleDeleteConfirm()` 方法处理密码验证和删除逻辑
-  - 密码验证：PBKDF2 派生密钥后尝试读取数据库，验证成功才执行删除
-  - 修改删除按钮点击事件，调用 `_showDeleteConfirm` 替代 `confirm()`
-- `chat.css`：添加 `danger-btn` 红色按钮样式
-- `i18n`：添加 10 种语言的删除确认提示
+### 9. Added Delete Confirmation Modal (Password Required)
+- `index.html`: Added `delete-confirm-modal` HTML
+- `pchat.js`:
+  - Added `_showDeleteConfirm()` to show modal
+  - Added `_handleDeleteConfirm()` for password verification and deletion
+  - Password verification: PBKDF2 derive key, try reading database, delete on success
+  - Changed delete button click to call `_showDeleteConfirm` instead of `confirm()`
+- `chat.css`: Added `danger-btn` red button style
+- i18n: Added 10-language delete confirmation text
 
-### 10. 登录页面按钮修改
-- `index.html`："接收转移"按钮改为"新建账户"
-- `pchat.js`：添加 `showNewAccount()` 方法，点击后显示注册表单
+### 10. Login Page Button Changes
+- `index.html`: "Receive Transfer" button changed to "New Account"
+- `pchat.js`: Added `showNewAccount()` method
 
-### 11. 登录页面布局调整 + 版本号机制
-- 根因排查：之前的布局修改没有生效（之前的码农改了错误路径）
-- `index.html`：添加 `PCHAT_VERSION = '20260515.4'`，资源 URL 更新为 `?v=20260515h`
-- `dist/chat.css`：添加版本注释 `v20260515.4`，新增 `.corner-panel` 和 `.corner-btn` 样式
-- `dist/pchat.js`：`init()` 开头添加版本日志和 CSS rule 检测
-- 角落按钮右上角固定定位，点击展开/收起面板
+### 11. Login Page Layout + Version Number Mechanism
+- `index.html`: Added `PCHAT_VERSION = '20260515.4'`, resource URLs updated to `?v=20260515h`
+- `dist/chat.css`: Added version comment `v20260515.4`, new `.corner-panel` and `.corner-btn` styles
+- `dist/pchat.js`: Added version log and CSS rule detection in `init()`
 
 ---

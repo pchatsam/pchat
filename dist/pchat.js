@@ -1,3 +1,35 @@
+/**
+ * PChat — Pure Frontend P2P Encrypted Messaging Application
+ * =================================================================
+ * 
+ * Architecture:
+ *   - i18n: Internationalization (10 languages)
+ *   - Crypto: RSA-2048 + AES-256 encryption (Forge + CryptoJS)
+ *   - Base64: Binary/Base64 conversion utilities
+ *   - DB: IndexedDB storage with AES encryption
+ *   - AccountManager: Multi-account management (localStorage)
+ *   - PeerConn: PeerJS wrapper for WebRTC DataChannel + MediaConnection
+ *   - ChatApp: Main application (UI, messaging, files, calls, transfer)
+ *
+ * Dependencies (bundled, no CDN):
+ *   - peerjs.min.js (PeerJS 1.5.4) — WebRTC peer connection management
+ *   - forge.min.js (Forge 0.7.0) — RSA key generation and encryption
+ *   - crypto-js.js (CryptoJS) — AES encryption + PBKDF2 key derivation
+ *   - qrcode.min.js — QR code generation (user ID, transfer ID)
+ *   - jsqr.min.js — QR code scanning (camera-based)
+ *
+ * Key Design Decisions:
+ *   - Pure frontend, no backend — all data stays in the browser
+ *   - Per-contact RSA-2048 key pairs — isolated encryption per contact
+ *   - AES-256 encrypted IndexedDB — all local data encrypted at rest
+ *   - PeerJS public signaling — zero server deployment
+ *   - PBKDF2 key derivation (100K iterations) — derived from user password
+ *   - Random salt per account (stored in IndexedDB user table as "_salt")
+ *
+ * Version: 20260520.1
+ * Lines: ~7000
+ */
+
 /* ============================================================
    PChat — Invite-link + PeerJS P2P messaging
    - PeerJS handles all signaling (replaces custom WS relay)
@@ -7,126 +39,133 @@
    ============================================================
 */
 
-// ==================== i18n ====================
+// ==================== i18n — Internationalization ====================
+// Supports 10 languages: de, en, es, fr, he, it, ja, ko, pt, zh
+// Browser language auto-detected from navigator.language (first 2 chars)
+// _i18n.t(key) → returns translated string for current language
+// _i18n.fmt(key, placeholder, value) → returns parameterized translation
+// _i18n.applyUI() → sets all input placeholders and button titles
+// _i18n.dict → dictionary mapping: { key: { langCode: 'text', ... } }
+//
 var _i18n = _i18n || {};
 _i18n.lang = (navigator.language || navigator.userLanguage || 'zh').substring(0,2);
-if (!['zh','en','ja','de','fr','es','pt','he','ko','it'].includes(_i18n.lang)) _i18n.lang = 'en';
+if (!['de','en','es','fr','he','it','ja','ko','pt','zh'].includes(_i18n.lang)) _i18n.lang = 'en';
 _i18n.t = function(key) {
     var d = _i18n.dict[key];
     if (!d) return key;
     return d[_i18n.lang] || d.en;
 };
 _i18n.dict = {
-    'pchat.placeholder.nickname':        { zh: '输入你的昵称', en: 'Enter your nickname', ja: 'ニックネームを入力', de: 'Namen eingeben', fr: 'Entrez votre surnom', es: 'Ingresa tu apodo', pt: 'Digite seu apelido', he: 'הזן כינוי', ko: '닉네임 입력', it: 'Inserisci nickname' },
-    'pchat.placeholder.password':        { zh: '输入密码', en: 'Enter password', ja: 'パスワードを入力', de: 'Passwort eingeben', fr: 'Entrez le mot de passe', es: 'Ingresa contraseña', pt: 'Digite a senha', he: 'הזן סיסמה', ko: '비밀번호 입력', it: 'Inserisci password' },
-    'pchat.placeholder.addFriend':       { zh: '输入对方ID添加好友', en: 'Enter ID to add friend', ja: 'IDを入力して友達を追加', de: 'ID eingeben um Freund hinzuzufügen', fr: 'Entrez l\'ID pour ajouter un ami', es: 'Ingresa ID para agregar amigo', pt: 'Digite ID para adicionar amigo', he: 'הזן מזהה להוספת חבר', ko: 'ID 입력하여 친구 추가', it: 'Inserisci ID per aggiungere amico' },
-    'pchat.placeholder.message':         { zh: '输入消息...', en: 'Type a message...', ja: 'メッセージを入力...', de: 'Nachricht eingeben...', fr: 'Tapez un message...', es: 'Escribe un mensaje...', pt: 'Digite uma mensagem...', he: 'הקלד הודעה...', ko: '메시지 입력...', it: 'Scrivi un messaggio...' },
-    'pchat.placeholder.groupName':       { zh: '群组名称', en: 'Group name', ja: 'グループ名', de: 'Gruppenname', fr: 'Nom du groupe', es: 'Nombre del grupo', pt: 'Nome do grupo', he: 'שם קבוצה', ko: '그룹 이름', it: 'Nome gruppo' },
-    'pchat.title.showQR':              { zh: '点击显示二维码', en: 'Click to show QR code', ja: 'クリックしてQRコードを表示', de: 'Klicken um QR-Code anzuzeigen', fr: 'Cliquez pour afficher le QR Code', es: 'Click para mostrar código QR', pt: 'Clique para mostrar código QR', he: 'לחץ להצגת קוד QR', ko: 'QR 코드를 보려면 클릭', it: 'Clicca per mostrare codice QR' },
-    'pchat.title.inviteLink':            { zh: '邀请链接', en: 'Invite link', ja: '招待リンク', de: 'Einladungslink', fr: 'Lien d\'invitation', es: 'Enlace de invitación', pt: 'Link de convite', he: 'קישור הזמנה', ko: '초대 링크', it: 'Link invito' },
-    'pchat.title.back':                  { zh: '返回', en: 'Back', ja: '戻る', de: 'Zurück', fr: 'Retour', es: 'Volver', pt: 'Voltar', he: 'חזור', ko: '돌아가기', it: 'Indietro' },
-    'pchat.title.voiceCall':             { zh: '语音通话', en: 'Voice call', ja: 'ボイス通話', de: 'Sprachanruf', fr: 'Appel vocal', es: 'Llamada de voz', pt: 'Chamada de voz', he: 'שיחת קול', ko: '음성통화', it: 'Chiamata vocale' },
-    'pchat.title.hangup':                { zh: '挂断', en: 'Hang up', ja: '切る', de: 'Auflegen', fr: 'Raccrocher', es: 'Colgar', pt: 'Desligar', he: 'נתק', ko: '끊기', it: 'Chiama' },
-    'pchat.title.voiceMsg':              { zh: '语音消息', en: 'Voice message', ja: 'ボイスメッセージ', de: 'Sprachnachricht', fr: 'Message vocal', es: 'Mensaje de voz', pt: 'Mensagem de voz', he: 'הודעה קולית', ko: '음성메시지', it: 'Messaggio vocale' },
-    'pchat.title.image':                 { zh: '图片', en: 'Image', ja: '画像', de: 'Bild', fr: 'Image', es: 'Imagen', pt: 'Imagem', he: 'תמונה', ko: '이미지', it: 'Immagine' },
-    'pchat.title.file':                  { zh: '文件', en: 'File', ja: 'ファイル', de: 'Datei', fr: 'Fichier', es: 'Archivo', pt: 'Arquivo', he: 'קובץ', ko: '파일', it: 'File' },
-    'pchat.title.answerCall':            { zh: '接听', en: 'Answer', ja: '応答', de: 'Annehmen', fr: 'Répondre', es: 'Contestar', pt: 'Atender', he: 'ענה', ko: '받기', it: 'Rispondi' },
-    'pchat.title.hangupCall':            { zh: '挂断通话', en: 'Hang up call', ja: '通話を切る', de: 'Anruf beenden', fr: 'Raccrocher l\'appel', es: 'Colgar llamada', pt: 'Encerrar chamada', he: 'נתק שיחה', ko: '통화 종료', it: 'Chiama' },
-    'pchat.time.justNow':                { zh: '刚刚', en: 'just now', ja: 'たった今', de: 'gerade eben', fr: 'à l\'instant', es: 'ahora', pt: 'agora', he: 'עכשיו', ko: '방금', it: 'adesso' },
-    'pchat.time.minutesAgo':             { zh: '分钟前', en: 'min ago', ja: '分前', de: 'Min. her', fr: 'min avant', es: 'min antes', pt: 'min atrás', he: 'דק קודם', ko: '분 전', it: 'min fa' },
-    'pchat.time.today':                  { zh: '今天', en: 'Today', ja: '今日', de: 'Heute', fr: 'Aujourd\'hui', es: 'Hoy', pt: 'Hoje', he: 'היום', ko: '오늘', it: 'Oggi' },
-    'pchat.loading.genKey':              { zh: '生成密钥...', en: 'Generating key...', ja: '鍵を生成中...', de: 'Schlüssel wird erstellt...', fr: 'Génération de clé...', es: 'Generando clave...', pt: 'Gerando chave...', he: 'מייצר מפתח...', ko: '키 생성 중...', it: 'Generazione chiave...' },
-    'pchat.loading.deriveVerifyKey':     { zh: '派生验证密钥...', en: 'Deriving verify key...', ja: '検証鍵を派生中...', de: 'Verifizierungsschlüssel wird abgeleitet...', fr: 'Dérivation de clé de vérification...', es: 'Derivando clave de verificación...', pt: 'Derivando chave de verificação...', he: 'מפיק מפתח אימות...', ko: '검증 키 파생 중...', it: 'Derivazione chiave verifica...' },
-    'pchat.loading.deriveDataKey':       { zh: '派生数据密钥...', en: 'Deriving data key...', ja: 'データ鍵を派生中...', de: 'Datenschlüssel wird abgeleitet...', fr: 'Dérivation de clé de données...', es: 'Derivando clave de datos...', pt: 'Derivando chave de dados...', he: 'מפיק מפתח נתונים...', ko: '데이터 키 파생 중...', it: 'Derivazione chiave dati...' },
-    'pchat.loading.saveUser':            { zh: '保存用户信息...', en: 'Saving user info...', ja: 'ユーザー情報を保存中...', de: 'Benutzerinfo wird gespeichert...', fr: 'Sauvegarde des infos utilisateur...', es: 'Guardando info de usuario...', pt: 'Salvando info do usuário...', he: 'שומר מידע משתמש...', ko: '사용자 정보 저장 중...', it: 'Salvataggio info utente...' },
-    'pchat.loading.verify':              { zh: '验证中...', en: 'Verifying...', ja: '検証中...', de: 'Wird überprüft...', fr: 'Vérification...', es: 'Verificando...', pt: 'Verificando...', he: 'מאמת...', ko: '검증 중...', it: 'Verifica...' },
-    'pchat.loading.readUser':            { zh: '读取用户数据...', en: 'Reading user data...', ja: 'ユーザーデータを読み込み中...', de: 'Benutzerdaten werden gelesen...', fr: 'Lecture des données utilisateur...', es: 'Leyendo datos de usuario...', pt: 'Lendo dados do usuário...', he: 'קורא נתוני משתמש...', ko: '사용자 데이터 읽는 중...', it: 'Lettura dati utente...' },
-    'pchat.loading.useCachedKey':        { zh: '使用缓存密钥...', en: 'Using cached key...', ja: 'キャッシュされた鍵を使用...', de: 'Zwischengespeicherten Schlüssel wird verwendet...', fr: 'Utilisation de la clé mise en cache...', es: 'Usando clave en caché...', pt: 'Usando chave em cache...', he: 'משתמש במפתח מטמון...', ko: '캐시 키 사용 중...', it: 'Uso chiave cache...' },
-    'pchat.loading.loadContacts':        { zh: '加载联系人...', en: 'Loading contacts...', ja: '連絡先を読み込み中...', de: 'Kontakte werden geladen...', fr: 'Chargement des contacts...', es: 'Cargando contactos...', pt: 'Carregando contatos...', he: 'טוען אישות...', ko: '연락처 로드 중...', it: 'Caricamento contatti...' },
-    'pchat.loading.loadGroups':          { zh: '加载群组...', en: 'Loading groups...', ja: 'グループを読み込み中...', de: 'Gruppen werden geladen...', fr: 'Chargement des groupes...', es: 'Cargando grupos...', pt: 'Carregando grupos...', he: 'טוען קבוצות...', ko: '그룹 로드 중...', it: 'Caricamento gruppi...' },
-    'pchat.loading.done':                { zh: '完成!', en: 'Done!', ja: '完了!', de: 'Fertig!', fr: 'Terminé!', es: '¡Listo!', pt: 'Concluído!', he: 'סיום!', ko: '완료!', it: 'Fatto!' },
-    'pchat.login.btn.loggingIn':         { zh: '正在登录...', en: 'Logging in...', ja: 'ログイン中...', de: 'Anmelden...', fr: 'Connexion...', es: 'Iniciando sesión...', pt: 'Entrando...', he: 'מתחבר...', ko: '로그인 중...', it: 'Accesso...' },
-    'pchat.alert.enterNickname':         { zh: '请输入昵称', en: 'Please enter a nickname', ja: 'ニックネームを入力してください', de: 'Bitte Namen eingeben', fr: 'Veuillez entrer un surnom', es: 'Por favor ingresa un apodo', pt: 'Por favor digite um apelido', he: 'אנא הזן כינוי', ko: '닉네임을 입력하세요', it: 'Inserisci un nickname' },
-    'pchat.alert.enterPassword':         { zh: '请输入密码', en: 'Please enter password', ja: 'パスワードを入力してください', de: 'Bitte Passwort eingeben', fr: 'Veuillez entrer le mot de passe', es: 'Por favor ingresa contraseña', pt: 'Por favor digite a senha', he: 'אנא הזן סיסמה', ko: '비밀번호를 입력하세요', it: 'Inserisci la password' },
-    'pchat.alert.passwordError':         { zh: '密码错误', en: 'Wrong password', ja: 'パスワードが間違っています', de: 'Falsches Passwort', fr: 'Mot de passe incorrect', es: 'Contraseña incorrecta', pt: 'Senha incorreta', he: 'סיסמה שגויה', ko: '잘못된 비밀번호', it: 'Password errata' },
-    'pchat.alert.deleteConfirm':         { zh: '是否删除所有数据？', en: 'Delete all data?', ja: 'すべてのデータを削除しますか？', de: 'Alle Daten löschen?', fr: 'Supprimer toutes les données?', es: '¿Eliminar todos los datos?', pt: 'Excluir todos os dados?', he: 'למחוק את כל הנתונים?', ko: '모든 데이터를 삭제하시겠습니까?', it: 'Eliminare tutti i dati?' },
-    'pchat.alert.deleteFail':            { zh: '删除失败', en: 'Delete failed', ja: '削除に失敗しました', de: 'Löschen fehlgeschlagen', fr: 'Suppression échouée', es: 'Eliminación fallida', pt: 'Exclusão falhou', he: 'מחיקה נכשלה', ko: '삭제 실패', it: 'Eliminazione fallita' },
-    'pchat.alert.fileReadFail':          { zh: '文件读取失败', en: 'File read failed', ja: 'ファイル読み込み失敗', de: 'Datei konnte nicht gelesen werden', fr: 'Échec de lecture du fichier', es: 'Error al leer archivo', pt: 'Falha ao ler arquivo', he: 'קריאת קובץ נכשלה', ko: '파일 읽기 실패', it: 'Lettura file fallita' },
-    'pchat.alert.downloadExpired':       { zh: '文件已过期或不存在', en: 'File expired or not found', ja: 'ファイルの有効期限が切れています', de: 'Datei abgelaufen oder nicht gefunden', fr: 'Fichier expiré ou introuvable', es: 'Archivo caducado o no encontrado', pt: 'Arquivo expirado ou não encontrado', he: 'הקובץ פג תוקף או לא נמצא', ko: '파일이 만료되었거나 존재하지 않습니다', it: 'File scaduto o non trovato' },
-    'pchat.contact.confirmDelete':       { zh: '确认', en: 'Confirm', ja: '確認', de: 'Bestätigen', fr: 'Confirmer', es: 'Confirmar', pt: 'Confirmar', he: 'אשר', ko: '확인', it: 'Conferma' },
-    'pchat.alert.idCopied':              { zh: 'ID 已复制: {id}', en: 'ID copied: {id}', ja: 'IDコピー済み: {id}', de: 'ID kopiert: {id}', fr: 'ID copié: {id}', es: 'ID copiado: {id}', pt: 'ID copiado: {id}', he: 'מזהה הועתק: {id}', ko: 'ID 복사됨: {id}', it: 'ID copiato: {id}' },
-    'pchat.alert.copyFail':              { zh: '复制失败', en: 'Copy failed', ja: 'コピーに失敗しました', de: 'Kopieren fehlgeschlagen', fr: 'Copie échouée', es: 'Copia fallida', pt: 'Cópia falhou', he: 'העתקה נכשלה', ko: '복사 실패', it: 'Copia fallita' },
-    'pchat.alert.idCopyManual':          { zh: '你的ID: {id} （请手动复制）', en: 'Your ID: {id} (please copy manually)', ja: 'あなたのID: {id} （手動でコピー）', de: 'Deine ID: {id} (manuell kopieren)', fr: 'Votre ID: {id} (copiez manuellement)', es: 'Tu ID: {id} (copia manualmente)', pt: 'Seu ID: {id} (copie manualmente)', he: 'המזהה שלך: {id} (העתק ידנית)', ko: '내 ID: {id} (직접 복사하세요)', it: 'Il tuo ID: {id} (copia manualmente)' },
-    'pchat.alert.inviteCopied':          { zh: '邀请链接已复制: {url}', en: 'Invite link copied: {url}', ja: '招待リンクをコピーしました: {url}', de: 'Einladungslink kopiert: {url}', fr: 'Lien d\'invitation copié: {url}', es: 'Enlace de invitación copiado: {url}', pt: 'Link de convite copiado: {url}', he: 'קישור הזמנה הועתק: {url}', ko: '초대 링크 복사됨: {url}', it: 'Link invito copiato: {url}' },
-    'pchat.alert.inviteCopyManual':      { zh: '复制失败，请手动复制: {url}', en: 'Copy failed, copy manually: {url}', ja: 'コピー失敗、手動でコピー: {url}', de: 'Kopieren fehlgeschlagen, manuell kopieren: {url}', fr: 'Copie échouée, copiez manuellement: {url}', es: 'Copia fallida, copia manualmente: {url}', pt: 'Cópia falhou, copie manualmente: {url}', he: 'העתקה נכשלה, העתק ידנית: {url}', ko: '복사 실패, 수동 복사: {url}', it: 'Copia fallita, copia manualmente: {url}' },
-    'pchat.alert.enterGroupName':        { zh: '请输入群组名称', en: 'Please enter group name', ja: 'グループ名を入力してください', de: 'Bitte Gruppenname eingeben', fr: 'Veuillez entrer le nom du groupe', es: 'Por favor ingresa nombre del grupo', pt: 'Por favor digite nome do grupo', he: 'אנא הזן שם קבוצה', ko: '그룹 이름을 입력하세요', it: 'Inserisci nome gruppo' },
-    'pchat.alert.selectMember':          { zh: '请选择至少一个成员', en: 'Please select at least one member', ja: '少なくとも1人のメンバーを選択してください', de: 'Bitte mindestens ein Mitglied auswählen', fr: 'Veuillez sélectionner au moins un membre', es: 'Por favor selecciona al menos un miembro', pt: 'Por favor selecione pelo menos um membro', he: 'אנא בחר לפחות חבר אחד', ko: '최소 1명의 멤버를 선택하세요', it: 'Seleziona almeno un membro' },
-    'pchat.alert.friendRejected':        { zh: '{name} 拒绝了好友请求', en: '{name} rejected friend request', ja: '{name}が友達リクエストを拒否しました', de: '{name} hat Freundesanfrage abgelehnt', fr: '{name} a rejeté la demande d\'ami', es: '{name} rechazó solicitud de amistad', pt: '{name} recusou solicitação de amizade', he: '{name} דחה בקשת חברות', ko: '{name}이 친구 요청을 거부했습니다', it: '{name} ha rifiutato richiesta amicizia' },
-    'pchat.alert.waitingReply':          { zh: '正在等待对方回复，请勿重复添加', en: 'Waiting for reply, please wait', ja: '返信を待機中、お待ちください', de: 'Warten auf Antwort, bitte warten', fr: 'En attente de réponse, veuillez patienter', es: 'Esperando respuesta, por favor espera', pt: 'Aguardando resposta, por favor aguarde', he: 'ממתין לתשובה, אנא המתן', ko: '회신 대기 중, 잠시 기다려주세요', it: 'In attesa di risposta, attendi' },
-    'pchat.alert.peerOffline':           { zh: '对方不在线，请稍后再试', en: 'Peer is offline, try again later', ja: '相手がオフラインです、後で再試行', de: 'Peer ist offline, versuchen Sie es später', fr: 'Le pair est hors ligne, réessayez plus tard', es: 'Contacto desconectado, intenta más tarde', pt: 'Contato offline, tente mais tarde', he: 'הצד השני לא מחובר, נסה שוב מאוחר יותר', ko: '대피가 오프라인입니다, 나중에 재시도', it: 'Contatto offline, riprova più tardi' },
-    'pchat.alert.enterPeerId':           { zh: '请输入对方ID', en: 'Please enter peer ID', ja: '相手のIDを入力してください', de: 'Bitte Peer-ID eingeben', fr: 'Veuillez entrer l\'ID du pair', es: 'Por favor ingresa ID del contacto', pt: 'Por favor digite ID do contato', he: 'אנא הזן מזהה עמית', ko: '대피 ID를 입력하세요', it: 'Inserisci ID del contatto' },
-    'pchat.alert.cannotAddSelf':         { zh: '不能添加自己', en: 'Cannot add yourself', ja: '自分を追加することはできません', de: 'Sie können sich nicht selbst hinzufügen', fr: 'Vous ne pouvez pas vous ajouter vous-même', es: 'No puedes agregarte a ti mismo', pt: 'Não pode adicionar a si mesmo', he: 'לא ניתן להוסיף את עצמך', ko: '자신을 추가할 수 없습니다', it: 'Non puoi aggiungerti' },
-    'pchat.alert.idConflict':            { zh: '你的 ID "{id}" 已被占用，是否更换 ID？', en: 'Your ID "{id}" is taken, change ID?', ja: 'ID「{id}」が既に使われています、ID を変更しますか？', de: 'Ihre ID "{id}" ist belegt, ID ändern?', fr: 'Votre ID "{id}" est prise, changer d\'ID ?', es: 'Tu ID "{id}" está ocupada, cambiar ID?', pt: 'Seu ID "{id}" está ocupado, trocar ID?', he: 'המזהה "{id}" תפוס, להחליף מזהה?', ko: 'ID "{id}"이(가) 이미 사용 중입니다, ID를 변경하시겠습니까?', it: 'Il tuo ID "{id}" è occupato, cambiare ID?' },
-    'pchat.alert.idChanged':             { zh: 'ID 已更换', en: 'ID changed', ja: 'ID が変更されました', de: 'ID geändert', fr: 'ID modifié', es: 'ID cambiado', pt: 'ID alterado', he: 'מזהה הוחלף', ko: 'ID 가 변경되었습니다', it: 'ID modificato' },
-    'pchat.msg.idChanged':               { zh: '{name} 更换了 ID（旧 ID：{oldId}）', en: '{name} changed ID (old ID: {oldId})', ja: '{name} の ID が変更されました（旧 ID: {oldId}）', de: '{name} hat ID geändert (alte ID: {oldId})', fr: '{name} a changé d\'ID (ancien ID: {oldId})', es: '{name} cambió ID (ID anterior: {oldId})', pt: '{name} alterou ID (ID anterior: {oldId})', he: '{name} שינה מזהה (מזהה ישן: {oldId})', ko: '{name}(이)가 ID를 변경했습니다(기존 ID: {oldId})', it: '{name} ha cambiato ID (vecchio ID: {oldId})' },
-    'pchat.msg.idChangedSystem':         { zh: '系统', en: 'System', ja: 'システム', de: 'System', fr: 'Système', es: 'Sistema', pt: 'Sistema', he: 'מערכת', ko: '시스템', it: 'Sistema' },
+    'pchat.placeholder.nickname':        {de: 'Namen eingeben', en: 'Enter your nickname', es: 'Ingresa tu apodo', fr: 'Entrez votre surnom', he: 'הזן כינוי', it: 'Inserisci nickname', ja: 'ニックネームを入力', ko: '닉네임 입력', pt: 'Digite seu apelido', zh: '输入你的昵称'},
+    'pchat.placeholder.password':        {de: 'Passwort eingeben', en: 'Enter password', es: 'Ingresa contraseña', fr: 'Entrez le mot de passe', he: 'הזן סיסמה', it: 'Inserisci password', ja: 'パスワードを入力', ko: '비밀번호 입력', pt: 'Digite a senha', zh: '输入密码'},
+    'pchat.placeholder.addFriend':       {de: 'ID eingeben um Freund hinzuzufügen', en: 'Enter ID to add friend', es: 'Ingresa ID para agregar amigo', fr: 'Entrez l\'ID pour ajouter un ami', he: 'הזן מזהה להוספת חבר', it: 'Inserisci ID per aggiungere amico', ja: 'IDを入力して友達を追加', ko: 'ID 입력하여 친구 추가', pt: 'Digite ID para adicionar amigo', zh: '输入对方ID添加好友'},
+    'pchat.placeholder.message':         {de: 'Nachricht eingeben...', en: 'Type a message...', es: 'Escribe un mensaje...', fr: 'Tapez un message...', he: 'הקלד הודעה...', it: 'Scrivi un messaggio...', ja: 'メッセージを入力...', ko: '메시지 입력...', pt: 'Digite uma mensagem...', zh: '输入消息...'},
+    'pchat.placeholder.groupName':       {de: 'Gruppenname', en: 'Group name', es: 'Nombre del grupo', fr: 'Nom du groupe', he: 'שם קבוצה', it: 'Nome gruppo', ja: 'グループ名', ko: '그룹 이름', pt: 'Nome do grupo', zh: '群组名称'},
+    'pchat.title.showQR':              {de: 'Klicken um QR-Code anzuzeigen', en: 'Click to show QR code', es: 'Click para mostrar código QR', fr: 'Cliquez pour afficher le QR Code', he: 'לחץ להצגת קוד QR', it: 'Clicca per mostrare codice QR', ja: 'クリックしてQRコードを表示', ko: 'QR 코드를 보려면 클릭', pt: 'Clique para mostrar código QR', zh: '点击显示二维码'},
+    'pchat.title.inviteLink':            {de: 'Einladungslink', en: 'Invite link', fr: 'Lien d\'invitation', es: 'Enlace de invitación', pt: 'Link de convite', he: 'קישור הזמנה', ko: '초대 링크', it: 'Link invito', ja: '招待リンク', zh: '邀请链接'},
+    'pchat.title.back':                  {de: 'Zurück', en: 'Back', es: 'Volver', fr: 'Retour', he: 'חזור', it: 'Indietro', ja: '戻る', ko: '돌아가기', pt: 'Voltar', zh: '返回'},
+    'pchat.title.voiceCall':             {de: 'Sprachanruf', en: 'Voice call', es: 'Llamada de voz', fr: 'Appel vocal', he: 'שיחת קול', it: 'Chiamata vocale', ja: 'ボイス通話', ko: '음성통화', pt: 'Chamada de voz', zh: '语音通话'},
+    'pchat.title.hangup':                {de: 'Auflegen', en: 'Hang up', es: 'Colgar', fr: 'Raccrocher', he: 'נתק', it: 'Chiama', ja: '切る', ko: '끊기', pt: 'Desligar', zh: '挂断'},
+    'pchat.title.voiceMsg':              {de: 'Sprachnachricht', en: 'Voice message', es: 'Mensaje de voz', fr: 'Message vocal', he: 'הודעה קולית', it: 'Messaggio vocale', ja: 'ボイスメッセージ', ko: '음성메시지', pt: 'Mensagem de voz', zh: '语音消息'},
+    'pchat.title.image':                 {de: 'Bild', en: 'Image', es: 'Imagen', fr: 'Image', he: 'תמונה', it: 'Immagine', ja: '画像', ko: '이미지', pt: 'Imagem', zh: '图片'},
+    'pchat.title.file':                  {de: 'Datei', en: 'File', es: 'Archivo', fr: 'Fichier', he: 'קובץ', it: 'File', ja: 'ファイル', ko: '파일', pt: 'Arquivo', zh: '文件'},
+    'pchat.title.answerCall':            {de: 'Annehmen', en: 'Answer', es: 'Contestar', fr: 'Répondre', he: 'ענה', it: 'Rispondi', ja: '応答', ko: '받기', pt: 'Atender', zh: '接听'},
+    'pchat.title.hangupCall':            {de: 'Anruf beenden', en: 'Hang up call', fr: 'Raccrocher l\'appel', es: 'Colgar llamada', pt: 'Encerrar chamada', he: 'נתק שיחה', ko: '통화 종료', it: 'Chiama', ja: '通話を切る', zh: '挂断通话'},
+    'pchat.time.justNow':                {de: 'gerade eben', en: 'just now', fr: 'à l\'instant', es: 'ahora', pt: 'agora', he: 'עכשיו', ko: '방금', it: 'adesso', ja: 'たった今', zh: '刚刚'},
+    'pchat.time.minutesAgo':             {de: 'Min. her', en: 'min ago', es: 'min antes', fr: 'min avant', he: 'דק קודם', it: 'min fa', ja: '分前', ko: '분 전', pt: 'min atrás', zh: '分钟前'},
+    'pchat.time.today':                  {de: 'Heute', en: 'Today', fr: 'Aujourd\'hui', es: 'Hoy', pt: 'Hoje', he: 'היום', ko: '오늘', it: 'Oggi', ja: '今日', zh: '今天'},
+    'pchat.loading.genKey':              {de: 'Schlüssel wird erstellt...', en: 'Generating key...', es: 'Generando clave...', fr: 'Génération de clé...', he: 'מייצר מפתח...', it: 'Generazione chiave...', ja: '鍵を生成中...', ko: '키 생성 중...', pt: 'Gerando chave...', zh: '生成密钥...'},
+    'pchat.loading.deriveVerifyKey':     {de: 'Verifizierungsschlüssel wird abgeleitet...', en: 'Deriving verify key...', es: 'Derivando clave de verificación...', fr: 'Dérivation de clé de vérification...', he: 'מפיק מפתח אימות...', it: 'Derivazione chiave verifica...', ja: '検証鍵を派生中...', ko: '검증 키 파생 중...', pt: 'Derivando chave de verificação...', zh: '派生验证密钥...'},
+    'pchat.loading.deriveDataKey':       {de: 'Datenschlüssel wird abgeleitet...', en: 'Deriving data key...', es: 'Derivando clave de datos...', fr: 'Dérivation de clé de données...', he: 'מפיק מפתח נתונים...', it: 'Derivazione chiave dati...', ja: 'データ鍵を派生中...', ko: '데이터 키 파생 중...', pt: 'Derivando chave de dados...', zh: '派生数据密钥...'},
+    'pchat.loading.saveUser':            {de: 'Benutzerinfo wird gespeichert...', en: 'Saving user info...', es: 'Guardando info de usuario...', fr: 'Sauvegarde des infos utilisateur...', he: 'שומר מידע משתמש...', it: 'Salvataggio info utente...', ja: 'ユーザー情報を保存中...', ko: '사용자 정보 저장 중...', pt: 'Salvando info do usuário...', zh: '保存用户信息...'},
+    'pchat.loading.verify':              {de: 'Wird überprüft...', en: 'Verifying...', es: 'Verificando...', fr: 'Vérification...', he: 'מאמת...', it: 'Verifica...', ja: '検証中...', ko: '검증 중...', pt: 'Verificando...', zh: '验证中...'},
+    'pchat.loading.readUser':            {de: 'Benutzerdaten werden gelesen...', en: 'Reading user data...', es: 'Leyendo datos de usuario...', fr: 'Lecture des données utilisateur...', he: 'קורא נתוני משתמש...', it: 'Lettura dati utente...', ja: 'ユーザーデータを読み込み中...', ko: '사용자 데이터 읽는 중...', pt: 'Lendo dados do usuário...', zh: '读取用户数据...'},
+    'pchat.loading.useCachedKey':        {de: 'Zwischengespeicherten Schlüssel wird verwendet...', en: 'Using cached key...', es: 'Usando clave en caché...', fr: 'Utilisation de la clé mise en cache...', he: 'משתמש במפתח מטמון...', it: 'Uso chiave cache...', ja: 'キャッシュされた鍵を使用...', ko: '캐시 키 사용 중...', pt: 'Usando chave em cache...', zh: '使用缓存密钥...'},
+    'pchat.loading.loadContacts':        {de: 'Kontakte werden geladen...', en: 'Loading contacts...', es: 'Cargando contactos...', fr: 'Chargement des contacts...', he: 'טוען אישות...', it: 'Caricamento contatti...', ja: '連絡先を読み込み中...', ko: '연락처 로드 중...', pt: 'Carregando contatos...', zh: '加载联系人...'},
+    'pchat.loading.loadGroups':          {de: 'Gruppen werden geladen...', en: 'Loading groups...', es: 'Cargando grupos...', fr: 'Chargement des groupes...', he: 'טוען קבוצות...', it: 'Caricamento gruppi...', ja: 'グループを読み込み中...', ko: '그룹 로드 중...', pt: 'Carregando grupos...', zh: '加载群组...'},
+    'pchat.loading.done':                {de: 'Fertig!', en: 'Done!', es: '¡Listo!', fr: 'Terminé!', he: 'סיום!', it: 'Fatto!', ja: '完了!', ko: '완료!', pt: 'Concluído!', zh: '完成!'},
+    'pchat.login.btn.loggingIn':         {de: 'Anmelden...', en: 'Logging in...', es: 'Iniciando sesión...', fr: 'Connexion...', he: 'מתחבר...', it: 'Accesso...', ja: 'ログイン中...', ko: '로그인 중...', pt: 'Entrando...', zh: '正在登录...'},
+    'pchat.alert.enterNickname':         {de: 'Bitte Namen eingeben', en: 'Please enter a nickname', es: 'Por favor ingresa un apodo', fr: 'Veuillez entrer un surnom', he: 'אנא הזן כינוי', it: 'Inserisci un nickname', ja: 'ニックネームを入力してください', ko: '닉네임을 입력하세요', pt: 'Por favor digite um apelido', zh: '请输入昵称'},
+    'pchat.alert.enterPassword':         {de: 'Bitte Passwort eingeben', en: 'Please enter password', es: 'Por favor ingresa contraseña', fr: 'Veuillez entrer le mot de passe', he: 'אנא הזן סיסמה', it: 'Inserisci la password', ja: 'パスワードを入力してください', ko: '비밀번호를 입력하세요', pt: 'Por favor digite a senha', zh: '请输入密码'},
+    'pchat.alert.passwordError':         {de: 'Falsches Passwort', en: 'Wrong password', es: 'Contraseña incorrecta', fr: 'Mot de passe incorrect', he: 'סיסמה שגויה', it: 'Password errata', ja: 'パスワードが間違っています', ko: '잘못된 비밀번호', pt: 'Senha incorreta', zh: '密码错误'},
+    'pchat.alert.deleteConfirm':         {de: 'Alle Daten löschen?', en: 'Delete all data?', es: '¿Eliminar todos los datos?', fr: 'Supprimer toutes les données?', he: 'למחוק את כל הנתונים?', it: 'Eliminare tutti i dati?', ja: 'すべてのデータを削除しますか？', ko: '모든 데이터를 삭제하시겠습니까?', pt: 'Excluir todos os dados?', zh: '是否删除所有数据？'},
+    'pchat.alert.deleteFail':            {de: 'Löschen fehlgeschlagen', en: 'Delete failed', es: 'Eliminación fallida', fr: 'Suppression échouée', he: 'מחיקה נכשלה', it: 'Eliminazione fallita', ja: '削除に失敗しました', ko: '삭제 실패', pt: 'Exclusão falhou', zh: '删除失败'},
+    'pchat.alert.fileReadFail':          {de: 'Datei konnte nicht gelesen werden', en: 'File read failed', es: 'Error al leer archivo', fr: 'Échec de lecture du fichier', he: 'קריאת קובץ נכשלה', it: 'Lettura file fallita', ja: 'ファイル読み込み失敗', ko: '파일 읽기 실패', pt: 'Falha ao ler arquivo', zh: '文件读取失败'},
+    'pchat.alert.downloadExpired':       {de: 'Datei abgelaufen oder nicht gefunden', en: 'File expired or not found', es: 'Archivo caducado o no encontrado', fr: 'Fichier expiré ou introuvable', he: 'הקובץ פג תוקף או לא נמצא', it: 'File scaduto o non trovato', ja: 'ファイルの有効期限が切れています', ko: '파일이 만료되었거나 존재하지 않습니다', pt: 'Arquivo expirado ou não encontrado', zh: '文件已过期或不存在'},
+    'pchat.contact.confirmDelete':       {de: 'Bestätigen', en: 'Confirm', es: 'Confirmar', fr: 'Confirmer', he: 'אשר', it: 'Conferma', ja: '確認', ko: '확인', pt: 'Confirmar', zh: '确认'},
+    'pchat.alert.idCopied':              {zh: 'ID 已复制: {id}', en: 'ID copied: {id}', ja: 'IDコピー済み: {id}', de: 'ID kopiert: {id}', fr: 'ID copié: {id}', es: 'ID copiado: {id}', pt: 'ID copiado: {id}', he: 'מזהה הועתק: {id}', ko: 'ID 복사됨: {id}', it: 'ID copiato: {id}' },
+    'pchat.alert.copyFail':              {de: 'Kopieren fehlgeschlagen', en: 'Copy failed', es: 'Copia fallida', fr: 'Copie échouée', he: 'העתקה נכשלה', it: 'Copia fallita', ja: 'コピーに失敗しました', ko: '복사 실패', pt: 'Cópia falhou', zh: '复制失败'},
+    'pchat.alert.idCopyManual':          {zh: '你的ID: {id} （请手动复制）', en: 'Your ID: {id} (please copy manually)', ja: 'あなたのID: {id} （手動でコピー）', de: 'Deine ID: {id} (manuell kopieren)', fr: 'Votre ID: {id} (copiez manuellement)', es: 'Tu ID: {id} (copia manualmente)', pt: 'Seu ID: {id} (copie manualmente)', he: 'המזהה שלך: {id} (העתק ידנית)', ko: '내 ID: {id} (직접 복사하세요)', it: 'Il tuo ID: {id} (copia manualmente)' },
+    'pchat.alert.inviteCopied':          {zh: '邀请链接已复制: {url}', en: 'Invite link copied: {url}', ja: '招待リンクをコピーしました: {url}', de: 'Einladungslink kopiert: {url}', fr: 'Lien d\'invitation copié: {url}', es: 'Enlace de invitación copiado: {url}', pt: 'Link de convite copiado: {url}', he: 'קישור הזמנה הועתק: {url}', ko: '초대 링크 복사됨: {url}', it: 'Link invito copiato: {url}' },
+    'pchat.alert.inviteCopyManual':      {zh: '复制失败，请手动复制: {url}', en: 'Copy failed, copy manually: {url}', ja: 'コピー失敗、手動でコピー: {url}', de: 'Kopieren fehlgeschlagen, manuell kopieren: {url}', fr: 'Copie échouée, copiez manuellement: {url}', es: 'Copia fallida, copia manualmente: {url}', pt: 'Cópia falhou, copie manualmente: {url}', he: 'העתקה נכשלה, העתק ידנית: {url}', ko: '복사 실패, 수동 복사: {url}', it: 'Copia fallita, copia manualmente: {url}' },
+    'pchat.alert.enterGroupName':        {de: 'Bitte Gruppenname eingeben', en: 'Please enter group name', es: 'Por favor ingresa nombre del grupo', fr: 'Veuillez entrer le nom du groupe', he: 'אנא הזן שם קבוצה', it: 'Inserisci nome gruppo', ja: 'グループ名を入力してください', ko: '그룹 이름을 입력하세요', pt: 'Por favor digite nome do grupo', zh: '请输入群组名称'},
+    'pchat.alert.selectMember':          {de: 'Bitte mindestens ein Mitglied auswählen', en: 'Please select at least one member', es: 'Por favor selecciona al menos un miembro', fr: 'Veuillez sélectionner au moins un membre', he: 'אנא בחר לפחות חבר אחד', it: 'Seleziona almeno un membro', ja: '少なくとも1人のメンバーを選択してください', ko: '최소 1명의 멤버를 선택하세요', pt: 'Por favor selecione pelo menos um membro', zh: '请选择至少一个成员'},
+    'pchat.alert.friendRejected':        {zh: '{name} 拒绝了好友请求', en: '{name} rejected friend request', ja: '{name}が友達リクエストを拒否しました', de: '{name} hat Freundesanfrage abgelehnt', fr: '{name} a rejeté la demande d\'ami', es: '{name} rechazó solicitud de amistad', pt: '{name} recusou solicitação de amizade', he: '{name} דחה בקשת חברות', ko: '{name}이 친구 요청을 거부했습니다', it: '{name} ha rifiutato richiesta amicizia' },
+    'pchat.alert.waitingReply':          {de: 'Warten auf Antwort, bitte warten', en: 'Waiting for reply, please wait', es: 'Esperando respuesta, por favor espera', fr: 'En attente de réponse, veuillez patienter', he: 'ממתין לתשובה, אנא המתן', it: 'In attesa di risposta, attendi', ja: '返信を待機中、お待ちください', ko: '회신 대기 중, 잠시 기다려주세요', pt: 'Aguardando resposta, por favor aguarde', zh: '正在等待对方回复，请勿重复添加'},
+    'pchat.alert.peerOffline':           {de: 'Peer ist offline, versuchen Sie es später', en: 'Peer is offline, try again later', es: 'Contacto desconectado, intenta más tarde', fr: 'Le pair est hors ligne, réessayez plus tard', he: 'הצד השני לא מחובר, נסה שוב מאוחר יותר', it: 'Contatto offline, riprova più tardi', ja: '相手がオフラインです、後で再試行', ko: '대피가 오프라인입니다, 나중에 재시도', pt: 'Contato offline, tente mais tarde', zh: '对方不在线，请稍后再试'},
+    'pchat.alert.enterPeerId':           {de: 'Bitte Peer-ID eingeben', en: 'Please enter peer ID', fr: 'Veuillez entrer l\'ID du pair', es: 'Por favor ingresa ID del contacto', pt: 'Por favor digite ID do contato', he: 'אנא הזן מזהה עמית', ko: '대피 ID를 입력하세요', it: 'Inserisci ID del contatto', ja: '相手のIDを入力してください', zh: '请输入对方ID'},
+    'pchat.alert.cannotAddSelf':         {de: 'Sie können sich nicht selbst hinzufügen', en: 'Cannot add yourself', es: 'No puedes agregarte a ti mismo', fr: 'Vous ne pouvez pas vous ajouter vous-même', he: 'לא ניתן להוסיף את עצמך', it: 'Non puoi aggiungerti', ja: '自分を追加することはできません', ko: '자신을 추가할 수 없습니다', pt: 'Não pode adicionar a si mesmo', zh: '不能添加自己'},
+    'pchat.alert.idConflict':            {zh: '你的 ID "{id}" 已被占用，是否更换 ID？', en: 'Your ID "{id}" is taken, change ID?', ja: 'ID「{id}」が既に使われています、ID を変更しますか？', de: 'Ihre ID "{id}" ist belegt, ID ändern?', fr: 'Votre ID "{id}" est prise, changer d\'ID ?', es: 'Tu ID "{id}" está ocupada, cambiar ID?', pt: 'Seu ID "{id}" está ocupado, trocar ID?', he: 'המזהה "{id}" תפוס, להחליף מזהה?', ko: 'ID "{id}"이(가) 이미 사용 중입니다, ID를 변경하시겠습니까?', it: 'Il tuo ID "{id}" è occupato, cambiare ID?' },
+    'pchat.alert.idChanged':             {de: 'ID geändert', en: 'ID changed', es: 'ID cambiado', fr: 'ID modifié', he: 'מזהה הוחלף', it: 'ID modificato', ja: 'ID が変更されました', ko: 'ID 가 변경되었습니다', pt: 'ID alterado', zh: 'ID 已更换'},
+    'pchat.msg.idChanged':               {zh: '{name} 更换了 ID（旧 ID：{oldId}）', en: '{name} changed ID (old ID: {oldId})', ja: '{name} の ID が変更されました（旧 ID: {oldId}）', de: '{name} hat ID geändert (alte ID: {oldId})', fr: '{name} a changé d\'ID (ancien ID: {oldId})', es: '{name} cambió ID (ID anterior: {oldId})', pt: '{name} alterou ID (ID anterior: {oldId})', he: '{name} שינה מזהה (מזהה ישן: {oldId})', ko: '{name}(이)가 ID를 변경했습니다(기존 ID: {oldId})', it: '{name} ha cambiato ID (vecchio ID: {oldId})' },
+    'pchat.msg.idChangedSystem':         {de: 'System', en: 'System', es: 'Sistema', fr: 'Système', he: 'מערכת', it: 'Sistema', ja: 'システム', ko: '시스템', pt: 'Sistema', zh: '系统'},
     // Transfer
-    'pchat.transfer.title':              { zh: '转移账户', en: 'Transfer Account', ja: 'アカウント移行', de: 'Konto übertragen', fr: 'Transférer le compte', es: 'Transferir cuenta', pt: 'Transferir conta', he: 'העבר חשבון', ko: '계정 이전', it: 'Trasferisci account' },
-    'pchat.transfer.titleReceive':       { zh: '接收转移', en: 'Receive Transfer', ja: '移行受け取り', de: 'Übertragung empfangen', fr: 'Recevoir le transfert', es: 'Recibir transferencia', pt: 'Receber transferência', he: 'קבל העברה', ko: '이전 받기', it: 'Ricevi trasferimento' },
-    'pchat.transfer.selectAccount':      { zh: '选择要转移的账户', en: 'Select account to transfer', ja: '移行するアカウントを選択', de: 'Konto zum Übertragen wählen', fr: 'Sélectionner le compte à transférer', es: 'Seleccionar cuenta a transferir', pt: 'Selecionar conta para transferir', he: 'בחר חשבון להעברה', ko: '이전할 계정 선택', it: 'Seleziona account da trasferire' },
-    'pchat.transfer.enterPassword':      { zh: '输入密码验证', en: 'Enter password to verify', ja: 'パスワードを入力して確認', de: 'Passwort zur Überprüfung eingeben', fr: 'Entrez le mot de passe pour vérifier', es: 'Ingresa contraseña para verificar', pt: 'Digite senha para verificar', he: 'הזן סיסמה לאימות', ko: '확인 위해 비밀번호 입력', it: 'Inserisci password per verificare' },
-    'pchat.transfer.verify':             { zh: '验证', en: 'Verify', ja: '確認', de: 'Überprüfen', fr: 'Vérifier', es: 'Verificar', pt: 'Verificar', he: 'אימות', ko: '확인', it: 'Verifica' },
-    'pchat.transfer.scanning':           { zh: '等待对方连接...', en: 'Waiting for connection...', ja: '接続を待機中...', de: 'Warten auf Verbindung...', fr: 'En attente de connexion...', es: 'Esperando conexión...', pt: 'Aguardando conexão...', he: 'מחכה לחיבור...', ko: '연결 대기 중...', it: 'In attesa di connessione...' },
-    'pchat.transfer.connecting':         { zh: '正在连接...', en: 'Connecting...', ja: '接続中...', de: 'Verbinde...', fr: 'Connexion...', es: 'Conectando...', pt: 'Conectando...', he: 'מתחבר...', ko: '연결 중...', it: 'Connessione...' },
-    'pchat.transfer.sending':            { zh: '正在发送: {table}', en: 'Sending: {table}', ja: '送信中: {table}', de: 'Senden: {table}', fr: 'Envoi: {table}', es: 'Enviando: {table}', pt: 'Enviando: {table}', he: 'שולח: {table}', ko: '전송 중: {table}', it: 'Invio: {table}' },
-    'pchat.transfer.receiving':          { zh: '正在接收: {table}', en: 'Receiving: {table}', ja: '受信中: {table}', de: 'Empfangen: {table}', fr: 'Réception: {table}', es: 'Recibiendo: {table}', pt: 'Recebendo: {table}', he: 'מקבל: {table}', ko: '수신 중: {table}', it: 'Ricezione: {table}' },
-    'pchat.transfer.complete':           { zh: '转移完成！', en: 'Transfer complete!', ja: '移行完了！', de: 'Übertragung abgeschlossen!', fr: 'Transfert terminé!', es: '¡Transferencia completa!', pt: 'Transferência concluída!', he: 'העברה הושלמה!', ko: '이전 완료!', it: 'Trasferimento completo!' },
-    'pchat.transfer.received':           { zh: '接收完成！账户已添加', en: 'Received! Account added', ja: '受け取り完了！アカウント追加', de: 'Empfangen! Konto hinzugefügt', fr: 'Reçu! Compte ajouté', es: '¡Recibido! Cuenta agregada', pt: 'Recebido! Conta adicionada', he: 'התקבל! חשבון נוסף', ko: '수신 완료! 계정 추가됨', it: 'Ricevuto! Account aggiunto' },
-    'pchat.transfer.error.password':     { zh: '密码错误', en: 'Wrong password', ja: 'パスワードが間違っています', de: 'Falsches Passwort', fr: 'Mot de passe incorrect', es: 'Contraseña incorrecta', pt: 'Senha incorreta', he: 'סיסמה שגויה', ko: '잘못된 비밀번호', it: 'Password errata' },
-    'pchat.transfer.error.noSelect':     { zh: '请先选择账户', en: 'Please select an account first', ja: 'まずアカウントを選択してください', de: 'Bitte wählen Sie zuerst ein Konto', fr: 'Veuillez d\'abord sélectionner un compte', es: 'Selecciona una cuenta primero', pt: 'Selecione uma conta primeiro', he: 'בחר חשבון קודם', ko: '먼저 계정을 선택하세요', it: 'Seleziona prima un account' },
-    'pchat.transfer.btn.out':            { zh: '转移账户', en: 'Transfer', ja: '移行', de: 'Übertragen', fr: 'Transférer', es: 'Transferir', pt: 'Transferir', he: 'העברה', ko: '이전', it: 'Trasferisci' },
-    'pchat.transfer.btn.in':             { zh: '接收转移', en: 'Receive', ja: '受け取り', de: 'Empfangen', fr: 'Recevoir', es: 'Recibir', pt: 'Receber', he: 'קבל', ko: '받기', it: 'Ricevi' },
-    'pchat.transfer.btn.scan':           { zh: '扫描二维码', en: 'Scan QR Code', ja: 'QRコードスキャン', de: 'QR-Code scannen', fr: 'Scanner QR Code', es: 'Escanear QR', pt: 'Escanear QR', he: 'סרוק QR', ko: 'QR 코드 스캔', it: 'Scansiona QR' },
-    'pchat.transfer.btn.connect':        { zh: '连接', en: 'Connect', ja: '接続', de: 'Verbinden', fr: 'Connecter', es: 'Conectar', pt: 'Conectar', he: 'חיבור', ko: '연결', it: 'Connetti' },
-    'pchat.transfer.enterId':            { zh: '或输入 ID', en: 'Or enter ID', ja: 'またはIDを入力', de: 'Oder ID eingeben', fr: 'Ou entrer l\'ID', es: 'O ingresa ID', pt: 'Ou digite ID', he: 'או הזן מזהה', ko: '또는 ID 입력', it: 'O inserisci ID' },
-    'pchat.transfer.pending':            { zh: '等待接收方连接', en: 'Waiting for receiver', ja: '受信者待機中', de: 'Warten auf Empfänger', fr: 'En attente du récepteur', es: 'Esperando receptor', pt: 'Aguardando receptor', he: 'מחכה לקולט', ko: '수신자 대기 중', it: 'In attesa del destinatario' },
-    'pchat.transfer.done':               { zh: '完成', en: 'Done', ja: '完了', de: 'Fertig', fr: 'Terminé', es: 'Listo', pt: 'Concluído', he: 'סיום', ko: '완료', it: 'Fatto' },
-    'pchat.transfer.table.user':         { zh: '用户信息', en: 'User info', ja: 'ユーザー情報', de: 'Benutzerinfo', fr: 'Infos utilisateur', es: 'Info usuario', pt: 'Info do usuário', he: 'פרטי משתמש', ko: '사용자 정보', it: 'Info utente' },
-    'pchat.transfer.table.contacts':     { zh: '联系人', en: 'Contacts', ja: '連絡先', de: 'Kontakte', fr: 'Contacts', es: 'Contactos', pt: 'Contatos', he: 'אנשי קשר', ko: '연락처', it: 'Contatti' },
-    'pchat.transfer.table.messages':     { zh: '消息', en: 'Messages', ja: 'メッセージ', de: 'Nachrichten', fr: 'Messages', es: 'Mensajes', pt: 'Mensagens', he: 'הודעות', ko: '메시지', it: 'Messaggi' },
-    'pchat.transfer.table.groups':       { zh: '群组', en: 'Groups', ja: 'グループ', de: 'Gruppen', fr: 'Groupes', es: 'Grupos', pt: 'Grupos', he: 'קבוצות', ko: '그룹', it: 'Gruppi' },
-    'pchat.transfer.table.invitations':  { zh: '邀请', en: 'Invitations', ja: '招待', de: 'Einladungen', fr: 'Invitations', es: 'Invitaciones', pt: 'Convites', he: 'הזמנות', ko: '초대', it: 'Inviti' },
-    'pchat.login.btn.selectAccount':     { zh: '请先选择账户', en: 'Please select an account', ja: 'アカウントを選択してください', de: 'Bitte Konto wählen', fr: 'Veuillez sélectionner un compte', es: 'Selecciona una cuenta', pt: 'Selecione uma conta', he: 'בחר חשבון', ko: '계정을 선택하세요', it: 'Seleziona un account' },
-    'pchat.login.btn.deleteAccount':     { zh: '删除此账户', en: 'Delete this account', ja: 'このアカウントを削除', de: 'Dieses Konto löschen', fr: 'Supprimer ce compte', es: 'Eliminar esta cuenta', pt: 'Excluir esta conta', he: 'מחק חשבון זה', ko: '이 계정 삭제', it: 'Elimina questo account' },
-    'pchat.msg.deleteConfirm':           { zh: '请输入密码确认删除此账户，此操作不可恢复', en: 'Enter password to confirm account deletion. This action cannot be undone.', ja: 'アカウント削除を確認するにはパスワードを入力してください。この操作は取り消せません。', de: 'Passwort eingeben, um Kontolöschung zu bestätigen. Diese Aktion kann nicht rückgängig gemacht werden.', fr: 'Entrez le mot de passe pour confirmer la suppression du compte. Cette action est irréversible.', es: 'Ingrese la contraseña para confirmar la eliminación de la cuenta. Esta acción no se puede deshacer.', pt: 'Digite a senha para confirmar a exclusão da conta. Esta ação não pode ser desfeita.', he: 'הזן סיסמה כדי לאשר מחיקת חשבון. פעולה זו אינה ניתנת לביטול.', ko: '계정 삭제를 확인하려면 암호를 입력하십시오. 이 작업은 취소할 수 없습니다.', it: 'Inserisci la password per confermare l\'eliminazione dell\'account. Questa azione non può essere annullata.' },
-    'pchat.msg.voice':                   { zh: '语音', en: 'Voice', ja: '音声', de: 'Sprache', fr: 'Voix', es: 'Voz', pt: 'Voz', he: 'קול', ko: '음성', it: 'Voce' },
-    'pchat.file.incomplete':             { zh: '文件传输不完整（大小不匹配）', en: 'File transfer incomplete (size mismatch)', ja: 'ファイル転送が不完全（サイズ不一致）', de: 'Dateiübertragung unvollständig (Größenunterschied)', fr: 'Transfert de fichier incomplet (taille incompatible)', es: 'Transferencia incompleta (tamaño no coincide)', pt: 'Transferência incompleta (tamanho incompatível)', he: 'העברת קובץ לא הושלמה (אי התאמה בגודל)', ko: '파일 전송 불완전(크기 불일치)', it: 'Trasferimento incompleto (dimensioni non corrispondenti)' },
-    'pchat.file.checksumFail':           { zh: '文件传输校验失败（内容损坏）', en: 'File checksum failed (data corrupted)', ja: 'ファイルチェックサム失敗（データ破損）', de: 'Datei-Prüfsumme fehlgeschlagen (Daten beschädigt)', fr: 'Vérification de fichier échouée (données corrompues)', es: 'Verificación fallida (datos corruptos)', pt: 'Verificação falhou (dados corrompidos)', he: 'בדיקת קובץ נכשלה (נתונים פגומים)', ko: '파일 체크섬 실패(데이터 손상)', it: 'Verifica fallita (dati corrotti)' },
-    'pchat.file.prefixImage':            { zh: '[图片]', en: '[Image]', ja: '[画像]', de: '[Bild]', fr: '[Image]', es: '[Imagen]', pt: '[Imagem]', he: '[תמונה]', ko: '[이미지]', it: '[Immagine]' },
-    'pchat.file.prefixFile':             { zh: '[文件]', en: '[File]', ja: '[ファイル]', de: '[Datei]', fr: '[Fichier]', es: '[Archivo]', pt: '[Arquivo]', he: '[קובץ]', ko: '[파일]', it: '[File]' },
-    'pchat.alert.friendNotReady':        { zh: '请先完成好友添加后再发送消息', en: 'Please accept friend request first', ja: 'まず友達リクエストを承認してください', de: 'Bitte Freundesanfrage zuerst annehmen', fr: 'Veuillez d\'abord accepter la demande d\'ami', es: 'Primero acepta la solicitud de amistad', pt: 'Primeiro aceite a solicitação de amizade', he: 'אנא קבל תחילה את בקשת החברות', ko: '먼저 친구 요청을 수락하세요', it: 'Accetta prima la richiesta di amicizia' },
-    'pchat.alert.selectChat':            { zh: '请先选择一个聊天', en: 'Please select a chat', ja: 'チャットを選択してください', de: 'Bitte einen Chat auswählen', fr: 'Veuillez sélectionner un chat', es: 'Por favor selecciona un chat', pt: 'Por favor selecione um chat', he: 'אנא בחר צ\'אט', ko: '채팅을 선택하세요', it: 'Seleziona una chat' },
-    'pchat.alert.micError':              { zh: '无法访问麦克风', en: 'Cannot access microphone', ja: 'マイクにアクセスできません', de: 'Kein Zugriff auf Mikrofon', fr: 'Impossible d\'accéder au microphone', es: 'No se puede acceder al micrófono', pt: 'Não é possível acessar o microfone', he: 'לא ניתן לגשת למיקרופון', ko: '마이크에 액세스할 수 없습니다', it: 'Impossibile accedere al microfono' },
-    'pchat.alert.peerOfflineSend':       { zh: '对方不在线，无法发送', en: 'Peer is offline, cannot send', ja: '相手がオフライン、送信できません', de: 'Peer ist offline, kann nicht senden', fr: 'Le pair est hors ligne, impossible d\'envoyer', es: 'Contacto desconectado, no se puede enviar', pt: 'Contato offline, não é possível enviar', he: 'הצד השני לא מחובר, לא ניתן לשלוח', ko: '대피가 오프라인, 전송 불가', it: 'Contatto offline, impossibile inviare' },
-    'pchat.status.online':               { zh: '在线', en: 'Online', ja: 'オンライン', de: 'Online', fr: 'En ligne', es: 'En línea', pt: 'Online', he: 'מחובר', ko: '온라인', it: 'Online' },
-    'pchat.status.peerJSOnline':         { zh: 'PeerJS 在线', en: 'PeerJS online', ja: 'PeerJS オンライン', de: 'PeerJS online', fr: 'PeerJS en ligne', es: 'PeerJS en línea', pt: 'PeerJS online', he: 'PeerJS מחובר', ko: 'PeerJS 온라인', it: 'PeerJS online' },
-    'pchat.status.offline':              { zh: '离线', en: 'Offline', ja: 'オフライン', de: 'Offline', fr: 'Hors ligne', es: 'Desconectado', pt: 'Offline', he: 'לא מחובר', ko: '오프라인', it: 'Offline' },
-    'pchat.status.reconnecting':         { zh: '重连中...', en: 'Reconnecting...', ja: '再接続中...', de: 'Wiederverbindung...', fr: 'Reconnexion...', es: 'Reconectando...', pt: 'Reconectando...', he: 'מתחבר מחדש...', ko: '재연결 중...', it: 'Riconnessione...' },
-    'pchat.status.waitingKeyExchange':   { zh: '等待公钥交换', en: 'Waiting for key exchange', ja: '鍵交換を待機中', de: 'Warten auf Schlüsselaustausch', fr: 'En attente d\'échange de clés', es: 'Esperando intercambio de claves', pt: 'Aguardando troca de chaves', he: 'ממתין להחלפת מפתחות', ko: '키 교환 대기 중', it: 'In attesa di scambio chiavi' },
-    'pchat.status.groupMembers':         { zh: '{n} 成员', en: '{n} members', ja: '{n} 人のメンバー', de: '{n} Mitglieder', fr: '{n} membres', es: '{n} membri', pt: '{n} membros', he: '{n} חברים', ko: '{n}명', it: '{n} membri' },
-    'pchat.msg.self':                    { zh: '我', en: 'Me', ja: '私', de: 'Ich', fr: 'Moi', es: 'Yo', pt: 'Eu', he: 'אני', ko: '나', it: 'Io' },
-    'pchat.msg.selfPrefix':              { zh: '我：', en: 'Me:', ja: '私:', de: 'Ich:', fr: 'Moi:', es: 'Yo:', pt: 'Eu:', he: 'אני:', ko: '나:', it: 'Io:' },
-    'pchat.file.unknown':                { zh: '未知文件', en: 'Unknown file', ja: '不明なファイル', de: 'Unbekannte Datei', fr: 'Fichier inconnu', es: 'Archivo desconocido', pt: 'Arquivo desconhecido', he: 'קובץ לא ידוע', ko: '알 수 없는 파일', it: 'File sconosciuto' },
-    'pchat.msg.deleteTitle':             { zh: '删除', en: 'Delete', ja: '削除', de: 'Löschen', fr: 'Supprimer', es: 'Eliminar', pt: 'Excluir', he: 'מחק', ko: '삭제', it: 'Elimina' },
-    'pchat.call.incoming':               { zh: '来电中...', en: 'Incoming call...', ja: '着信中...', de: 'Eingehender Anruf...', fr: 'Appel entrant...', es: 'Llamada entrante...', pt: 'Chamada recebida...', he: 'שיחה נכנסת...', ko: '발신전화...', it: 'Chiamata in arrivo...' },
-    'pchat.call.waitingAnswer':          { zh: '等待接听...', en: 'Waiting for answer...', ja: '応答を待機中...', de: 'Warten auf Antwort...', fr: 'En attente de réponse...', es: 'Esperando respuesta...', pt: 'Aguardando resposta...', he: 'ממתין לתשובה...', ko: '대기 중...', it: 'In attesa di risposta...' },
-    'pchat.call.active':                 { zh: '通话中', en: 'On call', ja: '通話中', de: 'Im Gespräch', fr: 'En appel', es: 'En llamada', pt: 'Em chamada', he: 'בשיחה', ko: '통화중', it: 'In chiamata' },
-    'pchat.call.interrupted':            { zh: '通话中断', en: 'Call interrupted', ja: '通話中断', de: 'Anruf unterbrochen', fr: 'Appel interrompu', es: 'Llamada interrumpida', pt: 'Chamada interrompida', he: 'שיחה הופסקה', ko: '통화 중단', it: 'Chiamata interrotta' },
-    'pchat.call.log':                    { zh: '📞 通话 {dur}', en: '📞 Call {dur}', ja: '📞 通話 {dur}', de: '📞 Anruf {dur}', fr: '📞 Appel {dur}', es: '📞 Llamada {dur}', pt: '📞 Chamada {dur}', he: '📞 שיחה {dur}', ko: '📞 통화 {dur}', it: '📞 Chiamata {dur}' },
-    'pchat.duration.seconds':            { zh: '{n}秒', en: '{n}s', ja: '{n}秒', de: '{n}s', fr: '{n}s', es: '{n}s', pt: '{n}s', he: '{n}ש"', ko: '{n}초', it: '{n}s' },
-    'pchat.duration.minutes':            { zh: '{n}分钟', en: '{n}min', ja: '{n}分', de: '{n} Min', fr: '{n} min', es: '{n} min', pt: '{n} min', he: '{n} דק', ko: '{n}분', it: '{n} min' },
-    'pchat.duration.minSec':             { zh: '{min}分{sec}秒', en: '{min}m{sec}s', ja: '{min}分{sec}秒', de: '{min} Min {sec}s', fr: '{min} min {sec}s', es: '{min} min {sec}s', pt: '{min} min {sec}s', he: '{min} דק {sec}ש"', ko: '{min}분 {sec}초', it: '{min} min {sec}s' },
-    'pchat.alert.callError':             { zh: '无法发起通话', en: 'Cannot initiate call', ja: '通話を開始できません', de: 'Anruf kann nicht gestartet werden', fr: 'Impossible d\'initier l\'appel', es: 'No se puede iniciar la llamada', pt: 'Não é possível iniciar a chamada', he: 'לא ניתן להפעיל שיחה', ko: '통화를 시작할 수 없습니다', it: 'Impossibile avviare la chiamata' },
+    'pchat.transfer.title':              {de: 'Konto übertragen', en: 'Transfer Account', es: 'Transferir cuenta', fr: 'Transférer le compte', he: 'העבר חשבון', it: 'Trasferisci account', ja: 'アカウント移行', ko: '계정 이전', pt: 'Transferir conta', zh: '转移账户'},
+    'pchat.transfer.titleReceive':       {de: 'Übertragung empfangen', en: 'Receive Transfer', es: 'Recibir transferencia', fr: 'Recevoir le transfert', he: 'קבל העברה', it: 'Ricevi trasferimento', ja: '移行受け取り', ko: '이전 받기', pt: 'Receber transferência', zh: '接收转移'},
+    'pchat.transfer.selectAccount':      {de: 'Konto zum Übertragen wählen', en: 'Select account to transfer', es: 'Seleccionar cuenta a transferir', fr: 'Sélectionner le compte à transférer', he: 'בחר חשבון להעברה', it: 'Seleziona account da trasferire', ja: '移行するアカウントを選択', ko: '이전할 계정 선택', pt: 'Selecionar conta para transferir', zh: '选择要转移的账户'},
+    'pchat.transfer.enterPassword':      {de: 'Passwort zur Überprüfung eingeben', en: 'Enter password to verify', es: 'Ingresa contraseña para verificar', fr: 'Entrez le mot de passe pour vérifier', he: 'הזן סיסמה לאימות', it: 'Inserisci password per verificare', ja: 'パスワードを入力して確認', ko: '확인 위해 비밀번호 입력', pt: 'Digite senha para verificar', zh: '输入密码验证'},
+    'pchat.transfer.verify':             {de: 'Überprüfen', en: 'Verify', es: 'Verificar', fr: 'Vérifier', he: 'אימות', it: 'Verifica', ja: '確認', ko: '확인', pt: 'Verificar', zh: '验证'},
+    'pchat.transfer.scanning':           {de: 'Warten auf Verbindung...', en: 'Waiting for connection...', es: 'Esperando conexión...', fr: 'En attente de connexion...', he: 'מחכה לחיבור...', it: 'In attesa di connessione...', ja: '接続を待機中...', ko: '연결 대기 중...', pt: 'Aguardando conexão...', zh: '等待对方连接...'},
+    'pchat.transfer.connecting':         {de: 'Verbinde...', en: 'Connecting...', es: 'Conectando...', fr: 'Connexion...', he: 'מתחבר...', it: 'Connessione...', ja: '接続中...', ko: '연결 중...', pt: 'Conectando...', zh: '正在连接...'},
+    'pchat.transfer.sending':            {zh: '正在发送: {table}', en: 'Sending: {table}', ja: '送信中: {table}', de: 'Senden: {table}', fr: 'Envoi: {table}', es: 'Enviando: {table}', pt: 'Enviando: {table}', he: 'שולח: {table}', ko: '전송 중: {table}', it: 'Invio: {table}' },
+    'pchat.transfer.receiving':          {zh: '正在接收: {table}', en: 'Receiving: {table}', ja: '受信中: {table}', de: 'Empfangen: {table}', fr: 'Réception: {table}', es: 'Recibiendo: {table}', pt: 'Recebendo: {table}', he: 'מקבל: {table}', ko: '수신 중: {table}', it: 'Ricezione: {table}' },
+    'pchat.transfer.complete':           {de: 'Übertragung abgeschlossen!', en: 'Transfer complete!', es: '¡Transferencia completa!', fr: 'Transfert terminé!', he: 'העברה הושלמה!', it: 'Trasferimento completo!', ja: '移行完了！', ko: '이전 완료!', pt: 'Transferência concluída!', zh: '转移完成！'},
+    'pchat.transfer.received':           {de: 'Empfangen! Konto hinzugefügt', en: 'Received! Account added', es: '¡Recibido! Cuenta agregada', fr: 'Reçu! Compte ajouté', he: 'התקבל! חשבון נוסף', it: 'Ricevuto! Account aggiunto', ja: '受け取り完了！アカウント追加', ko: '수신 완료! 계정 추가됨', pt: 'Recebido! Conta adicionada', zh: '接收完成！账户已添加'},
+    'pchat.transfer.error.password':     {de: 'Falsches Passwort', en: 'Wrong password', es: 'Contraseña incorrecta', fr: 'Mot de passe incorrect', he: 'סיסמה שגויה', it: 'Password errata', ja: 'パスワードが間違っています', ko: '잘못된 비밀번호', pt: 'Senha incorreta', zh: '密码错误'},
+    'pchat.transfer.error.noSelect':     {de: 'Bitte wählen Sie zuerst ein Konto', en: 'Please select an account first', fr: 'Veuillez d\'abord sélectionner un compte', es: 'Selecciona una cuenta primero', pt: 'Selecione uma conta primeiro', he: 'בחר חשבון קודם', ko: '먼저 계정을 선택하세요', it: 'Seleziona prima un account', ja: 'まずアカウントを選択してください', zh: '请先选择账户'},
+    'pchat.transfer.btn.out':            {de: 'Übertragen', en: 'Transfer', es: 'Transferir', fr: 'Transférer', he: 'העברה', it: 'Trasferisci', ja: '移行', ko: '이전', pt: 'Transferir', zh: '转移账户'},
+    'pchat.transfer.btn.in':             {de: 'Empfangen', en: 'Receive', es: 'Recibir', fr: 'Recevoir', he: 'קבל', it: 'Ricevi', ja: '受け取り', ko: '받기', pt: 'Receber', zh: '接收转移'},
+    'pchat.transfer.btn.scan':           {de: 'QR-Code scannen', en: 'Scan QR Code', es: 'Escanear QR', fr: 'Scanner QR Code', he: 'סרוק QR', it: 'Scansiona QR', ja: 'QRコードスキャン', ko: 'QR 코드 스캔', pt: 'Escanear QR', zh: '扫描二维码'},
+    'pchat.transfer.btn.connect':        {de: 'Verbinden', en: 'Connect', es: 'Conectar', fr: 'Connecter', he: 'חיבור', it: 'Connetti', ja: '接続', ko: '연결', pt: 'Conectar', zh: '连接'},
+    'pchat.transfer.enterId':            {de: 'Oder ID eingeben', en: 'Or enter ID', fr: 'Ou entrer l\'ID', es: 'O ingresa ID', pt: 'Ou digite ID', he: 'או הזן מזהה', ko: '또는 ID 입력', it: 'O inserisci ID', ja: 'またはIDを入力', zh: '或输入 ID'},
+    'pchat.transfer.pending':            {de: 'Warten auf Empfänger', en: 'Waiting for receiver', es: 'Esperando receptor', fr: 'En attente du récepteur', he: 'מחכה לקולט', it: 'In attesa del destinatario', ja: '受信者待機中', ko: '수신자 대기 중', pt: 'Aguardando receptor', zh: '等待接收方连接'},
+    'pchat.transfer.done':               {de: 'Fertig', en: 'Done', es: 'Listo', fr: 'Terminé', he: 'סיום', it: 'Fatto', ja: '完了', ko: '완료', pt: 'Concluído', zh: '完成'},
+    'pchat.transfer.table.user':         {de: 'Benutzerinfo', en: 'User info', es: 'Info usuario', fr: 'Infos utilisateur', he: 'פרטי משתמש', it: 'Info utente', ja: 'ユーザー情報', ko: '사용자 정보', pt: 'Info do usuário', zh: '用户信息'},
+    'pchat.transfer.table.contacts':     {de: 'Kontakte', en: 'Contacts', es: 'Contactos', fr: 'Contacts', he: 'אנשי קשר', it: 'Contatti', ja: '連絡先', ko: '연락처', pt: 'Contatos', zh: '联系人'},
+    'pchat.transfer.table.messages':     {de: 'Nachrichten', en: 'Messages', es: 'Mensajes', fr: 'Messages', he: 'הודעות', it: 'Messaggi', ja: 'メッセージ', ko: '메시지', pt: 'Mensagens', zh: '消息'},
+    'pchat.transfer.table.groups':       {de: 'Gruppen', en: 'Groups', es: 'Grupos', fr: 'Groupes', he: 'קבוצות', it: 'Gruppi', ja: 'グループ', ko: '그룹', pt: 'Grupos', zh: '群组'},
+    'pchat.transfer.table.invitations':  {de: 'Einladungen', en: 'Invitations', es: 'Invitaciones', fr: 'Invitations', he: 'הזמנות', it: 'Inviti', ja: '招待', ko: '초대', pt: 'Convites', zh: '邀请'},
+    'pchat.login.btn.selectAccount':     {de: 'Bitte Konto wählen', en: 'Please select an account', es: 'Selecciona una cuenta', fr: 'Veuillez sélectionner un compte', he: 'בחר חשבון', it: 'Seleziona un account', ja: 'アカウントを選択してください', ko: '계정을 선택하세요', pt: 'Selecione uma conta', zh: '请先选择账户'},
+    'pchat.login.btn.deleteAccount':     {de: 'Dieses Konto löschen', en: 'Delete this account', es: 'Eliminar esta cuenta', fr: 'Supprimer ce compte', he: 'מחק חשבון זה', it: 'Elimina questo account', ja: 'このアカウントを削除', ko: '이 계정 삭제', pt: 'Excluir esta conta', zh: '删除此账户'},
+    'pchat.msg.deleteConfirm':           {de: 'Passwort eingeben, um Kontolöschung zu bestätigen. Diese Aktion kann nicht rückgängig gemacht werden.', en: 'Enter password to confirm account deletion. This action cannot be undone.', es: 'Ingrese la contraseña para confirmar la eliminación de la cuenta. Esta acción no se puede deshacer.', fr: 'Entrez le mot de passe pour confirmer la suppression du compte. Cette action est irréversible.', he: 'הזן סיסמה כדי לאשר מחיקת חשבון. פעולה זו אינה ניתנת לביטול.', it: 'Inserisci la password per confermare l\'eliminazione dell\'account. Questa azione non può essere annullata.', ja: 'アカウント削除を確認するにはパスワードを入力してください。この操作は取り消せません。', ko: '계정 삭제를 확인하려면 암호를 입력하십시오. 이 작업은 취소할 수 없습니다.', pt: 'Digite a senha para confirmar a exclusão da conta. Esta ação não pode ser desfeita.', zh: '请输入密码确认删除此账户，此操作不可恢复'},
+    'pchat.msg.voice':                   {de: 'Sprache', en: 'Voice', es: 'Voz', fr: 'Voix', he: 'קול', it: 'Voce', ja: '音声', ko: '음성', pt: 'Voz', zh: '语音'},
+    'pchat.file.incomplete':             {de: 'Dateiübertragung unvollständig (Größenunterschied)', en: 'File transfer incomplete (size mismatch)', es: 'Transferencia incompleta (tamaño no coincide)', fr: 'Transfert de fichier incomplet (taille incompatible)', he: 'העברת קובץ לא הושלמה (אי התאמה בגודל)', it: 'Trasferimento incompleto (dimensioni non corrispondenti)', ja: 'ファイル転送が不完全（サイズ不一致）', ko: '파일 전송 불완전(크기 불일치)', pt: 'Transferência incompleta (tamanho incompatível)', zh: '文件传输不完整（大小不匹配）'},
+    'pchat.file.checksumFail':           {de: 'Datei-Prüfsumme fehlgeschlagen (Daten beschädigt)', en: 'File checksum failed (data corrupted)', es: 'Verificación fallida (datos corruptos)', fr: 'Vérification de fichier échouée (données corrompues)', he: 'בדיקת קובץ נכשלה (נתונים פגומים)', it: 'Verifica fallita (dati corrotti)', ja: 'ファイルチェックサム失敗（データ破損）', ko: '파일 체크섬 실패(데이터 손상)', pt: 'Verificação falhou (dados corrompidos)', zh: '文件传输校验失败（内容损坏）'},
+    'pchat.file.prefixImage':            {de: '[Bild]', en: '[Image]', es: '[Imagen]', fr: '[Image]', he: '[תמונה]', it: '[Immagine]', ja: '[画像]', ko: '[이미지]', pt: '[Imagem]', zh: '[图片]'},
+    'pchat.file.prefixFile':             {de: '[Datei]', en: '[File]', es: '[Archivo]', fr: '[Fichier]', he: '[קובץ]', it: '[File]', ja: '[ファイル]', ko: '[파일]', pt: '[Arquivo]', zh: '[文件]'},
+    'pchat.alert.friendNotReady':        {de: 'Bitte Freundesanfrage zuerst annehmen', en: 'Please accept friend request first', es: 'Primero acepta la solicitud de amistad', fr: 'Veuillez d\'abord accepter la demande d\'ami', he: 'אנא קבל תחילה את בקשת החברות', it: 'Accetta prima la richiesta di amicizia', ja: 'まず友達リクエストを承認してください', ko: '먼저 친구 요청을 수락하세요', pt: 'Primeiro aceite a solicitação de amizade', zh: '请先完成好友添加后再发送消息'},
+    'pchat.alert.selectChat':            {de: 'Bitte einen Chat auswählen', en: 'Please select a chat', es: 'Por favor selecciona un chat', fr: 'Veuillez sélectionner un chat', he: 'אנא בחר צ\'אט', ko: '채팅을 선택하세요', it: 'Seleziona una chat', ja: 'チャットを選択してください', pt: 'Por favor selecione um chat', zh: '请先选择一个聊天'},
+    'pchat.alert.micError':              {de: 'Kein Zugriff auf Mikrofon', en: 'Cannot access microphone', fr: 'Impossible d\'accéder au microphone', es: 'No se puede acceder al micrófono', pt: 'Não é possível acessar o microfone', he: 'לא ניתן לגשת למיקרופון', ko: '마이크에 액세스할 수 없습니다', it: 'Impossibile accedere al microfono', ja: 'マイクにアクセスできません', zh: '无法访问麦克风'},
+    'pchat.alert.peerOfflineSend':       {de: 'Peer ist offline, kann nicht senden', en: 'Peer is offline, cannot send', fr: 'Le pair est hors ligne, impossible d\'envoyer', es: 'Contacto desconectado, impossibile inviare', ja: '相手がオフライン、送信できません', no se puede enviar', pt: 'Contato offline, não é possível enviar', he: 'הצד השני לא מחובר, zh: '对方不在线，无法发送', לא ניתן לשלוח', ko: '대피가 오프라인, 전송 불가', it: 'Contatto offline},
+    'pchat.status.online':               {de: 'Online', en: 'Online', es: 'En línea', fr: 'En ligne', he: 'מחובר', it: 'Online', ja: 'オンライン', ko: '온라인', pt: 'Online', zh: '在线'},
+    'pchat.status.peerJSOnline':         {de: 'PeerJS online', en: 'PeerJS online', es: 'PeerJS en línea', fr: 'PeerJS en ligne', he: 'PeerJS מחובר', it: 'PeerJS online', ja: 'PeerJS オンライン', ko: 'PeerJS 온라인', pt: 'PeerJS online', zh: 'PeerJS 在线'},
+    'pchat.status.offline':              {de: 'Offline', en: 'Offline', es: 'Desconectado', fr: 'Hors ligne', he: 'לא מחובר', it: 'Offline', ja: 'オフライン', ko: '오프라인', pt: 'Offline', zh: '离线'},
+    'pchat.status.reconnecting':         {de: 'Wiederverbindung...', en: 'Reconnecting...', es: 'Reconectando...', fr: 'Reconnexion...', he: 'מתחבר מחדש...', it: 'Riconnessione...', ja: '再接続中...', ko: '재연결 중...', pt: 'Reconectando...', zh: '重连中...'},
+    'pchat.status.waitingKeyExchange':   {de: 'Warten auf Schlüsselaustausch', en: 'Waiting for key exchange', fr: 'En attente d\'échange de clés', es: 'Esperando intercambio de claves', pt: 'Aguardando troca de chaves', he: 'ממתין להחלפת מפתחות', ko: '키 교환 대기 중', it: 'In attesa di scambio chiavi', ja: '鍵交換を待機中', zh: '等待公钥交换'},
+    'pchat.status.groupMembers':         {zh: '{n} 成员', en: '{n} members', ja: '{n} 人のメンバー', de: '{n} Mitglieder', fr: '{n} membres', es: '{n} membri', pt: '{n} membros', he: '{n} חברים', ko: '{n}명', it: '{n} membri' },
+    'pchat.msg.self':                    {de: 'Ich', en: 'Me', es: 'Yo', fr: 'Moi', he: 'אני', it: 'Io', ja: '私', ko: '나', pt: 'Eu', zh: '我'},
+    'pchat.msg.selfPrefix':              {de: 'Ich:', en: 'Me:', es: 'Yo:', fr: 'Moi:', he: 'אני:', it: 'Io:', ja: '私:', ko: '나:', pt: 'Eu:', zh: '我：'},
+    'pchat.file.unknown':                {de: 'Unbekannte Datei', en: 'Unknown file', es: 'Archivo desconocido', fr: 'Fichier inconnu', he: 'קובץ לא ידוע', it: 'File sconosciuto', ja: '不明なファイル', ko: '알 수 없는 파일', pt: 'Arquivo desconhecido', zh: '未知文件'},
+    'pchat.msg.deleteTitle':             {de: 'Löschen', en: 'Delete', es: 'Eliminar', fr: 'Supprimer', he: 'מחק', it: 'Elimina', ja: '削除', ko: '삭제', pt: 'Excluir', zh: '删除'},
+    'pchat.call.incoming':               {de: 'Eingehender Anruf...', en: 'Incoming call...', es: 'Llamada entrante...', fr: 'Appel entrant...', he: 'שיחה נכנסת...', it: 'Chiamata in arrivo...', ja: '着信中...', ko: '발신전화...', pt: 'Chamada recebida...', zh: '来电中...'},
+    'pchat.call.waitingAnswer':          {de: 'Warten auf Antwort...', en: 'Waiting for answer...', es: 'Esperando respuesta...', fr: 'En attente de réponse...', he: 'ממתין לתשובה...', it: 'In attesa di risposta...', ja: '応答を待機中...', ko: '대기 중...', pt: 'Aguardando resposta...', zh: '等待接听...'},
+    'pchat.call.active':                 {de: 'Im Gespräch', en: 'On call', es: 'En llamada', fr: 'En appel', he: 'בשיחה', it: 'In chiamata', ja: '通話中', ko: '통화중', pt: 'Em chamada', zh: '通话中'},
+    'pchat.call.interrupted':            {de: 'Anruf unterbrochen', en: 'Call interrupted', es: 'Llamada interrumpida', fr: 'Appel interrompu', he: 'שיחה הופסקה', it: 'Chiamata interrotta', ja: '通話中断', ko: '통화 중단', pt: 'Chamada interrompida', zh: '通话中断'},
+    'pchat.call.log':                    {de: '📞 Anruf {dur}', en: '📞 Call {dur}', es: '📞 Llamada {dur}', fr: '📞 Appel {dur}', he: '📞 שיחה {dur}', it: '📞 Chiamata {dur}', ja: '📞 通話 {dur}', ko: '📞 통화 {dur}', pt: '📞 Chamada {dur}', zh: '📞 通话 {dur}' },
+    'pchat.duration.seconds':            {de: '{n}s', en: '{n}s', es: '{n}s', fr: '{n}s', he: '{n}ש"', it: '{n}s', ja: '{n}秒', ko: '{n}초', pt: '{n}s', zh: '{n}秒' },
+    'pchat.duration.minutes':            {de: '{n} Min', en: '{n}min', es: '{n} min', fr: '{n} min', he: '{n} דק', it: '{n} min', ja: '{n}分', ko: '{n}분', pt: '{n} min', zh: '{n}分钟' },
+    'pchat.duration.minSec':             {de: '{min} Min {sec}s', en: '{min}m{sec}s', es: '{min} min {sec}s', fr: '{min} min {sec}s', he: '{min} דק {sec}ש"', it: '{min} min {sec}s', ja: '{min}分{sec}秒', ko: '{min}분 {sec}초', pt: '{min} min {sec}s', zh: '{min}分{sec}秒' },
+    'pchat.alert.callError':             {de: 'Anruf kann nicht gestartet werden', en: 'Cannot initiate call', es: 'No se puede iniciar la llamada', fr: 'Impossible d\'initier l\'appel', he: 'לא ניתן להפעיל שיחה', it: 'Impossibile avviare la chiamata', ja: '通話を開始できません', ko: '통화를 시작할 수 없습니다', pt: 'Não é possível iniciar a chamada', zh: '无法发起通话'},
 };
 
 // Set placeholders and titles based on language
@@ -163,15 +202,35 @@ _i18n.fmt = function(key) {
     return str;
 };
 
-// ==================== Crypto (crypto-js + jsrsasign) ====================
+// ==================== Crypto — RSA + AES Encryption Module ====================
+// Uses forge.js for RSA-2048-OAEP-SHA256 and CryptoJS for AES-256-CBC + PBKDF2
+//
+// Key functions:
+//   generateKeypair()      — RSA-2048 key pair generation (forge.pki.rsa, e=65537)
+//   keyFingerprint(pem)    — MD5 hash of public key PEM, first 8 chars
+//   encryptWithPubkey()    — RSA encrypt with recipient's public key
+//   decryptWithPrivkey()   — RSA decrypt with local private key
+//   encryptChunks()        — Chunked RSA encryption (180 bytes/chunk, for >150B messages)
+//   decryptChunks()        — Chunked RSA decryption (auto-detect '|' separator)
+//   deriveAesKey(pw, salt) — PBKDF2-SHA256 derive AES-256 key (100K iterations)
+//   encryptAes(key, data)  — AES-256-CBC encrypt (CryptoJS, OpenSSL "Salted__" format)
+//   decryptAes(key, data)  — AES-256-CBC decrypt
+//   randomSalt()           — Generate 16-byte random hex salt (crypto.getRandomValues)
+//   generateId()           — 12-char random ID (excludes ambiguous chars: 0O1Il)
+//
+// Encryption chain: Plaintext → RSA encrypt (peer's pubkey) → DataChannel → RSA decrypt (my privkey) → AES encrypt → IndexedDB
+//
 const Crypto = {
     // 密钥指纹：公钥 PEM 的 MD5 前 8 位
+    // Returns MD5 hash of public key PEM, first 8 chars (unique fingerprint)
     keyFingerprint(pem) {
         if (!pem) return 'null';
         const md5 = forge.md.md5.create().update(pem, 'utf8').digest().toHex();
         return md5.substring(0, 8);
     },
 
+    // Generates RSA-2048 key pair with public exponent 65537
+    // Returns { publicKey: PEM, privateKey: PEM }
     generateKeypair(tag) {
         const rsa = forge.pki.rsa.generateKeyPair({bits: 2048, e: 0x10001});
         return {
@@ -180,6 +239,9 @@ const Crypto = {
         };
     },
 
+    // Chunked RSA-OAEP-SHA256 encryption for messages >150 bytes
+    // Splits plaintext into 180-byte chunks, encrypts each with recipient's pubkey
+    // Returns base64 chunks joined by '|'
     async encryptChunks(pubKeyPem, plaintext) {
         // RSA-OAEP 2048 max ~190 bytes, use 180 byte chunks for safety
         const pub = forge.pki.publicKeyFromPem(pubKeyPem);
@@ -194,6 +256,8 @@ const Crypto = {
         return chunks.join('|');
     },
 
+    // Chunked RSA-OAEP-SHA256 decryption
+    // Splits on '|', decrypts each chunk, concatenates plaintext
     async decryptChunks(privKeyPem, ciphertext) {
         const priv = forge.pki.privateKeyFromPem(privKeyPem);
         const parts = ciphertext.split('|');
@@ -206,6 +270,8 @@ const Crypto = {
         return result;
     },
 
+    // RSA encrypt plaintext with recipient's public key
+    // Auto-selects single-chunk (≤150B) or multi-chunk (>150B) based on UTF-8 byte length
     async encryptWithPubkey(pubKeyPem, plaintext) {
         const fp = Crypto.keyFingerprint(pubKeyPem);
         console.log(`[Crypto] Encrypt with pubkey fp=${fp} pemPrefix=${pubKeyPem.substring(0, 26)}...`);
@@ -224,6 +290,8 @@ const Crypto = {
         return forge.util.encode64(enc);
     },
 
+    // RSA decrypt ciphertext with local private key
+    // Auto-detects chunked format (contains '|') vs single-chunk
     async decryptWithPrivkey(privKeyPem, ciphertextB64) {
         const fp = Crypto.keyFingerprint(privKeyPem);
         console.log(`[Crypto] Decrypt with privkey fp=${fp} pemPrefix=${privKeyPem.substring(0, 30)}...`);
@@ -248,9 +316,20 @@ const Crypto = {
         return forge.util.decodeUtf8(dec);
     },
 
-    deriveAesKey(password, userId) {
-        const salt = CryptoJS.enc.Utf8.parse("pchat-salt" + (userId || ""));
-        return CryptoJS.PBKDF2(password, salt, {
+    // 生成 16 字节随机 salt (hex 编码, 32 字符)
+    randomSalt() {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    },
+
+    // PBKDF2-SHA256 derive AES-256 key from password + salt
+    // salt: optional 16-byte hex string, falls back to "pchat-salt" if null/undefined
+    // 100,000 iterations for brute-force resistance
+    deriveAesKey(password, salt) {
+        // salt: 可选，16 字节 hex 编码字符串。未提供则回退到固定盐
+        const saltVal = salt ? CryptoJS.enc.Hex.parse(salt) : CryptoJS.enc.Utf8.parse("pchat-salt");
+        return CryptoJS.PBKDF2(password, saltVal, {
             keySize: 256 / 32,
             iterations: 100000,
             hasher: CryptoJS.algo.SHA256
@@ -275,7 +354,10 @@ const Crypto = {
     },
 };
 
-// ==================== Base64 ====================
+// ==================== Base64 — Binary ⇄ Base64 Conversion ====================
+// Custom URL-safe base64 encoding/decoding (uses '-' and '_' instead of '+' and '/')
+// Used for encoding binary data (Uint8Array) into base64 strings for DataChannel transport
+//
 function uint8ToBase64(bytes) {
     const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     let b = "";
@@ -294,7 +376,23 @@ function base64ToUint8(b64) {
     return bytes;
 }
 
-// ==================== IndexedDB ====================
+// ==================== DB — IndexedDB Storage with AES Encryption ====================
+// Database naming: PChat_{userId} (one IndexedDB per account for key isolation)
+// Version: 2
+//
+// Object Stores (tables):
+//   user         — keyPath: "id", indexes: userId(unique)
+//                  Special _salt record stores plaintext PBKDF2 salt
+//   contacts     — keyPath: "contactId", indexes: userId(unique), nickname
+//   messages     — keyPath: "id", indexes: peerId, timestamp
+//   groups       — keyPath: "id"
+//   files        — keyPath: "id" (stores AES-encrypted file data)
+//   invitations  — keyPath: "id"
+//
+// All records are AES-256-CBC encrypted except _salt (plaintext).
+// Large files (>20MB) use OPFS (Origin Private File System) instead of IndexedDB.
+// Thumbnails are generated as 200px JPEG and embedded in message records.
+//
 const DB = {
     BASE_NAME: "PChat",
     NAME: "PChat", // can be overridden to BASE_NAME + "_" + userId
@@ -345,6 +443,10 @@ const DB = {
 
     _store(name, mode) { return this.db.transaction(name, mode || "readonly").objectStore(name); },
 
+    // Store an item in IndexedDB (AES encrypted)
+    // Encrypts JSON.stringify(item) with AES-256-CBC using the provided key
+    // Automatically sets keyPath field (id/contactId/userId) based on store schema
+    // Returns Promise that resolves when transaction completes
     async put(name, item, key) {
         const enc = await Crypto.encryptAes(key, JSON.stringify(item));
         // console.log(`[DB.put] ${name} id=${item.id || item.contactId || item.userId} enc=`, enc);
@@ -360,6 +462,9 @@ const DB = {
         return new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
     },
 
+    // Retrieve an item from IndexedDB by primary key
+    // Auto-decrypts AES-encrypted records; handles raw format (data field) for unencrypted records
+    // Returns parsed JSON object or null
     async get(name, id, key) {
         const req = this._store(name).get(id);
         return new Promise((resolve, reject) => {
@@ -379,6 +484,9 @@ const DB = {
         });
     },
 
+    // Retrieve ALL items from an object store
+    // Decrypts each AES-encrypted record; handles raw format records
+    // Returns array of parsed JSON objects
     async list(name, key) {
         const req = this._store(name).getAll();
         return new Promise((resolve, reject) => {
@@ -497,6 +605,32 @@ const DB = {
         store.put(record);
         return new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
     },
+
+    // Salt 存储（明文，不加密 — salt 无需保密）
+    async getSalt() {
+        return new Promise((resolve) => {
+            const req = this._store("user").get("_salt");
+            req.onsuccess = () => {
+                const record = req.result;
+                if (!record || !record.data) { resolve(null); return; }
+                try { resolve(JSON.parse(record.data).salt); }
+                catch { resolve(null); }
+            };
+            req.onerror = () => resolve(null);
+        });
+    },
+    async putSalt(salt) {
+        return this.putRaw("user", { id: "_salt", data: JSON.stringify({ salt: salt }), ts: Date.now() });
+    },
+    async deleteSalt() {
+        return new Promise((resolve) => {
+            const tx = this.db.transaction("user", "readwrite");
+            tx.objectStore("user").delete("_salt");
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+        });
+    },
+
 
     async getFile(fileId, aesKey) {
         const req = this._store("files").get(fileId);
@@ -782,7 +916,16 @@ const DB = {
     },
 };
 
-// ==================== AccountManager ====================
+// ==================== AccountManager — Multi-Account Management ====================
+// Stores account list in localStorage under key "pchat_accounts"
+// Each account has its own IndexedDB (PChat_{userId})
+//
+// Functions:
+//   listAccounts()                    — Get all saved accounts from localStorage
+//   addAccount(userId, nickname)      — Add or update account in localStorage
+//   removeAccount(userId)             — Remove account from localStorage + delete IndexedDB
+//   openDBFor(userId)                 — Open the IndexedDB for a specific account
+//
 // Manages multiple user accounts in localStorage + per-account IndexedDB
 const AccountManager = {
     STORAGE_KEY: "pchat_accounts",
@@ -847,7 +990,20 @@ const AccountManager = {
 };
 
 
-// ==================== PeerConn (PeerJS wrapper) ====================
+// ==================== PeerConn — PeerJS WebRTC Connection Manager ====================
+// Wraps PeerJS for WebRTC DataChannel and MediaConnection management.
+// Handles signaling (via 0.peerjs.com), connection lifecycle, heartbeats, and reconnection.
+//
+// Core state:
+//   peer                       — PeerJS instance
+//   peers[peerId]              — { conn, myKey, peerKey, connected }
+//   _amOffline                 — true when disconnected from signaling server
+//   _reconnectTimers[peerId]   — Exponential backoff reconnect timers
+//   _heartbeats[peerId]        — Heartbeat interval + pong tracking
+//
+// Message routing: All incoming data goes to ChatApp for processing.
+// Supports binary DataChannel for large file transfers (>10MB).
+//
 // Replaces WebRTC + WebSocket signaling with PeerJS-managed connections
 
 const PeerConn = {
@@ -863,6 +1019,9 @@ const PeerConn = {
     HB_TIMEOUT: 10000,          // no pong for 10s → dead
 
     // Initialize PeerJS instance
+    // Initialize PeerJS with custom ID and STUN servers
+    // Configures 5 STUN servers (latency-sorted) for NAT traversal
+    // Calls callback(assignedId) when peer connection is open
     init(myId, callback) {
         PeerConn._debug && console.log("[PeerConn] Connecting with user ID:", myId);
         const peerConfig = {
@@ -1452,7 +1611,28 @@ const PeerConn = {
     },
 };
 
-// ==================== ChatApp ====================
+// ==================== ChatApp — Main Application Controller ====================
+// Central application state and all business logic.
+//
+// Core state:
+//   my                     — { id, nickname, password, aesKey } — current user session
+//   contacts[]             — Friend list with RSA key pairs
+//   groups[]               — Group chat list
+//   activeConv             — { type: "contact"|"group", id } — current conversation
+//   fileTransfer.pending   — Active file receive buffers (peerId → chunks)
+//   call                   — Voice call state (active, peerId, timer, mediaConnection)
+//   voice                  — Voice message recording state
+//   imageViewer            — Fullscreen image viewer state (zoom, rotation, pan)
+//
+// Key flows:
+//   1. registerUser()      — Generate ID + salt → derive AES key → create DB → PeerJS init
+//   2. loginUser()          — Read salt from DB → derive AES key → verify → load data
+//   3. sendMessage()        — RSA encrypt → DataChannel send → store in IndexedDB
+//   4. onChatMsg()          — RSA decrypt → store in IndexedDB → render
+//   5. initiateCall()       — getUserMedia → peer.call → MediaConnection
+//   6. transferOutVerify()  — Open source DB → chunked send → QR code
+//   7. transferInConnect()  — Scan QR → connect → receive chunks → store in target DB
+//
 const ChatApp = {
     // Current session
     my: { id: null, nickname: null, password: null, aesKey: null },
@@ -1832,7 +2012,10 @@ const ChatApp = {
         try {
             // 用密码派生密钥，尝试读取 user 记录验证密码
             await DB.openFor(userId);
-            const testKey = await Crypto.deriveAesKey(inputPw);
+            // 读取 salt（老账户无 salt 则回退到固定盐）
+            const saltRecord = await DB.get("user", "_salt");
+            const salt = saltRecord ? saltRecord.salt : null;
+            const testKey = await Crypto.deriveAesKey(inputPw, salt);
             const user = await DB.get("user", "current", testKey);
             if (user && user.userId) {
                 // 密码正确，执行删除
@@ -2088,7 +2271,7 @@ const ChatApp = {
                 regForm.style.display = "block";
                 if (pendingInviteId) {
                     this.pendingInviteId = pendingInviteId;
-                    localStorage.removeItem("mr_invite");
+                    localStorage.removeItem("pchat_invite");
                     const inviteEl = document.getElementById("invite-from");
                     if (inviteEl) {
                         inviteEl.textContent = _i18n.fmt('pchat.register.inviteFrom', 'id', pendingInviteId);
@@ -2154,6 +2337,15 @@ const ChatApp = {
     },
 
     // ---- Register (standalone or from invite link) ----
+    // ======== Registration Flow ========
+    // 1. Generate random 12-char ID (Crypto.generateId)
+    // 2. Generate random 16-byte hex salt (Crypto.randomSalt)
+    // 3. Store salt as plaintext in IndexedDB (id: "_salt")
+    // 4. Derive AES-256 key from password + salt (PBKDF2, 100K iterations)
+    // 5. Create per-account IndexedDB and save encrypted user record
+    // 6. Register account in AccountManager (localStorage)
+    // 7. Initialize PeerJS connection
+    // 8. If invite link present (#invite-xxx), auto-send friend request
     async registerUser() {
         const nick = document.getElementById("nickname-input").value.trim();
         const pw = document.getElementById("password-input").value;
@@ -2164,8 +2356,10 @@ const ChatApp = {
 
         this.my.id = Crypto.generateId();
         this.my.nickname = nick;
+        // 生成随机 salt（16 字节 hex）
+        const salt = Crypto.randomSalt();
         this._showLoading(30, _i18n.t('pchat.loading.deriveVerifyKey'));
-        const verifyKey = await Crypto.deriveAesKey(pw);
+        const verifyKey = await Crypto.deriveAesKey(pw, salt);
         this._showLoading(60, _i18n.t('pchat.loading.deriveDataKey'));
         this.my.aesKey = verifyKey;
         this.my.password = pw;
@@ -2175,15 +2369,18 @@ const ChatApp = {
         await DB.openFor(this.my.id);
 
         this._showLoading(80, _i18n.t('pchat.loading.saveUser'));
+        // 先存 salt（明文，不加密）
+        await DB.putRaw("user", { id: "_salt", data: JSON.stringify({ salt: salt }), ts: Date.now() });
+        // 再存加密的用户记录
         await DB.put("user", { id: "current", userId: this.my.id, nickname: nick, ts: Date.now(), cachedKey: this.my.aesKey }, verifyKey);
 
         // Save to account list
         AccountManager.addAccount(this.my.id, nick);
 
         // 保存邀请人 ID（PeerJS 初始化后发送好友请求）
-        const inv = JSON.parse(localStorage.getItem("mr_invite") || "null");
+        const inv = JSON.parse(localStorage.getItem("pchat_invite") || "null");
         if (inv && inv.inviterId) this.pendingInviteId = inv.inviterId;
-        localStorage.removeItem("mr_invite");
+        localStorage.removeItem("pchat_invite");
         location.hash = "";
 
         this._hideLoading();
@@ -2208,6 +2405,14 @@ const ChatApp = {
     },
 
     // ---- Login (existing user) ----
+    // ======== Login Flow ========
+    // 1. Open IndexedDB for selected account
+    // 2. Read salt from "_salt" record (or null for old accounts)
+    // 3. Derive AES-256 key from password + salt
+    // 4. Decrypt user record to verify password correctness
+    // 5. Load contacts, groups from encrypted IndexedDB
+    // 6. Migrate old image message format if needed
+    // 7. Initialize PeerJS + auto-connect to online contacts
     async loginUser() {
         const pw = document.getElementById("login-password-input").value;
         if (!pw) { this.showAlert(_i18n.t('pchat.alert.enterPassword')); return; }
@@ -2228,9 +2433,13 @@ const ChatApp = {
             this._showLoading(10, _i18n.t('pchat.loading.openDB'));
             await DB.openFor(this._selectedAccountId);
 
+            // 读取 salt（老账户无 salt 则回退到固定盐）
+            const saltRecord = await DB.get("user", "_salt");
+            const salt = saltRecord ? saltRecord.salt : null;
+
             // Verify password
             this._showLoading(30, _i18n.t('pchat.loading.deriveVerifyKey'));
-            const testKey = await Crypto.deriveAesKey(pw);
+            const testKey = await Crypto.deriveAesKey(pw, salt);
 
             this._showLoading(50, _i18n.t('pchat.loading.readUser'));
             const user = await DB.get("user", "current", testKey);
@@ -2290,6 +2499,9 @@ const ChatApp = {
     },
 
     // ---- Migrate old image messages to new thumbnail + files store structure ----
+    // Migrate old-format image messages to new thumbnail + files separation
+    // Old format: full image base64 embedded in message.fileData
+    // New format: 200px JPEG thumbnail in fileData + original in files store
     async _migrateImageMessages() {
         const messages = await DB.list("messages", this.my.aesKey);
         const imageMsgs = messages.filter(m => m.type === "image" && m.fileData && !m.fileId);
@@ -2345,7 +2557,7 @@ const ChatApp = {
                 req.onsuccess = () => resolve();
                 req.onerror = () => reject(req.error);
             });
-            localStorage.removeItem("mr_invite");
+            localStorage.removeItem("pchat_invite");
             location.hash = "";
             location.reload();
         } catch (e) {
@@ -2425,6 +2637,9 @@ const ChatApp = {
     },
 
     // ---- PeerJS initialization ----
+    // Initialize PeerJS connection with our user ID
+    // Sets up event handlers for incoming connections, messages, and calls
+    // Automatically connects to all known contacts after initialization
     _initPeer() {
         this._loadPendingSends();
         PeerConn.init(this.my.id, async (id) => {
@@ -4742,6 +4957,16 @@ const ChatApp = {
     },
 
     // ==================== Voice Call (PeerJS MediaConnection) ====================
+// WebRTC audio calls using PeerJS MediaConnection
+//
+// Flow:
+//   1. Caller: getUserMedia({audio:true}) → peer.call(peerId, stream)
+//   2. Callee: peer.on("call") → show call modal + ringtone
+//   3. Callee: getUserMedia → call.answer(audio) → connected
+//   4. Timer tracks duration, call-log message written on hangup
+//
+// State: idle → waiting → connected → closed
+// Uses Opus codec over WebRTC; requires HTTPS or localhost
     
     _onOutgoingPeerCall(call, peerId) {
         const c = this.call;
@@ -4930,6 +5155,10 @@ const ChatApp = {
         this.incomingCallPeerId = null;
     },
 
+    // Answer incoming voice call
+    // 1. Request microphone access
+    // 2. Answer the MediaConnection with local audio stream
+    // 3. Start call timer
     answerCall() {
         const peerId = this.incomingCallPeerId;
         this._stopRingtone();
@@ -5339,6 +5568,12 @@ const ChatApp = {
         if (hangupBtnEl) hangupBtnEl.style.display = "none";
     },
 
+    // ======== Initiate Voice Call ========
+    // 1. Request microphone access (getUserMedia)
+    // 2. Show call modal with "calling..." state
+    // 3. Create PeerJS MediaConnection (peer.call)
+    // 4. Start call timer on answer
+    // 5. Record call log message with duration
     initiateCall() {
         if (!this.activeConv || !this.activeConv.id) { this.showAlert(_i18n.t('pchat.alert.selectChat')); return; }
         if (this.call.active) this.hangupCall(); else this.startCall(this.activeConv.id);
@@ -6060,6 +6295,9 @@ const ChatApp = {
         lastMsg.innerHTML = `<span style="color:var(--accent)">${text}</span>`;
     },
 
+    // Render the contact list in the sidebar
+    // Shows online/offline status, last message preview, unread counts
+    // Binds click handlers for selecting conversations
     _renderContacts() {
         const list = document.getElementById("contact-list");
         list.innerHTML = "";
@@ -6111,10 +6349,14 @@ const ChatApp = {
     },
 
     // ---- Session lock: prevent duplicate login across tabs ----
+    // Write login token to localStorage for cross-tab session detection
+    // Contains user ID and timestamp; heartbeat updates every 2 seconds
     _writeLoginToken() {
         localStorage.setItem('pchat_login', JSON.stringify({ id: this.my.id, ts: Date.now() }));
     },
 
+    // Start cross-tab duplicate login detection (every 2 seconds)
+    // If another tab logs in with same ID, this tab auto-reloads
     _startLoginHeartbeat() {
         if (this._loginHeartbeat) clearInterval(this._loginHeartbeat);
         this._loginHeartbeat = setInterval(() => {
@@ -6226,7 +6468,19 @@ const ChatApp = {
         await DB.put("messages", msg, this.my.aesKey);
     },
 
-    // ==================== TRANSFER (Account Migration) ====================
+    // ==================== Account Transfer (P2P Data Migration) ====================
+// Transfers complete account data (user, contacts, messages, groups, invitations)
+// from one device to another via a temporary PeerJS connection.
+//
+// Protocol (window size 5 pipeline):
+//   1. Sender: select account + verify password → generate transfer-xxx ID → show QR
+//   2. Receiver: scan QR → connect → send transfer-request
+//   3. Sender: send table-by-table (transfer-start → N× transfer-chunk → table-done)
+//   4. Receiver: ACK each chunk → store in target IndexedDB → confirm table
+//   5. On completion: register account in AccountManager + auto-login
+//
+// Tables transferred: user (incl. _salt), contacts, messages, groups, invitations
+// Large records serialized: Date→{__date}, Uint8Array→{__uint8}
     // Temporary PeerJS instance for transfer
     _transferPeer: null,
     _transferConn: null,
@@ -6334,7 +6588,7 @@ const ChatApp = {
     // ---- UI: Show New Account ----
     showNewAccount() {
         location.hash = "";
-        localStorage.removeItem("mr_invite");
+        localStorage.removeItem("pchat_invite");
         // 隐藏已有账户列表区域，显示注册表单
         const accountList = document.getElementById("account-select-panel");
         if (accountList) accountList.style.display = "none";
@@ -6414,9 +6668,22 @@ const ChatApp = {
                 req.onerror = () => reject(req.error);
             });
 
-            // Verify password
-            const testKey = await Crypto.deriveAesKey(pw);
+            // Get user store
             const userStore = sourceDb.transaction("user", "readonly").objectStore("user");
+
+            // Verify password
+            // 读取 salt（老账户无 salt 则回退到固定盐）
+            const saltRecord = await new Promise((resolve) => {
+                const req = userStore.get("_salt");
+                req.onsuccess = () => {
+                    const raw = req.result;
+                    if (!raw || !raw.data) { resolve(null); return; }
+                    try { resolve(JSON.parse(raw.data).salt); }
+                    catch { resolve(null); }
+                };
+                req.onerror = () => resolve(null);
+            });
+            const testKey = await Crypto.deriveAesKey(pw, saltRecord);
             const user = await new Promise((resolve, reject) => {
                 const req = userStore.get("current");
                 req.onsuccess = async () => {

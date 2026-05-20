@@ -1,193 +1,201 @@
-# PChat 项目技术文档
+# PChat Technical Documentation
 
-> **版本**: `20260515.5` | **数据库版本**: 2 | **文档日期**: 2026-05-16
+> **Version**: `20260520.1` | **Database Version**: 2 | **Date**: 2026-05-20
 
 ---
 
-## 1. 项目概述
+## 1. Project Overview
 
-**PChat** 是一款**纯前端 P2P 即时通讯应用**，基于 PeerJS (WebRTC) 构建，所有消息通过点对点直连传输，无需自建后端服务器。
+**PChat** is a **pure frontend P2P messaging application** built on PeerJS (WebRTC). All messages are transmitted peer-to-peer with no backend server required.
 
-| 属性 | 值 |
-|------|-----|
+| Property | Value |
+|----------|-------|
 | **GitHub** | https://github.com/pchatsam/pchat |
-| **项目路径** | `/home/samyujie/pchat` |
-| **主入口** | `index.html` |
-| **核心代码** | `dist/pchat.js` (~219KB, 4432 行) |
-| **样式表** | `dist/chat.css` (~29KB) |
-| **许可证** | 开源 |
+| **Project Path** | `./pchat` |
+| **Entry** | `index.html` |
+| **Core Code** | `dist/pchat.js` (~356KB, 6914 lines) |
+| **Stylesheet** | `dist/chat.css` (~22KB) |
+| **License** | Open Source |
 
-### 核心特性
+### Core Features
 
-- **端到端加密**：RSA-2048-OAEP 公钥交换 + AES-256-CBC 数据库加密
-- **P2P 直连**：WebRTC DataChannel，无消息中继服务器
-- **丰富媒体**：文本、图片、文件、语音消息
-- **实时通话**：WebRTC 音频通话
-- **群聊**：客户端分组 + 逐一点对点广播
-- **离线存储**：IndexedDB 加密存储全部数据
-- **多账户**：支持浏览器内保存/切换多个账户
-- **账户转移**：P2P 数据迁移到另一设备
-- **10 语言**：中/英/日/德/法/西/葡/希伯来/韩/意
-- **Session Lock**：跨标签页防重复登录
+- **End-to-end encryption**: RSA-2048-OAEP key exchange + AES-256-CBC database encryption
+- **P2P direct connection**: WebRTC DataChannel, no message relay server
+- **Rich media**: Text, images, files, voice messages
+- **Real-time calls**: WebRTC audio
+- **Group chats**: Client-side grouping + per-member P2P broadcast
+- **Offline storage**: All data encrypted in browser IndexedDB
+- **Multi-account**: Save/switch multiple accounts in one browser
+- **Account transfer**: P2P data migration to another device
+- **10 languages**: Chinese, English, Japanese, German, French, Spanish, Portuguese, Hebrew, Korean, Italian
+- **Session Lock**: Cross-tab duplicate login prevention
 
 ---
 
-## 2. 技术栈
+## 2. Tech Stack
 
-| 层级 | 技术 | 说明 |
-|------|------|------|
-| **信令** | PeerJS 1.5.4 | WebRTC 连接建立，使用公共信令服务器 (0.peerjs.com) |
-| **传输** | WebRTC DataChannel | P2P 可靠有序传输 (`reliable: true`) |
-| **语音通话** | WebRTC MediaConnection | 实时音频流 (getUserMedia) |
-| **RSA 加密** | Forge 0.7.0 | RSA-2048-OAEP-SHA256 密钥对生成与加解密 |
-| **AES 加密** | CryptoJS 3.x | AES-256-CBC (OpenSSL 格式, PBKDF2 密钥派生) |
-| **存储** | IndexedDB | 多表加密存储 (每账户独立数据库) |
-| **二维码** | qrcode.js | 用户 ID / 转移 ID 生成 QR 码 |
-| **扫码** | jsQR | 摄像头实时识别 QR 码 |
-| **i18n** | 自研字典方案 | 10 语言运行时切换 |
+| Layer | Technology | Description |
+|-------|------------|-------------|
+| **Signaling** | PeerJS 1.5.4 | WebRTC connection setup, uses public signaling server (0.peerjs.com) |
+| **Transport** | WebRTC DataChannel | P2P reliable ordered transport (`reliable: true`) |
+| **Voice Calls** | WebRTC MediaConnection | Real-time audio stream (getUserMedia) |
+| **RSA Crypto** | Forge 0.7.0 | RSA-2048-OAEP-SHA256 key generation and encryption |
+| **AES Crypto** | CryptoJS 3.x | AES-256-CBC (OpenSSL format, PBKDF2 key derivation) |
+| **Storage** | IndexedDB | Encrypted multi-table storage (per-account database) |
+| **QR Code** | qrcode.js | User ID / transfer ID QR generation |
+| **QR Scan** | jsQR | Camera-based real-time QR recognition |
+| **i18n** | Custom dictionary | 10-language runtime switching |
 
-### 第三方库 (本地打包，零 CDN 依赖)
+### Third-party Libraries (bundled locally, no CDN)
 
 ```
 dist/
-├── peerjs.min.js      87KB    WebRTC 封装库 (PeerJS 1.5.4)
-├── forge.min.js      282KB    RSA 加解密库 (Forge 0.7.0)
-├── crypto-js.js      219KB    AES 加解密 + PBKDF2 (CryptoJS)
-├── qrcode.min.js      20KB    二维码生成
-├── jsqr.min.js       257KB    QR 码识别
-├── pchat.js          219KB    核心业务逻辑
-└── chat.css           29KB    全局样式表
+├── peerjs.min.js      87KB    WebRTC wrapper (PeerJS 1.5.4)
+├── forge.min.js      282KB    RSA crypto (Forge 0.7.0)
+├── crypto-js.js      219KB    AES + PBKDF2 (CryptoJS)
+├── qrcode.min.js      20KB    QR code generation
+├── jsqr.min.js       257KB    QR code scanning
+├── pchat.js          356KB    Core application
+└── chat.css           22KB    Global stylesheet
 ```
 
 ---
 
-## 3. 系统架构
+## 3. System Architecture
 
-### 3.1 整体架构
+### 3.1 Overall Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                     浏览器 (纯前端)                        │
+│                      Browser (pure frontend)              │
 │                                                          │
 │  ┌───────────┐   ┌─────────────┐   ┌──────────────────┐  │
-│  │  UI 层    │   │  ChatApp    │   │   PeerConn       │  │
-│  │ (index    │◄──│  业务逻辑    │◄──│  (PeerJS 封装)    │  │
-│  │  .html +  │   │  - 消息收发  │   │  - 连接管理       │  │
-│  │  chat.css)│   │  - 群组管理  │   │  - 消息加密发送    │  │
-│  └───────────┘   │  - 文件传输  │   │  - flushPending   │  │
-│                  │  - 账户转移  │   └────────┬─────────┘  │
+│  │  UI Layer  │   │  ChatApp    │   │   PeerConn       │  │
+│  │ (index     │◄──│  Business    │◄──│  (PeerJS wrapper) │  │
+│  │  .html +   │   │  - Messaging  │   │  - Connection mgmt│  │
+│  │  chat.css) │   │  - Groups      │   │  - Encrypted send  │  │
+│  └───────────┘   │  - File transfer│   │  - flushPending    │  │
+│                  │  - Account xfer│   └────────┬─────────┘  │
 │                  └──────┬──────┘            │             │
 │                    ┌────┴────┐     ┌────────┴────────┐   │
-│                    │  Crypto │     │       DB        │   │
-│                    │ RSA+AES │     │   (IndexedDB)   │   │
-│                    └─────────┘     └─────────────────┘   │
+│                    │  Crypto  │     │       DB        │   │
+│                    │ RSA+AES  │     │   (IndexedDB)   │   │
+│                    └──────────┘     └─────────────────┘   │
 └──────────────────────────────────────────────────────────┘
-                           │                       │
-                           ▼                       ▼
-              ┌─────────────────────┐    ┌─────────────────┐
-              │  PeerJS 公共信令     │    │  对端浏览器       │
-              │  (0.peerjs.com:443) │    │  (P2P DataChannel)│
-              └─────────────────────┘    └─────────────────┘
+                          │                       │
+                          ▼                       ▼
+             ┌─────────────────────┐    ┌─────────────────┐
+             │  PeerJS Public       │    │  Peer Browser     │
+             │  Signaling           │    │  (P2P DataChannel)│
+             │  (0.peerjs.com:443)  │    └─────────────────┘
+             └─────────────────────┘
 ```
 
-### 3.2 模块详细说明
+### 3.2 Module Details
 
-#### 3.2.1 `Crypto` — 加密模块 (Forge + CryptoJS)
+#### 3.2.1 `Crypto` — Encryption Module (Forge + CryptoJS)
 
 ```
 Crypto
-├── generateKeypair()          RSA-2048 密钥对生成 (forge.pki.rsa)
+├── generateKeypair()          RSA-2048 key pair generation (forge.pki.rsa)
 │   └── e=0x10001 (65537), bits=2048
-├── keyFingerprint(pem)        公钥 PEM 的 MD5 前 8 位 (唯一指纹)
-├── encryptWithPubkey()        公钥加密 → 短消息(≤150B)单块 / 长消息自动分块
-├── decryptWithPrivkey()       私钥解密 → 自动检测分块标记 '|' 切换模式
-├── encryptChunks()            分块加密 (180 字节/块, RSA-OAEP-SHA256)
-├── decryptChunks()            分块解密 (逐块 RSA-OAEP 解密后拼接)
-├── deriveAesKey()             PBKDF2-SHA256 派生 AES-256 密钥 (salt="pchat-salt"+userId, 100,000 iters)
-├── encryptAes()               AES-256-CBC 加密 (CryptoJS, OpenSSL "Salted__" 格式)
-├── decryptAes()               AES-256-CBC 解密
-└── generateId()               12 位随机 ID (排除易混淆字符: 0O1Il)
+├── keyFingerprint(pem)        MD5 of public key PEM, first 8 chars (unique fingerprint)
+├── encryptWithPubkey()        Public key encryption → short(≤150B) single chunk / long auto-chunk
+├── decryptWithPrivkey()       Private key decryption → auto-detect chunk marker '|' for mode switch
+├── encryptChunks()            Chunked encryption (180 bytes/chunk, RSA-OAEP-SHA256)
+├── decryptChunks()            Chunked decryption (per-chunk RSA-OAEP decrypt + concat)
+├── deriveAesKey(pw, salt)     PBKDF2-SHA256 derive AES-256 key (salt=random 16-byte hex or "pchat-salt", 100,000 iters)
+├── encryptAes()               AES-256-CBC encryption (CryptoJS, OpenSSL "Salted__" format)
+├── decryptAes()               AES-256-CBC decryption
+├── randomSalt()               Generate 16-byte random hex salt (crypto.getRandomValues)
+└── generateId()               12-char random ID (excludes ambiguous chars: 0O1Il)
 ```
 
-**加密链路:**
+**Encryption Chain:**
 ```
-发送: 明文 → 对方 RSA 公钥加密 → DataChannel 传输 → 对方 RSA 私钥解密 → 明文
-                                                    ↘ AES 加密后存入 IndexedDB
-    
-分块策略: 消息 > 150 字节 (UTF-8) 时自动分块，每块 180 字节
-```
+Send: Plaintext → Peer's RSA public key → DataChannel → Peer's RSA private key → Plaintext
+                                                          ↘ AES encrypted → IndexedDB
 
-**密钥派生 (注册/登录):**
-```
-密码 + 用户ID → PBKDF2-SHA256 (salt="pchat-salt"+userId, 100,000 iters) → AES-256 密钥
-→ 加密 IndexedDB 所有记录 + 文件数据
-→ 登录时用 cachedKey 加速 (存储在 user 记录中)
+Chunking: Messages > 150 bytes (UTF-8) are auto-chunked, 180 bytes per chunk
 ```
 
-> **注意**: GitHub README 声称使用 "AES-GCM"，但实际代码使用 `CryptoJS.AES.encrypt()` 默认的 **AES-CBC** 模式 (OpenSSL 兼容格式)。
+**Key Derivation (register/login):**
+```
+Register: Password + Random Salt → PBKDF2-SHA256 (100,000 iters) → AES-256 key
+→ Salt stored in plain in IndexedDB user table (id: "_salt")
+→ Encrypt all IndexedDB records + file data
 
-#### 3.2.2 `DB` — IndexedDB 存储模块
+Login: Read salt from DB → Password + Salt → PBKDF2-SHA256 → AES-256 key
+→ Old accounts without salt → fallback to "pchat-salt"
+→ Login uses cachedKey for speed (stored in user record)
+```
 
-数据库命名: `PChat_{userId}` (每账户独立)
+> **Note**: GitHub README claims "AES-GCM" but actual code uses `CryptoJS.AES.encrypt()` default **AES-CBC** mode (OpenSSL compatible format).
+
+#### 3.2.2 `DB` — IndexedDB Storage Module
+
+Database naming: `PChat_{userId}` (per-account)
 
 ```javascript
 DB VER = 2
 
-表结构:
-├── user          keyPath: "id"         索引: userId (unique)
-│   字段: id, encrypted, ts
-│   解密后: { userId, nickname, cachedKey, ts }
+Schema:
+├── user          keyPath: "id"         Indexes: userId (unique)
+│   Records: id, encrypted, ts
+│   Decrypted: { userId, nickname, cachedKey, ts }
+│   Special: id="_salt" stores plaintext salt (data: JSON string, not encrypted)
 │
-├── contacts      keyPath: "contactId"  索引: userId (unique), nickname
-│   字段: contactId, encrypted, ts
-│   解密后: { contactId, userId, nickname, publicKey, keypair, added, requestedKey }
+├── contacts      keyPath: "contactId"  Indexes: userId (unique), nickname
+│   Records: contactId, encrypted, ts
+│   Decrypted: { contactId, userId, nickname, publicKey, keypair, added, requestedKey }
 │
-├── messages      keyPath: "id"         索引: peerId, timestamp
-│   字段: id, encrypted, ts
-│   解密后: { id, peerId, content, ts, direction, fromId, sent, type, ... }
+├── messages      keyPath: "id"         Indexes: peerId, timestamp
+│   Records: id, encrypted, ts
+│   Decrypted: { id, peerId, content, ts, direction, fromId, sent, type, ... }
 │
 ├── groups        keyPath: "id"
-│   解密后: { id, name, members[], created }
+│   Decrypted: { id, name, members[], created }
 │
 ├── files         keyPath: "id"
-│   字段: id, data (AES加密), mime, ts
+│   Records: id, data (AES encrypted), mime, ts
 │
 └── invitations   keyPath: "id"
 ```
 
-**加密存储规则:**
+**Encryption Storage Rules:**
 
-| 存储内容 | 加密方式 |
-|----------|----------|
-| 用户信息、联系人、消息、群组、邀请 | `DB.put/get` → AES-CBC (自动) |
-| 文件/图片原始数据 | `DB.putFile/getFile` → AES-CBC (显式 aesKey 参数) |
-| 缩略图 (200px JPEG) | 嵌入消息记录的 `fileData` 字段 (随消息加密) |
-| 原图 | 存入 `files` 独立存储 |
+| Content | Encryption |
+|---------|------------|
+| User info, contacts, messages, groups, invitations | `DB.put/get` → AES-CBC (automatic) |
+| Salt record | Plaintext in `user` table (`id: "_salt"`) |
+| File/image raw data | `DB.putFile/getFile` → AES-CBC (explicit aesKey param) |
+| Thumbnails (200px JPEG) | Embedded in message record's `fileData` field (encrypted with message) |
+| Original images | Stored in `files` store |
 
-#### 3.2.3 `PeerConn` — PeerJS 连接管理
+#### 3.2.3 `PeerConn` — PeerJS Connection Management
 
 ```javascript
 PeerConn.peers[peerId] = {
-    conn:      DataConnection,  // PeerJS 数据连接
-    myKey:     {publicKey, privateKey},  // 本地 RSA 密钥对
-    peerKey:   PEM,             // 对方公钥 (握手完成后设置)
-    connected: boolean          // 连接是否打开
+    conn:      DataConnection,  // PeerJS data connection
+    myKey:     {publicKey, privateKey},  // Local RSA key pair
+    peerKey:   PEM,             // Peer's public key (set after handshake)
+    connected: boolean          // Connection open status
 }
 ```
 
-**核心方法:**
+**Core Methods:**
 
-| 方法 | 功能 |
-|------|------|
-| `init(myId, callback)` | 初始化 PeerJS，配置 STUN 服务器 |
-| `connect(peerId)` | 建立 P2P 数据连接 |
-| `_bind(conn, peerId, initiator)` | 绑定 data/open/close/error 事件 |
-| `send(peerId, content, msgId)` | RSA 加密后发送 |
-| `flushPending(peerId)` | 重连后补发未送达消息 |
-| `sendVoice/sendFile*/call()` | 媒体/文件/通话 |
-| `close()` | 销毁 PeerJS 实例 |
+| Method | Function |
+|--------|----------|
+| `init(myId, callback)` | Initialize PeerJS, configure STUN servers |
+| `connect(peerId)` | Establish P2P data connection |
+| `_bind(conn, peerId, initiator)` | Bind data/open/close/error events |
+| `send(peerId, content, msgId)` | RSA encrypt + send |
+| `flushPending(peerId)` | Resend undelivered messages after reconnect |
+| `sendVoice/sendFile*/call()` | Media/file/call operations |
+| `close()` | Destroy PeerJS instance |
 
-**STUN 服务器配置 (实测可用, 按延迟排序):**
+**STUN Server Configuration (tested, latency-sorted):**
 ```javascript
 iceServers: [
     { urls: 'stun:stun.chat.bilibili.com:3478' },    // ~95ms
@@ -198,24 +206,24 @@ iceServers: [
 ]
 ```
 
-#### 3.2.4 `AccountManager` — 多账户管理
+#### 3.2.4 `AccountManager` — Multi-Account Management
 
-- 账户列表存储在 `localStorage` (`pchat_accounts`)
-- 每账户独立 IndexedDB (`PChat_{userId}`)
-- 删除账户同时清理 IndexedDB (`indexedDB.deleteDatabase`)
-- 支持密码验证后删除 (防误删)
+- Account list stored in `localStorage` (`pchat_accounts`)
+- Per-account IndexedDB (`PChat_{userId}`)
+- Delete account also cleans IndexedDB (`indexedDB.deleteDatabase`)
+- Password verification before delete
 
-#### 3.2.5 `ChatApp` — 主业务逻辑
+#### 3.2.5 `ChatApp` — Main Business Logic
 
-核心状态对象:
+Core state object:
 ```javascript
 ChatApp = {
     my:           { id, nickname, password, aesKey },
-    contacts:     [],            // 联系人列表 (含密钥对)
-    groups:       [],            // 群组列表
-    unreadCount:  {},            // 未读数 {peerId: count}
-    activeConv:   { type, id },  // 当前会话
-    fileTransfer: { pending: {} },  // 文件接收缓冲区
+    contacts:     [],            // Contact list (with key pairs)
+    groups:       [],            // Group list
+    unreadCount:  {},            // Unread counts {peerId: count}
+    activeConv:   { type, id },  // Current conversation
+    fileTransfer: { pending: {} },  // File receive buffer
     call:         { active, peerId, state, timer, ... },
     voice:        { recording, recorder, chunks, ... },
     imageViewer:  { zoom, rotation, panX, panY, swipeIndex, ... },
@@ -224,276 +232,281 @@ ChatApp = {
 
 ---
 
-## 4. 功能详解
+## 4. Feature Details
 
-### 4.1 用户注册与登录
+### 4.1 Registration and Login
 
-#### 注册流程 (registerUser)
+#### Registration Flow (registerUser)
 
-1. 输入昵称 + 密码 → 校验非空
-2. `Crypto.generateId()` 生成 12 位随机 ID
-3. `Crypto.deriveAesKey(pw)` PBKDF2 派生 AES 密钥 (100,000 迭代)
-4. `DB.openFor(myId)` 创建独立 IndexedDB
-5. `DB.put("user", ...)` 保存加密用户记录 (含 cachedKey 加速登录)
-6. `AccountManager.addAccount()` 注册到本地账户列表
-7. `PeerConn.init()` 初始化 P2P 连接
-8. 如有邀请链接参数 (`#invite-xxx`)，自动发送好友请求
+1. Enter nickname + password → validate non-empty
+2. `Crypto.generateId()` → 12-char random ID
+3. `Crypto.randomSalt()` → 16-byte random hex salt
+4. `DB.openFor(myId)` → create per-account IndexedDB
+5. Store salt: `DB.putRaw("user", { id: "_salt", data: JSON.stringify({ salt }) })`
+6. `Crypto.deriveAesKey(pw, salt)` → PBKDF2 derive AES key
+7. `DB.put("user", ...)` → save encrypted user record (with cachedKey)
+8. `AccountManager.addAccount()` → register to local account list
+9. `PeerConn.init()` → initialize P2P connection
+10. If invite link present (`#invite-xxx`), auto-send friend request
 
-#### 登录流程 (loginUser)
+#### Login Flow (loginUser)
 
-1. 选择已保存账户 → 输入密码
-2. `DB.openFor(selectedId)` 打开对应数据库
-3. `Crypto.deriveAesKey(pw)` 派生密钥 → 尝试解密 `user` 记录验证密码
-4. 优先使用 `cachedKey` (避免重新派生)，无缓存则用 testKey
-5. 加载联系人 + 群组列表
-6. `_migrateImageMessages()` 执行图片消息迁移 (旧格式→缩略图+files分离)
-7. `PeerConn.init()` 初始化 P2P，自动连接在线联系人
+1. Select saved account → enter password
+2. `DB.openFor(selectedId)` → open account database
+3. Read salt: `DB.get("user", "_salt")` → salt (or null for old accounts)
+4. `Crypto.deriveAesKey(pw, salt)` → derive key (fallback to fixed salt)
+5. Decrypt `user` record to verify password
+6. Use `cachedKey` if available (avoid re-derivation)
+7. Load contacts + groups
+8. `_migrateImageMessages()` → migrate old image format
+9. `PeerConn.init()` → initialize P2P, auto-connect online contacts
 
-#### Session Lock (防重复登录)
+#### Session Lock (cross-tab duplicate login prevention)
 
-- 通过 `localStorage.pchat_login` token 实现跨标签页互斥
-- 每 2 秒心跳检测 (`setInterval`) 在 `_startLoginHeartbeat`
-- 检测到同 ID 在其他标签页登录 → 发送 `kick` 事件 → 自动退出
+- Via `localStorage.pchat_login` token, cross-tab mutual exclusion
+- Heartbeat check every 2 seconds in `_startLoginHeartbeat`
+- Detect same ID login in another tab → send `kick` event → auto-logout
 
-### 4.2 好友添加 (RSA 公钥交换握手)
-
-```
-发起方 (Initiator)                          接收方 (Receiver)
-  │                                              │
-  │── PeerJS connect ──────────────────────────►│
-  │── {type:"add", publicKey, nickname} ───────►│  弹出好友请求卡片
-  │                                              │  (friend-request-card)
-  │                                              │  用户点击"接受"
-  │◄── {type:"accept", key, id, nickname} ──────│  生成/加载密钥对
-  │                                              │  保存对方公钥
-  │  保存对方公钥 + 密钥对                         │
-  │  Cross-test 加密验证                          │
-  │                                              │
-  ✓ 双向公钥交换完成，RSA 加密通道建立               │
-```
-
-**关键实现:**
-- 发起方: 建立连接后由业务层发送 `add` 消息 (非 PeerConn 自动)
-- 接收方: `conn.on("data")` → type="add" → `_onAddRequest()` → 显示内联卡片
-- 已存在好友且已有公钥 → 忽略重复 add 请求
-- Accept 时执行 cross-test: 用对方公钥加密 "cross-test" → 验证加密可用
-
-### 4.3 1对1 聊天
-
-**发送消息 (`sendMessage`):**
-1. 检查联系人公钥已交换 (handshake 完成) → 否则提示
-2. 构造消息对象 `{id, peerId, content, ts, direction:"sent", sent:false}`
-3. 通过 `PeerConn.send()` 用对方公钥 RSA 加密后发送
-4. 消息存入 IndexedDB (AES 加密): `DB.put("messages", ...)`
-5. 按消息长度自动选择单块或分块加密 (>150B → 分块)
-
-**接收消息 (`onChatMsg`):**
-1. PeerJS DataChannel `"data"` 事件 → `type:"chat"`
-2. 检查联系人公钥已存在 (handshake 完成)
-3. `Crypto.decryptChunks()` 用己方私钥 RSA 解密
-4. 存入 IndexedDB (AES 加密)
-5. 自动发送已读回执 `receipt`
-
-**消息类型枚举:**
-| type | 说明 | 加密 |
-|------|------|------|
-| `chat` | 文本消息 / HTML 消息 | ✅ RSA |
-| `voice` | 语音消息 (audio/webm base64) | ❌ 明文 |
-| `file-header` | 文件元数据 | ❌ 明文 |
-| `file-chunk` | 文件数据分块 | ❌ 明文 |
-| `file-footer` | 文件传输完成 | ❌ 明文 |
-| `receipt` | 已读回执 | ❌ 明文 |
-| `id-change` | ID 变更通知 | ❌ 明文 |
-
-### 4.4 群聊
-
-**纯客户端分组模型 (无群组服务器):**
+### 4.2 Friend Request (RSA Public Key Exchange Handshake)
 
 ```
-              群主发送消息
+Initiator                               Receiver
+  │                                         │
+  │── PeerJS connect ─────────────────────►│
+  │── {type:"add", publicKey, nickname} ──►│  Show friend request card
+  │                                         │  (friend-request-card inline)
+  │                                         │  User clicks "Accept"
+  │◄── {type:"accept", key, id, nickname} ─│  Generate/load key pair
+  │                                         │  Save peer's public key
+  │  Save peer's public key + key pair      │
+  │  Cross-test encrypt/decrypt verify      │
+  │                                         │
+  ✓ Bidirectional public key exchange complete, RSA channel established   │
+```
+
+**Key points:**
+- Initiator: send `add` message after connection (not PeerConn auto)
+- Receiver: `conn.on("data")` → type="add" → `_onAddRequest()` → show inline card
+- Already friend with existing public key → ignore duplicate add
+- Accept: cross-test encrypt "cross-test" → verify encryption works
+
+### 4.3 1-on-1 Chat
+
+**Sending message (`sendMessage`):**
+1. Check contact public key exchanged (handshake complete) → else prompt
+2. Build message `{id, peerId, content, ts, direction:"sent", sent:false}`
+3. `PeerConn.send()` → RSA encrypt with peer's public key → send
+4. Store in IndexedDB (AES encrypted): `DB.put("messages", ...)`
+5. Auto-select single-chunk or multi-chunk (>150B → chunks)
+
+**Receiving message (`onChatMsg`):**
+1. PeerJS DataChannel `"data"` event → `type:"chat"`
+2. Check contact public key exists (handshake complete)
+3. `Crypto.decryptChunks()` → RSA decrypt with local private key
+4. Store in IndexedDB (AES encrypted)
+5. Auto-send `receipt` read confirmation
+
+**Message Type Enum:**
+| type | Description | Encrypted |
+|------|-------------|-----------|
+| `chat` | Text message / HTML message | ✅ RSA |
+| `voice` | Voice message (audio/webm base64) | ❌ Plain (DTLS only) |
+| `file-header` | File metadata | ❌ Plain |
+| `file-chunk` | File data chunk | ❌ Plain |
+| `file-footer` | File transfer complete | ❌ Plain |
+| `receipt` | Read confirmation | ❌ Plain |
+| `id-change` | ID change notification | ❌ Plain |
+
+### 4.4 Group Chat
+
+**Pure client-side group model (no group server):**
+
+```
+              Group owner sends message
                   │
     ┌─────────────┼─────────────┐
     ▼             ▼             ▼
-  成员A公钥加密  成员B公钥加密  成员C公钥加密
+  Member A RSA  Member B RSA  Member C RSA
+  encrypt       encrypt       encrypt
     ▼             ▼             ▼
-  P2P 直连      P2P 直连      P2P 直连
+  P2P direct    P2P direct    P2P direct
     ▼             ▼             ▼
-  成员A收到     成员B收到     成员C收到
+  Member A     Member B     Member C
   receipts{A: ✓} receipts{B: ✓} receipts{C: ✓}
 ```
 
-**实现要点:**
-1. 创建群组 → `group.members[]` 存储成员 contactId 列表
-2. 发送群消息 → 遍历成员，对每人单独 RSA 加密 + 发送
-3. 统一 `msgId` 关联所有成员的发送记录 (群主侧)
-4. 每条消息带 `receipts` 字段: `{memberId: timestamp}` 跟踪已读
-5. 离线成员消息暂存 → 上线后 `flushPending()` 补发
-6. 成员收到群消息 → `fromId` 标识发送方
+**Key points:**
+1. Create group → `group.members[]` stores member contactId list
+2. Send group message → iterate members, RSA encrypt + send to each
+3. Unified `msgId` links all member send records (owner side)
+4. Each message has `receipts` field: `{memberId: timestamp}` tracking reads
+5. Offline member messages queued → `flushPending()` on reconnect
+6. Member receives group message → `fromId` identifies sender
 
-**消息路由判断:**
-- `activeConv.type === "group"` → 遍历 group.members 发送
-- `activeConv.type === "contact"` → 直接发送给对应 userId
+**Message routing:**
+- `activeConv.type === "group"` → iterate group.members to send
+- `activeConv.type === "contact"` → direct send to userId
 
-### 4.5 文件传输 (分块机制)
+### 4.5 File Transfer (Chunking)
 
-#### 图片传输
+#### Image Transfer
 
 ```
-发送方:
+Sender:
   1. FileReader.readAsDataURL() → base64
-  2. _generateThumbnail(200px JPEG) → 缩略图 base64
-  3. SHA-256 计算完整原图哈希
-  4. 分割 base64 为 16KB chunks (DataChannel 限制)
+  2. _generateThumbnail(200px JPEG) → thumbnail base64
+  3. SHA-256 hash of full original image
+  4. Split base64 into 16KB chunks (DataChannel limit)
   5. file-header → N× file-chunk → file-footer
 
-接收方:
-  1. file-header → 创建接收记录 (_pendingFileReceives)
-  2. file-chunk → 缓存到 chunks[] 数组 (去重保护, 按 index)
-  3. file-footer → 校验长度 + SHA-256 哈希
-  4. 拼接完整 base64 → 存入 IndexedDB (AES 加密)
-  5. 渲染缩略图在消息列表
+Receiver:
+  1. file-header → create receive record (_pendingFileReceives)
+  2. file-chunk → buffer to chunks[] (dedup by index)
+  3. file-footer → verify length + SHA-256 hash
+  4. Concat full base64 → store in IndexedDB (AES encrypted)
+  5. Render thumbnail in message list
 ```
 
-#### 普通文件传输
+#### File Transfer
 
-- 与图片相同机制，但不生成缩略图
-- 以文件卡片形式展示 (文件名 + 大小 + 图标)
-- 点击下载 → 从 DB 读取 → `URL.createObjectURL` → 触发下载
+- Same mechanism as images, no thumbnail
+- Shown as file card (filename + size + icon)
+- Click download → read from DB → `URL.createObjectURL` → trigger download
 
-#### 完整性校验
+#### Integrity Verification
 
-- **长度校验**: 接收到的 chunks 拼接后 base64 长度 vs 发送方声明
-- **哈希校验**: SHA-256 哈希值比对 (防止中间损坏)
-- **去重保护**: 重复 index 的 chunk 自动跳过 (`if pendingChunks[index] return`)
+- **Length check**: Concatenated base64 length vs sender declaration
+- **Hash check**: SHA-256 hash comparison (prevent corruption)
+- **Dedup**: Duplicate index chunks auto-skipped
 
-### 4.6 语音消息
+### 4.6 Voice Messages
 
-**录制:**
-1. 点击 🎙️ → `navigator.mediaDevices.getUserMedia({audio:true})`
-2. `MediaRecorder` 录制 audio/webm (默认编码)
-3. 再次点击停止 → `reader.readAsDataURL(blob)` → base64
-4. 保存消息记录 (含 `duration` 时长)
-5. 通过 DataChannel 明文发送 `{type:"voice", content, duration}`
+**Recording:**
+1. Click 🎙️ → `navigator.mediaDevices.getUserMedia({audio:true})`
+2. `MediaRecorder` records audio/webm (default codec)
+3. Click again to stop → `reader.readAsDataURL(blob)` → base64
+4. Save message record (with `duration`)
+5. Send via DataChannel as plain `{type:"voice", content, duration}`
 
-**播放:**
-1. 点击语音消息 → base64 → ArrayBuffer → Blob URL
+**Playback:**
+1. Click voice message → base64 → ArrayBuffer → Blob URL
 2. `new Audio(blobUrl).play()`
-3. UI 显示播放状态 (动态样式)
+3. UI shows playing state (dynamic styles)
 
-> **安全限制**: 语音消息未做应用层加密 (仅依赖 WebRTC DTLS 传输加密)。
+> **Security note**: Voice messages are NOT application-layer encrypted (DTLS transport only).
 
-### 4.7 实时语音通话 (PeerJS MediaConnection)
-
-```
-呼叫方                             被叫方
-  │                                  │
-  │ getUserMedia({audio:true})       │
-  │ peer.call(peerId, stream) ──────►│
-  │                                  │  peer.on("call", call)
-  │                                  │  ChatApp._onIncomingPeerCall()
-  │                                  │  弹出 call-modal + 响铃
-  │◄── call.answer(stream) ─────────│  getUserMedia + answer
-  │                                  │
-  ◄════ 双向 Opus 音频流 (WebRTC) ═══►
-  │                                  │
-  │ call.close() ───────────────────►│  挂断
-  │ _logCall(duration)               │  _logCall(duration)
-```
-
-**功能:**
-- 来电弹窗 (`#call-modal`): 显示昵称 + ID + 接听/拒接按钮
-- 通话计时器 (`call.timerInterval`): 实时更新 `mm:ss`
-- 通话记录: 自动写入 `type:"call-log"` 消息
-- 状态: `idle → waiting → connected → closed`
-
-### 4.8 图片查看器
-
-全屏覆盖层 (`#image-viewer`)，支持:
-
-| 操作 | 实现 |
-|------|------|
-| **手势缩放** | 双指捏合 (touchstart/touchmove) / 鼠标滚轮 (wheel) |
-| **拖拽平移** | mousedown/touchstart → mousemove → translate(panX, panY) |
-| **左右滑动** | 当前对话图片间切换 (含邻居预加载 `img2`) |
-| **旋转** | CSS `transform: rotate(90°×N)` 递增旋转 |
-| **下载** | `fetch(blobUrl)` → `URL.createObjectURL` → `<a download>` |
-| **工具栏** | 5 秒无操作自动隐藏 (`toolbarTimer`) |
-
-### 4.9 账户转移 (P2P 数据迁移)
-
-通过临时 PeerJS 连接将完整数据库从一台设备迁移到另一台:
+### 4.7 Real-Time Voice Calls (PeerJS MediaConnection)
 
 ```
-转出方 (Transfer Out)                      转入方 (Transfer In)
-  │                                              │
-  │ 1. 选择账户 + 密码验证 (deriveAesKey)          │
-  │ 2. 生成 transfer-xxx ID                       │
-  │ 3. new Peer(transferId)                       │
-  │ 4. 显示 QR 码 (transfer-xxx)                   │
-  │                                              │  1. 扫码/手动输入 transfer ID
-  │◄── PeerJS connect ──────────────────────────│  new Peer + connect
-  │                                              │
-  │── transfer-request ◄────────────────────────│  发送请求
-  │── transfer-start (tables[]) ────────────────►│
-  │── table-start (name, total) ────────────────►│  准备接收
-  │── transfer-chunk (table, index, data) ──────►│  逐行存储
-  │◄── transfer-ack (index) ────────────────────│  行确认 (流水线)
-  │── ... (batch of 5) ─────────────────────────►│  (窗口大小=5)
-  │── table-done (tableName) ───────────────────►│  表完成
-  │◄── table-ack (tableName) ───────────────────│  表确认
-  │── ... next table ...                         │
-  │── transfer-complete ────────────────────────►│
-  │                                              │  AccountManager.addAccount()
-  │                                              │  完成
+Caller                                Callee
+  │                                     │
+  │ getUserMedia({audio:true})          │
+  │ peer.call(peerId, stream) ─────────►│
+  │                                     │  peer.on("call", call)
+  │                                     │  ChatApp._onIncomingPeerCall()
+  │                                     │  Show call-modal + ringtone
+  │◄── call.answer(stream) ────────────│  getUserMedia + answer
+  │                                     │
+  ◄════ Bidirectional Opus audio (WebRTC) ═══►
+  │                                     │
+  │ call.close() ──────────────────────►│  Hangup
+  │ _logCall(duration)                  │  _logCall(duration)
 ```
 
-**传输协议:**
-| 消息类型 | 方向 | 说明 |
-|----------|------|------|
-| `transfer-request` | in→out | 转入方发起请求 |
-| `transfer-start` | out→in | 开始传输，列出表名 |
-| `table-start` | out→in | 某表开始，含总数 |
-| `transfer-chunk` | out→in | 单行数据 (JSON 序列化) |
-| `transfer-ack` | in→out | 行确认收到 |
-| `table-done` | out→in | 表传输完成 |
-| `table-ack` | in→out | 表确认 |
-| `transfer-complete` | out→in | 全部完成 |
+**Features:**
+- Incoming call modal (`#call-modal`): Shows nickname + ID + accept/reject
+- Call timer: Real-time `mm:ss`
+- Call log: Auto-write `type:"call-log"` message
+- States: `idle → waiting → connected → closed`
 
-**流水线控制:** 窗口大小 5 (最多 5 个未确认 chunk)，收到 ack 后释放槽位发送下一个。
+### 4.8 Image Viewer
 
-**数据类型序列化:**
+Fullscreen overlay (`#image-viewer`) with:
+
+| Action | Implementation |
+|--------|----------------|
+| **Pinch zoom** | Two-finger pinch (touch) / mouse wheel (desktop) |
+| **Pan** | mousedown/touchstart → mousemove → translate(panX, panY) |
+| **Swipe** | Left/right swipe between images in conversation |
+| **Rotate** | CSS `transform: rotate(90°×N)` incremental |
+| **Download** | `fetch(blobUrl)` → `URL.createObjectURL` → `<a download>` |
+| **Toolbar** | Auto-hide after 5s inactivity (`toolbarTimer`) |
+
+### 4.9 Account Transfer (P2P Data Migration)
+
+Transfer complete database from one device to another via temporary PeerJS connection:
+
+```
+Sender (Transfer Out)                        Receiver (Transfer In)
+  │                                             │
+  │ 1. Select account + password verify         │
+  │ 2. Generate transfer-xxx ID                 │
+  │ 3. new Peer(transferId)                     │
+  │ 4. Show QR code (transfer-xxx)              │
+  │                                             │  1. Scan QR / enter transfer ID
+  │◄── PeerJS connect ─────────────────────────│  new Peer + connect
+  │                                             │
+  │── transfer-request ◄───────────────────────│  Send request
+  │── transfer-start (tables[]) ──────────────►│
+  │── table-start (name, total) ──────────────►│  Prepare receive
+  │── transfer-chunk (table, index, data) ────►│  Row-by-row store
+  │◄── transfer-ack (index) ──────────────────│  Row ACK (pipeline)
+  │── ... (batch of 5) ──────────────────────►│  (window size=5)
+  │── table-done (tableName) ─────────────────►│  Table complete
+  │◄── table-ack (tableName) ─────────────────│  Table ACK
+  │── ... next table ...                       │
+  │── transfer-complete ──────────────────────►│
+  │                                             │  AccountManager.addAccount()
+  │                                             │  Complete
+```
+
+**Transfer Protocol:**
+| Type | Direction | Description |
+|------|-----------|-------------|
+| `transfer-request` | in→out | Receiver initiates |
+| `transfer-start` | out→in | Start transfer, list tables |
+| `table-start` | out→in | Table start with count |
+| `transfer-chunk` | out→in | Single row (JSON serialized) |
+| `transfer-ack` | in→out | Row ACK |
+| `table-done` | out→in | Table complete |
+| `table-ack` | in→out | Table ACK |
+| `transfer-complete` | out→in | All done |
+
+**Pipeline control:** Window size 5 (max 5 unACK'd chunks), release slot on ACK.
+
+**Data serialization:**
 - `Date` → `{__date: timestamp}`
 - `Uint8Array` → `{__uint8: [bytes]}`
-- 双方用 `_convertToJSON` / `_convertFromJSON` 做双向转换
+- Both sides use `_convertToJSON` / `_convertFromJSON`
 
-### 4.10 二维码 / 扫码
+### 4.10 QR Code / Scanning
 
-- **展示二维码**: 将自身 ID 编码为 QR 码 (`#qr-modal`)
-- **扫码添加好友**: 调用摄像头 (`<video>` + `getUserMedia`) → jsQR 实时识别 → 提取 ID → 自动发起好友请求
-- **扫码转移**: 在转入模式下扫码 → 识别 `transfer-xxx` ID → 自动连接
-- **自动关闭**: 检测到对方扫描后，`closeQRModal()` 自动关闭弹窗
-- **成功动画**: 扫码成功有视觉反馈
+- **Show QR**: Encode own ID as QR code (`#qr-modal`)
+- **Scan to add friend**: Camera (`<video>` + `getUserMedia`) → jsQR real-time → extract ID → auto-send friend request
+- **Scan to transfer**: In transfer mode, scan → recognize `transfer-xxx` → auto-connect
+- **Auto-close**: Detect peer scan → `closeQRModal()` auto-closes
+- **Success animation**: Visual feedback on scan success
 
 ---
 
-## 5. 消息数据结构
+## 5. Message Data Structures
 
-### 文本消息
+### Text Message
 ```javascript
 {
     id: "msg_{peerId}_{timestamp}",
-    peerId: string,          // 对端/群组 ID
-    content: string,         // 消息正文 (HTML 消息以 [HTML] 前缀标记)
-    ts: number,              // 时间戳
+    peerId: string,          // Peer/group ID
+    content: string,         // Message text (HTML messages prefixed with [HTML])
+    ts: number,              // Timestamp
     direction: "sent" | "received",
-    fromId: string,          // 发送方 ID (群聊中标识发言者)
-    sent: boolean,           // 是否已成功发出
-    isHtml: boolean,         // 是否为 HTML 格式
-    receipts: {}             // 已读回执 {memberId: timestamp}
+    fromId: string,          // Sender ID (in group chat)
+    sent: boolean,           // Successfully sent
+    isHtml: boolean,         // HTML format
+    receipts: {}             // Read receipts {memberId: timestamp}
 }
 ```
 
-### 图片消息
+### Image Message
 ```javascript
 {
     id, peerId, ts, direction, fromId,
@@ -501,13 +514,13 @@ ChatApp = {
     fileName: string,
     mimeType: string,
     fileSize: number,
-    fileId: string,          // 原图在 files 存储中的 ID
-    fileData: string,        // 缩略图 base64 (200px JPEG, 嵌入消息)
-    originalHash: string     // 原图 SHA-256 哈希
+    fileId: string,          // Original image ID in files store
+    fileData: string,        // Thumbnail base64 (200px JPEG, embedded)
+    originalHash: string     // SHA-256 hash of original
 }
 ```
 
-### 文件消息
+### File Message
 ```javascript
 {
     id, peerId, ts, direction, fromId,
@@ -515,290 +528,290 @@ ChatApp = {
     fileName: string,
     mimeType: string,
     fileSize: number,
-    fileId: string,          // 原文件在 files 存储中的 ID
-    fileData: string         // 完整文件 base64 (AES 加密存储)
+    fileId: string,          // File ID in files store
+    fileData: string         // Full file base64 (AES encrypted storage)
 }
 ```
 
-### 语音消息
+### Voice Message
 ```javascript
 {
     id, peerId, ts, direction, fromId,
     type: "voice",
     content: string,         // audio/webm base64
-    duration: number         // 时长 (秒)
+    duration: number         // Duration (seconds)
 }
 ```
 
-### 通话记录
+### Call Log
 ```javascript
 {
     id, peerId, ts, direction, fromId,
     type: "call-log",
-    content: string          // "📞 通话 3分20秒" (i18n)
+    content: string          // "📞 Call 3m20s" (i18n)
 }
 ```
 
 ---
 
-## 6. UI 结构
+## 6. UI Structure
 
 ```
 index.html
-├── #setup-panel                    注册/登录面板
+├── #setup-panel                    Registration/Login panel
 │   ├── .setup-box
 │   │   ├── h2 "🍃 P.Chat"
-│   │   ├── #invite-from            邀请来源提示
-│   │   ├── #invite-info            注册表单 (昵称 + 密码 + 按钮)
-│   │   ├── #account-select-panel   账户选择列表
-│   │   ├── #login-password-panel   密码输入 + 登录按钮
-│   │   ├── .corner-btn-left        "转移账户" 按钮
-│   │   ├── .corner-btn-right       "新建账户" 按钮
-│   │   └── #login-loading          进度条 (宽 220px)
+│   │   ├── #invite-from            Invite source hint
+│   │   ├── #invite-info            Register form (nickname + password + button)
+│   │   ├── #account-select-panel   Account selection list
+│   │   ├── #login-password-panel   Password input + login button
+│   │   ├── .corner-btn-left        "Transfer Account" button
+│   │   ├── .corner-btn-right       "New Account" button
+│   │   └── #login-loading          Progress bar (220px wide)
 │
-├── #main-panel                     主界面
-│   ├── #sidebar                    侧边栏 (可拖动调整宽度)
-│   │   ├── .sidebar-header         用户信息 (昵称+ID+二维码+扫码)
+├── #main-panel                     Main interface
+│   ├── #sidebar                    Sidebar (draggable width)
+│   │   ├── .sidebar-header         User info (nickname+ID+QR+scan)
 │   │   ├── Tab: #tab-contacts / #tab-groups
-│   │   ├── #friend-request-card    好友请求内联卡片
+│   │   ├── #friend-request-card    Friend request inline card
 │   │   ├── #contact-tab / #group-tab
-│   │   └── #add-friend-box         ID 输入 + 添加按钮
-│   ├── #sidebar-resize             拖动分隔条
-│   └── #chat-area                  聊天区域
-│       ├── #chat-placeholder       空状态占位 "选择一个联系人开始聊天"
-│       └── #chat-active            活跃会话
-│           ├── #chat-header        标题 + 返回 + 通话按钮
-│           ├── #call-status-bar    通话状态栏 (计时器 + 挂断)
-│           ├── #message-list       消息列表 (滚动容器)
-│           └── #input-area         输入区
-│               ├── .input-tools    语音 🎙️ / 图片 🖼️ / 文件 📎
-│               ├── textarea        消息输入
-│               └── #send-btn       发送按钮
+│   │   └── #add-friend-box         ID input + add button
+│   ├── #sidebar-resize             Drag separator
+│   └── #chat-area                  Chat area
+│       ├── #chat-placeholder       Empty state "Select a contact to start chatting"
+│       └── #chat-active            Active conversation
+│           ├── #chat-header        Title + back + call button
+│           ├── #call-status-bar    Call status bar (timer + hangup)
+│           ├── #message-list       Message list (scroll container)
+│           └── #input-area         Input area
+│               ├── .input-tools    Voice 🎙️ / Image 🖼️ / File 📎
+│               ├── textarea        Message input
+│               └── #send-btn       Send button
 │
-├── #call-modal                     语音通话弹窗 (来电/通话中)
-├── #create-room-modal              创建群组弹窗 (名称 + 多选成员)
-├── #alert-modal                    消息提示弹窗
-├── #qr-modal                       我的 ID 二维码弹窗
-├── #scan-modal                     扫码弹窗 (video + canvas)
-├── #delete-confirm-modal           删除账户密码确认弹窗
-├── #image-viewer                   图片全屏查看器 (缩放+旋转+滑动)
-├── #transfer-out-panel             账户转出面板 (选择+验证+QR)
-└── #transfer-in-panel              账户转入面板 (扫码+输入ID+连接)
+├── #call-modal                     Voice call modal (incoming/active)
+├── #create-room-modal              Create group modal (name + member multi-select)
+├── #alert-modal                    Alert modal
+├── #qr-modal                       My ID QR code modal
+├── #scan-modal                     QR scan modal (video + canvas)
+├── #delete-confirm-modal           Delete account password confirmation
+├── #image-viewer                   Image fullscreen viewer (zoom+rotate+swipe)
+├── #transfer-out-panel             Account transfer-out panel (select+verify+QR)
+└── #transfer-in-panel              Account transfer-in panel (scan+enter ID+connect)
 ```
 
 ---
 
-## 7. 国际化 (i18n)
+## 7. Internationalization (i18n)
 
-支持 **10 种语言**: 中文、英文、日文、德文、法文、西班牙文、葡萄牙文、希伯来文、韩文、意大利文
+Supports **10 languages**: Chinese, English, Japanese, German, French, Spanish, Portuguese, Hebrew, Korean, Italian
 
-**实现机制:**
+**Implementation:**
 ```javascript
-// 1. 浏览器语言检测 (navigator.language 前 2 字符)
+// 1. Browser language detection (navigator.language first 2 chars)
 _i18n.lang = navigator.language.substring(0,2)
-// 2. 字典映射
+// 2. Dictionary mapping
 _i18n.dict = { 'pchat.placeholder.nickname': { zh: '输入你的昵称', en: 'Enter your nickname', ... } }
-// 3. 翻译函数
-_i18n.t(key) → 返回当前语言的翻译文本
-// 4. 带参数格式化
-_i18n.fmt(key, placeholder, value) → '你的ID: abc123'
-// 5. UI 占位符应用 (在 init() 中调用)
-_i18n.applyUI() → 设置所有 input placeholder + button title
-// 6. HTML 语言切换 (index.html <head> 中内联)
-.lang-zh .zh { display:inline }  (JS 生成 <style> 标签)
+// 3. Translation function
+_i18n.t(key) → returns current language text
+// 4. Parameter formatting
+_i18n.fmt(key, placeholder, value) → 'Your ID: abc123'
+// 5. UI placeholder application (called in init())
+_i18n.applyUI() → sets all input placeholders + button titles
+// 6. HTML language switching (inline in index.html <head>)
+.lang-zh .zh { display:inline }  (JS generates <style> tag)
 ```
 
 ---
 
-## 8. 安全模型
+## 8. Security Model
 
-### 8.1 完整加密链路
+### 8.1 Complete Encryption Chain
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  用户 A (发送方)                                         │
+│  User A (Sender)                                        │
 │                                                         │
-│  明文 ──► RSA-2048-OAEP (B 的公钥) ──► 密文              │
+│  Plaintext → RSA-2048-OAEP (B's public key) → Ciphertext│
 │                │                                        │
-│                │  >150B → 分块加密 (180B×N)              │
+│                │  >150B → chunked encryption            │
 │                ▼                                        │
 │         DataChannel ─────────────►                      │
-│         (DTLS-SRTP 传输加密)       │                     │
+│         (DTLS transport encryption)       │              │
 │                                    ▼                     │
-│                              用户 B (接收方)              │
+│                              User B (Receiver)           │
 │                                                         │
-│                              密文 ──► RSA 私钥解密 ──► 明文│
-│                                         │               │
-│                                         ▼               │
-│                              AES-CBC 加密 ──► IndexedDB  │
+│                              Ciphertext → RSA private key → Plaintext
+│                                        │               │
+│                                        ▼               │
+│                              AES-CBC encrypt → IndexedDB │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 8.2 安全特性
+### 8.2 Security Features
 
-| 防护层 | 实现 |
-|--------|------|
-| **消息传输** | RSA-2048-OAEP-SHA256 端到端加密 |
-| **长消息** | 超过 150 字节自动分块 (180 字节/块) |
-| **数据库** | AES-256-CBC 加密全部记录 |
-| **文件存储** | AES-256-CBC 独立加密 |
-| **密钥派生** | PBKDF2-SHA256, 100,000 次迭代, salt="pchat-salt"+userId |
-| **密钥隔离** | 每账户独立 IndexedDB + 独立 AES 密钥 |
-| **公钥指纹** | MD5(publicKey PEM) 前 8 位 |
-| **文件校验** | SHA-256 哈希 + 长度双重校验 |
-| **传输层** | WebRTC DTLS 加密通道 |
-| **防重复登录** | Session Lock 跨标签页互斥 |
-| **删除验证** | 删除账户需输入密码验证 |
+| Protection Layer | Implementation |
+|-----------------|----------------|
+| Message transport | RSA-2048-OAEP-SHA256 end-to-end |
+| Long messages | Auto-chunk (>150B, 180B/chunk) |
+| Database | AES-256-CBC all records |
+| File storage | AES-256-CBC independent |
+| Key derivation | PBKDF2-SHA256, 100K iterations, random salt per account |
+| Key isolation | Per-account IndexedDB + per-account AES key |
+| Public key fingerprint | MD5(publicKey PEM) first 8 chars |
+| File integrity | SHA-256 hash + length double check |
+| Transport | WebRTC DTLS encrypted channel |
+| Duplicate login | Session Lock cross-tab mutual exclusion |
+| Delete verification | Password verification before account deletion |
 
-### 8.3 安全边界与限制
+### 8.3 Security Boundaries and Limitations
 
-| 风险 | 说明 |
-|------|------|
-| **信令泄露** | 使用 PeerJS 公共信令服务器 (0.peerjs.com)，用户 ID 暴露给信令服务 |
-| **语音消息** | 语音消息 `{type:"voice"}` 不经过 RSA 应用层加密，仅依赖 DTLS 传输加密 |
-| **群聊可见性** | 群主向每个成员单独加密发送，群主可见所有成员的消息内容 |
-| **无前向安全性** | 使用长期 RSA 密钥对，非临时密钥 (无 PFS) |
-| **密钥存储** | 私钥以 AES 加密存储在 IndexedDB，浏览器环境的安全性取决于设备本身 |
-| **WebRTC 元数据** | IP 地址通过 ICE 暴露给对端 (STUN 服务器可见) |
+| Risk | Description |
+|------|-------------|
+| Signaling leakage | Public PeerJS server (0.peerjs.com) sees user IDs |
+| Voice messages | `{type:"voice"}` not RSA encrypted, DTLS only |
+| Group visibility | Group owner can see all messages (per-member encryption) |
+| No forward secrecy | Long-term RSA key pairs, no PFS |
+| Key storage | Private key AES-encrypted in IndexedDB, depends on device security |
+| WebRTC metadata | IP address exposed via ICE to peer |
 
 ---
 
-## 9. 部署与使用
+## 9. Deployment and Usage
 
-### 9.1 运行方式
+### 9.1 Running
 
 ```bash
-# 方式一: 本地 HTTP 服务 (推荐开发)
-cd /home/samyujie/pchat
+# Method 1: Local HTTP server (recommended for dev)
+cd pchat
 python3 -m http.server 8080
-# 访问 http://localhost:8080
+# Visit http://localhost:8080
 
-# 方式二: HTTPS 部署 (语音功能需要 HTTPS 或 localhost)
-# 部署到 Nginx / Caddy / GitHub Pages 等静态服务器
-# 示例 Caddy 配置:
-# :5009 {
-#     tls internal
-#     reverse_proxy localhost:5008
-# }
+# Method 2: HTTPS deployment (voice features need HTTPS or localhost)
+# Deploy to Nginx / Caddy / GitHub Pages etc.
 
-# 方式三: 直接用浏览器打开 index.html
-# (部分功能如语音通话需要 HTTP 服务)
+# Method 3: Open index.html directly in browser
+# (some features like voice calls need HTTP server)
 ```
 
-### 9.2 浏览器兼容性
+### 9.2 Browser Compatibility
 
-| 浏览器 | 支持 |
-|--------|------|
-| Chrome / Edge 90+ | ✅ 完全支持 |
-| Firefox 90+ | ✅ 完全支持 |
-| Safari 15+ | ✅ 基本支持 |
-| iOS Safari / Chrome | ✅ 基本支持 (响应式布局) |
-| 移动端 Chrome / Firefox | ✅ 支持 |
+| Browser | Support |
+|---------|---------|
+| Chrome / Edge 90+ | ✅ Full |
+| Firefox 90+ | ✅ Full |
+| Safari 15+ | ✅ Basic |
+| iOS Safari / Chrome | ✅ Basic (responsive) |
+| Mobile Chrome / Firefox | ✅ Supported |
 
-### 9.3 使用流程
+### 9.3 Usage Flow
 
-1. **注册**: 打开页面 → 输入昵称 + 密码 → 自动生成 12 位 ID
-2. **添加好友**: 分享 ID / 生成二维码 / 扫码
-3. **聊天**: 文本、图片、文件、语音消息
-4. **通话**: 点击 📞 发起语音通话
-5. **群聊**: 群组 Tab → "+ 新建群" → 选择成员
-6. **换设备**: "转移账户" → 生成 QR → 新设备扫码接收
+1. **Register**: Open page → enter nickname + password → auto-generate 12-char ID
+2. **Add friend**: Share ID / generate QR / scan
+3. **Chat**: Text, images, files, voice messages
+4. **Call**: Click 📞 to initiate voice call
+5. **Groups**: Groups Tab → "+ New Group" → select members
+6. **Transfer device**: "Transfer Account" → generate QR → scan on new device
 
 ---
 
-## 10. 文件清单
+## 10. File List
 
 ```
 pchat/
-├── index.html                  主入口页面 (含全部 UI HTML)
-├── README.md                   项目说明 (英文)
-├── webrtc-test.html            WebRTC 网络诊断工具
-├── webrtc-candidates.html      ICE Candidate 检测工具
+├── index.html                  Main entry page (all UI HTML)
+├── README.md                   Project description (English)
+├── webrtc-test.html            WebRTC network diagnostic tool
+├── webrtc-candidates.html      ICE Candidate detection tool
 ├── .gitignore
 │
 ├── docs/
-│   ├── pchat-project-doc.md    本技术文档
-│   └── CHANGELOG.md            修改日志
+│   ├── pchat-project-doc.md    This technical documentation
+│   ├── SECURITY.md             Security model and audit
+│   ├── DEPLOY.md               Deployment guide
+│   ├── CONTRIBUTING.md         Contribution guidelines
+│   ├── bugs.md                 Bug report
+│   └── CHANGELOG.md            Version history
 │
 └── dist/
-    ├── pchat.js                核心业务逻辑 (219KB, 4432 行)
-    ├── chat.css                全局样式表 (29KB)
+    ├── pchat.js                Core business logic (356KB, 6914 lines)
+    ├── chat.css                Global stylesheet (22KB)
     ├── peerjs.min.js           PeerJS 1.5.4 (87KB)
-    ├── forge.min.js            Forge 0.7.0 RSA 库 (282KB)
-    ├── crypto-js.js            CryptoJS AES 库 (219KB)
-    ├── qrcode.min.js           二维码生成 (20KB)
-    ├── jsqr.min.js             QR 码识别 (257KB)
-    └── ice-test.html           STUN 服务器连通性测试页
+    ├── forge.min.js            Forge 0.7.0 RSA library (282KB)
+    ├── crypto-js.js            CryptoJS AES library (219KB)
+    ├── qrcode.min.js           QR code generation (20KB)
+    └── jsqr.min.js             QR code scanning (257KB)
 ```
 
 ---
 
-## 11. 关键设计决策
+## 11. Key Design Decisions
 
-| 决策 | 理由 |
-|------|------|
-| 纯前端，无后端 | 最大隐私保护，零运维成本 |
-| PeerJS 公共信令 | 无需自建信令服务器，降低部署门槛 |
-| RSA-2048 每联系人独立密钥对 | 简化密钥管理，隔离不同联系人的加密 |
-| 分块加密 (180B/块) | RSA-2048 单次加密上限 ~190 字节 |
-| IndexedDB 而非 localStorage | 支持大容量存储 (图片/文件可达 GB 级) |
-| 群聊点对点广播 | 无需群密钥管理和服务器协调 |
-| 依赖本地打包 | 离线可用，不依赖 CDN，隐私友好 |
-| OpenSSL 格式 AES | CryptoJS 默认格式，跨语言兼容 |
-| 缩略图 + 原图分离 | 缩略图快速渲染，原图按需下载 |
-
----
-
-## 12. 改进建议
-
-| 建议 | 优先级 | 说明 |
-|------|--------|------|
-| **视频通话** | 中 | 当前仅支持音频，可扩展 `getUserMedia({video:true})` |
-| **自定义信令服务器** | 高 | 替换公共 PeerJS 信令，提升可靠性和隐私 |
-| **语音消息加密** | 高 | 当前语音消息未经应用层加密 |
-| **前向安全性 (PFS)** | 中 | 引入 ECDH 临时密钥交换替代长期 RSA |
-| **消息撤回/删除** | 低 | 支持撤回已发送消息或删除本地记录 |
-| **消息搜索** | 低 | 在聊天记录中全文搜索 |
-| **PWA 支持** | 中 | Service Worker 实现离线缓存和安装 |
-| **文件断点续传** | 低 | 大文件传输中断后可从断点继续 |
-| **TURN 中继** | 中 | 添加 TURN 服务器应对对称 NAT 场景 |
-| **视频消息** | 低 | 类似语音消息的短视频录制发送 |
+| Decision | Reason |
+|----------|--------|
+| Pure frontend, no backend | Maximum privacy, zero ops cost |
+| PeerJS public signaling | No need to build signaling server, low deployment barrier |
+| RSA-2048 per-contact key pair | Simplified key management, isolate different contacts |
+| Chunked encryption (180B/chunk) | RSA-2048 single encryption limit ~190 bytes |
+| IndexedDB over localStorage | Supports large storage (images/files up to GB) |
+| Group chat P2P broadcast | No group key management or server coordination |
+| Dependencies bundled locally | Offline-capable, no CDN dependency, privacy-friendly |
+| OpenSSL format AES | CryptoJS default format, cross-language compatible |
+| Thumbnail + original separation | Fast thumbnail render, original on-demand |
 
 ---
 
-## 附录 A: 数据流图
+## 12. Improvement Suggestions
+
+| Suggestion | Priority | Description |
+|------------|----------|-------------|
+| **Video calls** | Medium | Currently audio only, extend `getUserMedia({video:true})` |
+| **Custom signaling server** | High | Replace public PeerJS signaling for reliability and privacy |
+| **Voice message encryption** | High | Voice messages not application-layer encrypted |
+| **Forward secrecy (PFS)** | Medium | Introduce ECDH ephemeral key exchange instead of long-term RSA |
+| **Message recall/delete** | Low | Support recall sent messages or delete local records |
+| **Message search** | Low | Full-text search in chat history |
+| **PWA support** | Medium | Service Worker offline cache and install |
+| **File resume transfer** | Low | Large file transfer resume from breakpoint |
+| **TURN relay** | Medium | Add TURN server for symmetric NAT scenarios |
+| **Video messages** | Low | Short video recording and sending like voice messages |
+
+---
+
+## Appendix A: Data Flow Diagram
 
 ```
-注册:
-  用户输入 ──► generateId() ──► deriveAesKey(password) ──► DB 创建 ──► PeerJS 初始化
-                    │                    │
-                    ▼                    ▼
-              12位随机ID          AES-256 密钥 (Hex)
-                              (PBKDF2 100K iters)
+Register:
+  User input ──► generateId() ──► randomSalt() ──► deriveAesKey(password, salt)
+                          │                    │
+                          ▼                    ▼
+                    12-char random ID     AES-256 key (Hex)
+                                     (PBKDF2 100K iters)
+  DB.create → store salt (plain) → store user (encrypted) → PeerJS init
 
-登录:
-  选择账户 + 密码 ──► deriveAesKey(password) ──► 解密 user 记录
+Login:
+  Select account + password ──► DB.read salt ──► deriveAesKey(password, salt)
                                                     │
-                                        成功 → 加载联系人/群组 → PeerJS init
-                                        失败 → "密码错误"
+                                        Success → load contacts/groups → PeerJS init
+                                        Fail → "Wrong password"
 
-发送消息:
-  消息文本 ──► contact.publicKey ──► RSA encryptChunks() ──► conn.send()
+Send message:
+  Message text ──► contact.publicKey ──► RSA encryptChunks() ──► conn.send()
                                           │
-                                   >150B: 分块加密
-                                   ≤150B: 单块加密
+                                   >150B: chunked
+                                   ≤150B: single chunk
 
-接收消息:
+Receive message:
   conn.on("data") ──► type="chat" ──► RSA decryptChunks() ──► AES encryptAes()
                                           │                      │
-                                    己方 privateKey           存入 IndexedDB
+                                    Local privateKey          Store in IndexedDB
 ```
 
-## 附录 B: 版本历史摘要
+## Appendix B: Version History Summary
 
-| 版本 | 日期 | 主要变更 |
-|------|------|----------|
-| `20260515.5` | 2026-05-15 | 多账户管理 + ID 变更通知 + 账户转移 (P2P) |
-| 更早 | - | Session Lock, 扫码, 图片查看器, 文件加密, STUN 优化, MindRender 去品牌化 |
+| Version | Date | Key Changes |
+|---------|------|-------------|
+| `20260520.1` | 2026-05-20 | Per-account random salt, code cleanup |
+| `20260515.5` | 2026-05-15 | Multi-account + ID change + account transfer |
+| Earlier | - | Session Lock, QR scan, image viewer, file encryption, STUN optimization, MindRender rebranding |
 
-详见 `docs/CHANGELOG.md`
+See `docs/CHANGELOG.md` for details.
