@@ -9,7 +9,7 @@
     <link rel="icon" href="./logo.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
     <link rel="stylesheet" href="./dist/chat.css?v=20260518AO">
-    <!-- i18n: detect browser language and show/hide language spans -->
+    <!--  i18n: detect browser language and show/hide language spans  -->
     <script>
     (function(){
         var langs = ['de','en','es','fr','he','it','ja','ko','pt','zh'];
@@ -25,18 +25,18 @@
         document.documentElement.lang = lang;
     })();
     </script>
-    <!-- Local dependencies (no CDN needed) -->
+    <!--  Local dependencies (no CDN needed)  -->
     <script src="./dist/peerjs.min.js"></script>
     <script src="./dist/crypto-js.js"></script>
     <script src="./dist/forge.min.js"></script>
 </head>
 <body>
-    <!-- 竖屏锁定：横屏时覆盖全屏提示 -->
+    <!--  Portrait lock: fullscreen overlay when in landscape mode  -->
     <div id="portrait-lock" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#1a1a2e;z-index:99999;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
         <svg width="64" height="64" viewBox="0 0 32 32"><rect x="6" y="4" width="20" height="24" rx="3" fill="none" stroke="#4ecca3" stroke-width="2"/><line x1="12" y1="7" x2="20" y2="7" stroke="#4ecca3" stroke-width="1.5" stroke-linecap="round"/><polyline points="13,16 16,19 19,16" fill="none" stroke="#4ecca3" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span style="color:#ccc;font-size:18px;" class="de">Im Hochformat verwenden</span><span style="color:#ccc;font-size:18px;" class="en">Use in portrait mode</span><span style="color:#ccc;font-size:18px;" class="es">Usar en modo vertical</span><span style="color:#ccc;font-size:18px;" class="fr">Utiliser en mode portrait</span><span style="color:#ccc;font-size:18px;" class="he">השתמש במצב אנכי</span><span style="color:#ccc;font-size:18px;" class="it">Usa in modalità verticale</span><span style="color:#ccc;font-size:18px;" class="ja">縦向きでご利用ください</span><span style="color:#ccc;font-size:18px;" class="ko">세로 모드로 사용하세요</span><span style="color:#ccc;font-size:18px;" class="pt">Usar em modo retrato</span><span style="color:#ccc;font-size:18px;" class="zh">请竖屏使用</span>
     </div>
-    <!-- 注册/登录面板 -->
+    <!--  Register/Login panel  -->
     <div id="setup-panel" class="panel">
         <div class="setup-box">
             <div style="text-align:center;">
@@ -45,7 +45,7 @@
             <h2 style="text-align:center;font-size:24px;margin:0;">P.Chat</h2>
             <p id="invite-from" style="display:none;color:#888;font-size:12px;margin-bottom:8px;text-align:center;"></p>
 
-            <!-- 注册面板 -->
+            <!--  Register form  -->
             <div id="invite-info" style="display:none;text-align:center;">
                 <input type="text" id="nickname-input" placeholder="" maxlength="20" style="margin:0 auto;">
                 <input type="password" id="password-input" placeholder="" style="margin-top: 8px;display:block;margin-left:auto;margin-right:auto;">
@@ -54,12 +54,12 @@
                 </button>
             </div>
 
-            <!-- 账号选择面板 -->
+            <!--  Account selection panel  -->
             <div id="account-select-panel" style="display:none;">
                 <div id="account-list" class="account-list"></div>
             </div>
 
-            <!-- 密码输入面板（选择账号后） -->
+            <!--  Password input panel (after selecting account)  -->
             <div id="login-password-panel" style="display:none;text-align:center;margin-top:12px;">
                 <input type="password" id="login-password-input" placeholder="" style="display:block;margin-left:auto;margin-right:auto;">
                 <button id="login-btn" onclick="ChatApp.loginUser()" style="margin-top: 8px;">
@@ -67,16 +67,16 @@
                 </button>
             </div>
 
-            <!-- 左上角：转移账户 -->
+            <!--  Top-left: Transfer Account button  -->
             <button id="transfer-out-btn" class="corner-btn corner-btn-left" style="display:none;" onclick="ChatApp.showTransferOut()">
                 <span class="de">Konto übertragen</span><span class="en">Transfer Account</span><span class="es">Transferir cuenta</span><span class="fr">Transférer le compte</span><span class="he">העבר חשבון</span><span class="it">Trasferisci account</span><span class="ja">アカウント移行</span><span class="ko">계정 이전</span><span class="pt">Transferir conta</span><span class="zh">转移账户</span>
             </button>
-            <!-- 右上角：新建账户 -->
+            <!--  Top-right: New Account button  -->
             <button id="new-account-btn" class="corner-btn corner-btn-right" style="display:none;" onclick="ChatApp.showNewAccount()">
                 <span class="de">Neues Konto</span><span class="en">New Account</span><span class="es">Nueva cuenta</span><span class="fr">Nouveau compte</span><span class="he">חשבון חדש</span><span class="it">Nuovo account</span><span class="ja">新しいアカウント</span><span class="ko">새 계정</span><span class="pt">Nova conta</span><span class="zh">新建账户</span>
             </button>
 
-            <!-- Loading 进度条 -->
+            <!--  Loading progress bar  -->
             <div id="login-loading" style="display:none;text-align:center;margin-top:16px;">
                 <div style="width:220px;height:4px;background:#e0e0e0;border-radius:2px;overflow:hidden;margin:0 auto;">
                     <div id="login-loading-bar" style="width:0%;height:100%;background:#4caf50;border-radius:2px;transition:width 0.3s;"></div>
@@ -85,12 +85,12 @@
             </div>
             <div style="text-align:center;padding:16px 0 8px;margin-top:auto;">
                 <span id="app-version" style="font-size:11px;color:#666;"></span>
-                <button onclick="location.reload()" title="刷新" style="background:none;border:none;cursor:pointer;color:#888;padding:4px;vertical-align:middle;margin-left:4px;"><svg width="24" height="24" viewBox="0 0 32 32"><path d="M24 21a10 10 0 0 1-18.3 5M8 11a10 10 0 0 1 18.3-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="24,8 28,8 28,4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,24 4,24 4,28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button id="reload-btn" onclick="location.reload()" title="" style="background:none;border:none;cursor:pointer;color:#888;padding:4px;vertical-align:middle;margin-left:4px;"><svg width="24" height="24" viewBox="0 0 32 32"><path d="M24 21a10 10 0 0 1-18.3 5M8 11a10 10 0 0 1 18.3-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="24,8 28,8 28,4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,24 4,24 4,28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
         </div>
     </div>
 
-    <!-- 转移账户 - 转出方面板 -->
+    <!--  Transfer out panel  -->
     <div id="transfer-out-panel" class="modal" style="display:none;">
         <div class="modal-content" style="max-width:400px;">
             <span class="close-btn" onclick="ChatApp.hideTransferOut()">&times;</span>
@@ -117,7 +117,7 @@
         </div>
     </div>
 
-    <!-- 转移账户 - 转入方面板 -->
+    <!--  Transfer in panel  -->
     <div id="transfer-in-panel" class="modal" style="display:none;">
         <div class="modal-content" style="max-width:400px;">
             <span class="close-btn" onclick="ChatApp.hideTransferIn()">&times;</span>
@@ -143,9 +143,9 @@
         </div>
     </div>
 
-    <!-- 主界面 -->
+    <!--  Main interface  -->
     <div id="main-panel" class="panel" style="display:none;">
-        <!-- 侧边栏 -->
+        <!--  Sidebar  -->
         <div id="sidebar">
             <div class="sidebar-header">
                 <div class="user-info">
@@ -154,16 +154,16 @@
                         <span id="my-nickname" onclick="ChatApp.copyIdPrompt()" style="cursor:pointer;"></span>
                         <div class="user-id-row">
                             <span class="my-id" title="" id="my-id-display" onclick="ChatApp.copyIdPrompt()" style="cursor:pointer;"></span>
-                            <span title="复制ID" onclick="ChatApp.copyIdPrompt()" style="cursor:pointer;margin-left:6px;display:inline-flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 32 32"><rect x="10" y="8" width="18" height="20" rx="2" fill="currentColor" stroke="currentColor" stroke-width="2"/><rect x="6" y="4" width="18" height="20" rx="2" fill="var(--bg)" stroke="currentColor" stroke-width="2"/></svg></span>
+                            <span id="copy-id-btn" title="" onclick="ChatApp.copyIdPrompt()" style="cursor:pointer;margin-left:6px;display:inline-flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 32 32"><rect x="10" y="8" width="18" height="20" rx="2" fill="currentColor" stroke="currentColor" stroke-width="2"/><rect x="6" y="4" width="18" height="20" rx="2" fill="var(--bg)" stroke="currentColor" stroke-width="2"/></svg></span>
                         </div>
                     </div>
                 </div>
                 <div class="sidebar-actions">
-                    <button title="" onclick="ChatApp.showScanModal()"><svg width="28" height="28" viewBox="0 0 32 32"><polyline points="4,4 4,11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="4,4 11,4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,4 21,4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,4 28,11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="4,28 4,21" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="4,28 11,28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,28 21,28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,28 28,21" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+                    <button id="scan-qr-btn" title="" onclick="ChatApp.showScanModal()"><svg width="28" height="28" viewBox="0 0 32 32"><polyline points="4,4 4,11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="4,4 11,4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,4 21,4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,4 28,11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="4,28 4,21" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="4,28 11,28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,28 21,28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="28,28 28,21" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
                 </div>
             </div>
 
-            <!-- Tab 切换 -->
+            <!--  Tab switching  -->
             <div style="display:flex;border-bottom:1px solid #e0e0e0;">
                 <div id="tab-contacts" class="tab-btn active" onclick="ChatApp.switchTab('contacts')" style="flex:1;text-align:center;padding:8px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid #4caf50;">
                     <span class="de">Kontakte</span> 
@@ -191,7 +191,7 @@
                 </div>
             </div>
 
-            <!-- 好友请求卡片 (内联) -->
+            <!--  Friend request card (inline)  -->
             <div id="friend-request-card" style="display:none;padding:10px 12px;border-bottom:1px solid #eee;background:#f0f8ff;">
                 <div style="font-size:13px;color:#333;margin-bottom:6px;"><svg width="14" height="14" viewBox="0 0 32 32" style="vertical-align:middle;margin-right:2px"><path d="M16 4c-4 0-7 3-7 7v5l-3 4h20l-3-4v-5c0-4-3-7-7-7z" fill="none" stroke="#f39c12" stroke-width="2" stroke-linejoin="round"/><line x1="13" y1="26" x2="19" y2="26" stroke="#f39c12" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="26" x2="16" y2="30" stroke="#f39c12" stroke-width="1.5" stroke-linecap="round"/></svg><span id="friend-request-nick"></span> (<span id="friend-request-id"></span>)
                     <span class="de">fordert Freundschaft an</span> 
@@ -272,16 +272,16 @@
             <div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
                 <span id="sidebar-version" style="font-size:11px;color:#666;"></span>
                 <div style="display:flex;gap:6px;">
-                    <button onclick="ChatApp.clearOPFS()" title="清空OPFS" style="background:none;border:1px solid var(--border);color:var(--text3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">🗑️</button>
-                    <button onclick="ChatApp.logout()" title="退出" style="background:none;border:1px solid var(--border);color:var(--text3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">退出</button>
+                    <button id="clear-opfs-btn" onclick="ChatApp.clearOPFS()" title="" style="background:none;border:1px solid var(--border);color:var(--text3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">🗑️</button>
+                    <button id="logout-btn" onclick="ChatApp.logout()" title="" style="background:none;border:1px solid var(--border);color:var(--text3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;"><span class="de">Abmelden</span><span class="en">Logout</span><span class="es">Cerrar sesión</span><span class="fr">Déconnexion</span><span class="he">התנתק</span><span class="it">Esci</span><span class="ja">ログアウト</span><span class="ko">로그아웃</span><span class="pt">Sair</span><span class="zh">退出</span></button>
                 </div>
             </div>
         </div>
 
-        <!-- 拖动分隔条 -->
+        <!--  Draggable separator  -->
         <div id="sidebar-resize"></div>
 
-        <!-- 聊天区 -->
+        <!--  Chat area  -->
         <div id="chat-area">
             <div id="chat-placeholder">
                 <div class="icon"><svg width="64" height="64" viewBox="0 0 32 32"><path d="M4 6h24a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2h-16l-8 6v-6a2 2 0 0 1-2-2v-16a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="15" r="2" fill="currentColor" opacity="0.5"/><circle cx="18" cy="15" r="2" fill="currentColor" opacity="0.5"/><circle cx="24" cy="15" r="2" fill="currentColor" opacity="0.5"/></svg></div>
@@ -306,7 +306,7 @@
                     <span id="chat-type"></span>
                     <button id="call-btn" title="" onclick="ChatApp.initiateCall()"><svg width="20" height="20" viewBox="0 0 32 32"><path d="M7 5c-2 2-2 8 0 14s8 12 14 14c2-2 4-5 4-7l-5-5-2 2c-3-2-7-6-7-10l2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
                 </div>
-                <!-- 通话状态栏 -->
+                <!--  Call status bar  -->
                 <div id="call-status-bar" style="display:none; align-items:center; justify-content:space-between; padding:8px 16px; background:#e8f5e9; border-bottom:1px solid #c8e6c9;">
                     <span id="call-status-text" style="font-size:13px; color:#2e7d32;">
                         <span class="de">Im Gespräch</span> 
@@ -330,8 +330,8 @@
                 <div id="input-area">
                     <div class="input-tools">
                         <button id="voice-btn" title="" onclick="ChatApp.startRecording()"><svg width="20" height="20" viewBox="0 0 32 32"><rect x="12" y="4" width="8" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16" y1="22" x2="16" y2="28" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="8" y1="28" x2="24" y2="28" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 19a10 14 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5"/></svg></button>
-                        <button title="" onclick="document.getElementById('image-upload').click()"><svg width="20" height="20" viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="12" r="3" fill="currentColor" opacity="0.5"/><polygon points="3,27 11,18 17,24 22,18 29,25 29,27" fill="currentColor" opacity="0.15"/></svg></button>
-                        <button title="" onclick="document.getElementById('file-upload').click()"><svg width="20" height="20" viewBox="0 0 32 32"><path d="M10 28V14a6 6 0 0 1 12 0v12a3 3 0 0 1-6 0V12a1.5 1.5 0 0 1 3 0v12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                        <button id="image-input-btn" title="" onclick="document.getElementById('image-upload').click()"><svg width="20" height="20" viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="12" r="3" fill="currentColor" opacity="0.5"/><polygon points="3,27 11,18 17,24 22,18 29,25 29,27" fill="currentColor" opacity="0.15"/></svg></button>
+                        <button id="file-input-btn" title="" onclick="document.getElementById('file-upload').click()"><svg width="20" height="20" viewBox="0 0 32 32"><path d="M10 28V14a6 6 0 0 1 12 0v12a3 3 0 0 1-6 0V12a1.5 1.5 0 0 1 3 0v12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     </div>
                     <textarea id="message-input" placeholder="" rows="1"></textarea>
                     <div id="clipboard-preview" style="display:none;padding:4px 12px;border-top:1px solid var(--border);"></div>
@@ -354,7 +354,7 @@
         </div>
     </div>
 
-    <!-- 语音通话 -->
+    <!--  Voice call modal  -->
     <div id="call-modal" class="modal" style="display:none;">
         <div class="call-modal-content">
             <div class="call-avatar"><svg width="36" height="36" viewBox="0 0 32 32"><circle cx="16" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 30c0-6 4-10 10-10s10 4 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
@@ -369,7 +369,7 @@
         </div>
     </div>
 
-    <!-- 创建群组 -->
+    <!--  Create group modal  -->
     <div id="create-room-modal" class="modal">
         <div class="modal-content create-group-modal">
             <h3>
@@ -429,7 +429,7 @@
         </div>
     </div>
 
-    <!-- 消息提示弹窗 -->
+    <!--  Alert modal  -->
     <div id="alert-modal" class="modal">
         <div class="modal-content alert-content">
             <p id="alert-text"></p>
@@ -451,7 +451,7 @@
     </div>
 
 
-    <!-- 二维码弹窗 -->
+    <!--  QR code modal  -->
     <div id="qr-modal" class="modal" onclick="ChatApp.closeQRModal()">
         <div class="modal-content qr-content" onclick="event.stopPropagation()">
             <h3 style="text-align:center;margin:0 0 12px 0;">
@@ -466,7 +466,7 @@
         </div>
     </div>
 
-    <!-- 扫码弹窗 -->
+    <!--  Scan QR modal  -->
     <div id="scan-modal" class="modal" onclick="ChatApp.closeScanModal()">
         <div class="modal-content qr-content" onclick="event.stopPropagation()">
             <h3 style="text-align:center;margin:0 0 12px 0;">
@@ -483,27 +483,27 @@
         </div>
     </div>
 
-    <!-- 删除确认弹窗 -->
+    <!--  Delete confirm modal  -->
     <div id="delete-confirm-modal" class="modal">
         <div class="modal-content" style="min-width:300px;">
             <h3 id="delete-confirm-title"></h3>
             <p id="delete-confirm-desc" style="margin-bottom:12px; font-size:14px; color:#666;"></p>
-            <input type="password" id="delete-confirm-password" placeholder="输入密码确认" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:12px; box-sizing:border-box;" />
+            <input type="password" id="delete-confirm-password" placeholder="" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:12px; box-sizing:border-box;" />
             <div class="modal-actions">
-                <button id="delete-confirm-cancel" class="btn-secondary">取消</button>
-                <button id="delete-confirm-ok" class="btn-primary" style="background:#d32f2f;">删除</button>
+                <button id="delete-confirm-cancel" class="btn-secondary"><span class="de">Abbrechen</span><span class="en">Cancel</span><span class="es">Cancelar</span><span class="fr">Annuler</span><span class="he">ביטול</span><span class="it">Annulla</span><span class="ja">キャンセル</span><span class="ko">취소</span><span class="pt">Cancelar</span><span class="zh">取消</span></button>
+                <button id="delete-confirm-ok" class="btn-primary" style="background:#d32f2f;"><span class="de">Löschen</span><span class="en">Delete</span><span class="es">Eliminar</span><span class="fr">Supprimer</span><span class="he">מחק</span><span class="it">Elimina</span><span class="ja">削除</span><span class="ko">삭제</span><span class="pt">Excluir</span><span class="zh">删除</span></button>
             </div>
         </div>
     </div>
 
-    <!-- 图片查看器 -->
+    <!--  Image viewer  -->
     <div id="image-viewer" onclick="ChatApp.closeImageViewer(event)">
         <div id="image-viewer-toolbar">
-            <button onclick="ChatApp.zoomOut(event)" title="缩小"><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="9" y1="16" x2="23" y2="16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
-            <button onclick="ChatApp.zoomIn(event)" title="放大"><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16" y1="9" x2="16" y2="23" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="9" y1="16" x2="23" y2="16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
-            <button onclick="ChatApp.rotateImage(event)" title="↺">↻</button>
-            <button onclick="ChatApp.downloadImage(event)" title="下载"><svg width="20" height="20" viewBox="0 0 32 32"><line x1="16" y1="4" x2="16" y2="19" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="10,13 16,21 22,13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="6" y1="27" x2="26" y2="27" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
-            <button onclick="ChatApp.closeImageViewer()" title="关闭" style="margin-left:auto;"><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="10" y1="10" x2="22" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="22" y1="10" x2="10" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+            <button id="zoom-out-btn" onclick="ChatApp.zoomOut(event)" title=""><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="9" y1="16" x2="23" y2="16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+            <button id="zoom-in-btn" onclick="ChatApp.zoomIn(event)" title=""><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16" y1="9" x2="16" y2="23" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="9" y1="16" x2="23" y2="16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+            <button id="rotate-btn" onclick="ChatApp.rotateImage(event)" title="↺">↻</button>
+            <button id="download-img-btn" onclick="ChatApp.downloadImage(event)" title=""><svg width="20" height="20" viewBox="0 0 32 32"><line x1="16" y1="4" x2="16" y2="19" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="10,13 16,21 22,13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="6" y1="27" x2="26" y2="27" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+            <button id="close-img-btn" onclick="ChatApp.closeImageViewer()" title="" style="margin-left:auto;"><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="10" y1="10" x2="22" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="22" y1="10" x2="10" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         </div>
         <div id="image-viewer-container">
             <img id="image-viewer-img" src="" alt="">

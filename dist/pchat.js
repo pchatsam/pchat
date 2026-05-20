@@ -71,6 +71,19 @@ _i18n.dict = {
     'pchat.title.file':                  {de: 'Datei', en: 'File', es: 'Archivo', fr: 'Fichier', he: 'קובץ', it: 'File', ja: 'ファイル', ko: '파일', pt: 'Arquivo', zh: '文件'},
     'pchat.title.answerCall':            {de: 'Annehmen', en: 'Answer', es: 'Contestar', fr: 'Répondre', he: 'ענה', it: 'Rispondi', ja: '応答', ko: '받기', pt: 'Atender', zh: '接听'},
     'pchat.title.hangupCall':            {de: 'Anruf beenden', en: 'Hang up call', fr: 'Raccrocher l\'appel', es: 'Colgar llamada', pt: 'Encerrar chamada', he: 'נתק שיחה', ko: '통화 종료', it: 'Chiama', ja: '通話を切る', zh: '挂断通话'},
+    'pchat.title.reload':                {de: 'Neu laden', en: 'Reload', es: 'Recargar', fr: 'Recharger', he: 'רענן', it: 'Ricarica', ja: '再読み込み', ko: '새로고침', pt: 'Recarregar', zh: '刷新'},
+    'pchat.title.copyId':                {de: 'ID kopieren', en: 'Copy ID', es: 'Copiar ID', fr: 'Copier l\'ID', he: 'העתק ID', it: 'Copia ID', ja: 'IDをコピー', ko: 'ID 복사', pt: 'Copiar ID', zh: '复制ID'},
+    'pchat.title.scanQR':                {de: 'QR-Code scannen', en: 'Scan QR Code', es: 'Escanear QR', fr: 'Scanner QR', he: 'סרוק QR', it: 'Scansiona QR', ja: 'QRスキャン', ko: 'QR 스캔', pt: 'Escanear QR', zh: '扫描二维码'},
+    'pchat.title.clearOPFS':             {de: 'OPFS löschen', en: 'Clear OPFS cache', es: 'Limpiar caché OPFS', fr: 'Effacer le cache OPFS', he: 'נקה מטמון OPFS', it: 'Cancella cache OPFS', ja: 'OPFSキャッシュをクリア', ko: 'OPFS 캐시 지우기', pt: 'Limpar cache OPFS', zh: '清空OPFS'},
+    'pchat.title.logout':                {de: 'Abmelden', en: 'Logout', es: 'Cerrar sesión', fr: 'Déconnexion', he: 'התנתק', it: 'Esci', ja: 'ログアウト', ko: '로그아웃', pt: 'Sair', zh: '退出'},
+    'pchat.title.zoomOut':               {de: 'Verkleinern', en: 'Zoom out', es: 'Alejar', fr: 'Zoom arrière', he: 'הקטן', it: 'Rimpicciolisci', ja: '縮小', ko: '축소', pt: 'Diminuir', zh: '缩小'},
+    'pchat.title.zoomIn':                {de: 'Vergrößern', en: 'Zoom in', es: 'Acercar', fr: 'Zoom avant', he: 'הגדל', it: 'Ingrandisci', ja: '拡大', ko: '확대', pt: 'Ampliar', zh: '放大'},
+    'pchat.title.rotate':                {de: 'Drehen', en: 'Rotate', es: 'Rotar', fr: 'Rotater', he: 'סובב', it: 'Ruota', ja: '回転', ko: '회전', pt: 'Rotar', zh: '旋转'},
+    'pchat.title.downloadImage':         {de: 'Herunterladen', en: 'Download', es: 'Descargar', fr: 'Télécharger', he: 'הורד', it: 'Scarica', ja: 'ダウンロード', ko: '다운로드', pt: 'Baixar', zh: '下载'},
+    'pchat.title.closeImageViewer':      {de: 'Schließen', en: 'Close', es: 'Cerrar', fr: 'Fermer', he: 'סגור', it: 'Chiudi', ja: '閉じる', ko: '닫기', pt: 'Fechar', zh: '关闭'},
+    'pchat.title.notify':                {de: 'Benachrichtigungen', en: 'Notifications', es: 'Notificaciones', fr: 'Notifications', he: 'התראות', it: 'Notifiche', ja: '通知', ko: '알림', pt: 'Notificações', zh: '通知'},
+    'pchat.placeholder.transferInId':    {de: 'ID eingeben', en: 'Enter their ID', es: 'Ingresar ID', fr: 'Saisir l\'ID', he: 'הזן ID', it: 'Inserisci ID', ja: '相手のIDを入力', ko: 'ID 입력', pt: 'Digite o ID', zh: '输入对方ID'},
+    'pchat.placeholder.deleteConfirmPw': {de: 'Passwort zur Bestätigung eingeben', en: 'Enter password to confirm', es: 'Ingresa contraseña para confirmar', fr: 'Entrez le mot de passe pour confirmer', he: 'הזן סיסמה לאימות', it: 'Inserisci password per confermare', ja: '確認のためパスワードを入力', ko: '확인하려면 비밀번호 입력', pt: 'Digite a senha para confirmar', zh: '输入密码确认'},
     'pchat.time.justNow':                {de: 'gerade eben', en: 'just now', fr: 'à l\'instant', es: 'ahora', pt: 'agora', he: 'עכשיו', ko: '방금', it: 'adesso', ja: 'たった今', zh: '刚刚'},
     'pchat.time.minutesAgo':             {de: 'Min. her', en: 'min ago', es: 'min antes', fr: 'min avant', he: 'דק קודם', it: 'min fa', ja: '分前', ko: '분 전', pt: 'min atrás', zh: '分钟前'},
     'pchat.time.today':                  {de: 'Heute', en: 'Today', fr: 'Aujourd\'hui', es: 'Hoy', pt: 'Hoje', he: 'היום', ko: '오늘', it: 'Oggi', ja: '今日', zh: '今天'},
@@ -175,12 +188,21 @@ _i18n.dict = {
 _i18n.applyUI = function() {
     var t = _i18n.t;
     var s = function(id, attr, val) { var el = document.getElementById(id); if (el) el[attr] = val; };
+    // Placeholders
     s('nickname-input', 'placeholder', t('pchat.placeholder.nickname'));
     s('password-input', 'placeholder', t('pchat.placeholder.password'));
     s('login-password-input', 'placeholder', t('pchat.placeholder.password'));
     s('add-friend-input', 'placeholder', t('pchat.placeholder.addFriend'));
     s('message-input', 'placeholder', t('pchat.placeholder.message'));
     s('room-name-input', 'placeholder', t('pchat.placeholder.groupName'));
+    s('transfer-in-id-input', 'placeholder', t('pchat.placeholder.transferInId'));
+    s('delete-confirm-password', 'placeholder', t('pchat.placeholder.deleteConfirmPw'));
+    // Button titles
+    s('reload-btn', 'title', t('pchat.title.reload'));
+    s('copy-id-btn', 'title', t('pchat.title.copyId'));
+    s('scan-qr-btn', 'title', t('pchat.title.showQR'));
+    s('clear-opfs-btn', 'title', t('pchat.title.clearOPFS'));
+    s('logout-btn', 'title', t('pchat.title.logout'));
     s('call-back-btn', 'title', t('pchat.title.back'));
     s('call-btn', 'title', t('pchat.title.voiceCall'));
     s('call-status-hangup', 'title', t('pchat.title.hangup'));
@@ -188,6 +210,11 @@ _i18n.applyUI = function() {
     s('call-reject-btn', 'title', t('pchat.title.hangup'));
     s('call-answer-btn', 'title', t('pchat.title.answerCall'));
     s('call-hangup-btn', 'title', t('pchat.title.hangupCall'));
+    s('zoom-out-btn', 'title', t('pchat.title.zoomOut'));
+    s('zoom-in-btn', 'title', t('pchat.title.zoomIn'));
+    s('rotate-btn', 'title', t('pchat.title.rotate'));
+    s('download-img-btn', 'title', t('pchat.title.downloadImage'));
+    s('close-img-btn', 'title', t('pchat.title.closeImageViewer'));
     // title for image/file buttons
     var tools = document.querySelector('.input-tools');
     if (tools && tools.children.length >= 3) {
