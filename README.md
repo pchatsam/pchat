@@ -91,10 +91,13 @@ See [docs/SECURITY.md](docs/SECURITY.md) for the full security model and threat 
 
 ## Browser Support
 
-- Chrome 90+ / Edge 90+ — Full support
+- Edge 90+ — Full support (recommended for Windows)
+- Chrome 90+ — Full support (Linux/macOS)
 - Firefox 90+ — Full support
 - Safari 15+ — Basic support
 - Mobile Safari / Chrome — Supported (responsive)
+
+> **Windows users**: Chrome on Windows may have ICE candidate issues causing P2P connection failures. **Microsoft Edge is recommended on Windows** — same Chromium engine, more reliable WebRTC networking on Windows.
 
 Voice and camera features require HTTPS or localhost.
 

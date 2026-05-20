@@ -697,11 +697,14 @@ python3 -m http.server 8080
 
 | Browser | Support |
 |---------|---------|
-| Chrome / Edge 90+ | ✅ Full |
+| Edge 90+ | ✅ Full (recommended for Windows) |
+| Chrome 90+ | ✅ Full (Linux/macOS; Windows users: see note) |
 | Firefox 90+ | ✅ Full |
 | Safari 15+ | ✅ Basic |
 | iOS Safari / Chrome | ✅ Basic (responsive) |
 | Mobile Chrome / Firefox | ✅ Supported |
+
+> **Windows users**: Chrome on Windows may fail to generate correct ICE candidates in certain network environments, causing P2P connections to fail. **Microsoft Edge is recommended on Windows** — it uses the same Chromium engine but handles network interfaces more reliably for WebRTC.
 
 ### 9.3 Usage Flow
 
