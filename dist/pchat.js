@@ -2399,7 +2399,7 @@ const ChatApp = {
 
         this._showLoading(80, _i18n.t('pchat.loading.saveUser'));
         // 先存 salt（明文，不加密）
-        await DB.putRaw("user", { id: "_salt", data: JSON.stringify({ salt: salt }), ts: Date.now() });
+        await DB.putRaw("user", { id: "_salt", salt: salt });
         // 再存加密的用户记录
         await DB.put("user", { id: "current", userId: this.my.id, nickname: nick, ts: Date.now(), cachedKey: this.my.aesKey }, verifyKey);
 
