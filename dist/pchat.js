@@ -4629,6 +4629,10 @@ const ChatApp = {
                                 conn.on('data', ah); setTimeout(() => { conn.off('data', ah); r(); }, 5000);
                             });
                         }
+                        if (sentChunks % 50 === 0) {
+                            const p = (sentBytes / file.size * 100).toFixed(1);
+                            this._updateTransferProgress(fileId, parseFloat(p), null);
+                        }
                     }
 
                     // Wait for segment-done (already registered before data loop)
