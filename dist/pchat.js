@@ -890,17 +890,24 @@ const DB = {
     async finalizeSegmentedFile(fileId, expectedSize) {
         const root = await this._getOprfsRoot();
         try {
-            const handle = await root.getFileHandle(`${fileId}.download`);
-            const file = await handle.getFile();
+            const downloadHandle = await root.getFileHandle(`${fileId}.download`);
+            const file = await downloadHandle.getFile();
             if (file.size !== expectedSize) {
                 console.error(`[OPFS] Finalize size mismatch: expected ${expectedSize}, got ${file.size}`);
                 await root.removeEntry(`${fileId}.download`);
                 return null;
             }
+            // Stream copy from .download to final to avoid OOM for large files
             try { await root.removeEntry(`pchat-${fileId}`); } catch(e) {}
             const finalHandle = await root.getFileHandle(`pchat-${fileId}`, { create: true });
             const finalWritable = await finalHandle.createWritable();
-            await finalWritable.write(await file.arrayBuffer());
+            const STREAM_SIZE = 100 * 1024 * 1024; // 100MB chunks
+            let offset = 0;
+            while (offset < file.size) {
+                const blob = file.slice(offset, offset + STREAM_SIZE);
+                await finalWritable.write(await blob.arrayBuffer());
+                offset += STREAM_SIZE;
+            }
             await finalWritable.close();
             await root.removeEntry(`${fileId}.download`);
             console.log(`[OPFS] Finalized ${fileId}, size=${file.size}`);
@@ -3550,7 +3557,11 @@ const ChatApp = {
         if (DB._segmentBuffers) delete DB._segmentBuffers[d.fileId];
     },
     _onFileComplete(peerId, d) {
-        console.log(`[File] Transfer complete from sender: ${d.fileId}`);
+        console.log(`[File] Transfer complete: ${d.fileId}`);
+        TransferDB.clearFile(d.fileId).catch(() => {});
+        delete this._pendingSends?.[d.fileId];
+        this._savePendingSends?.();
+        delete this._binarySendChannels?.[d.fileId];
     },
     _onFileHeader(peerId, d) {
         const ft = this.fileTransfer;
@@ -4060,10 +4071,11 @@ const ChatApp = {
         for (const [fid, info] of Object.entries(ft.pending)) {
             if (info.peerId !== peerId) continue;
             const netReceived = info.totalRawReceived || 0;
-            const opfsSize = await DB.getReceiveFileSize(fid);
-            const received = Math.max(netReceived, opfsSize);
-            console.log(`[File] Requesting resume for ${info.name}: received=${(received/1024/1024).toFixed(1)}MB / ${(info.size/1024/1024).toFixed(1)}MB`);
-            state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, totalSize: info.size });
+            const downloadSize = await DB.getDownloadSize(fid);
+            const received = Math.max(netReceived, downloadSize);
+            const nextSeg = Math.floor(received / (100 * 1024 * 1024));
+            console.log(`[File] Requesting resume for ${info.name}: received=${(received/1024/1024).toFixed(1)}MB, nextSegment=${nextSeg}`);
+            state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, nextSegment: nextSeg, totalSize: info.size });
         }
         // Also check _pendingReceives for transfers that survived page refresh
         for (const [fid, pr] of Object.entries(this._pendingReceives)) {
@@ -4090,118 +4102,150 @@ const ChatApp = {
         }
     },
 
-    // ---- Sender handles file-resume request (Binary DC only, ≥10MB) ----
+    // ---- Sender handles file-resume request (prompt user to re-open file) ----
     async _handleFileResume(peerId, data) {
         const fid = data.fileId;
         const pending = this._pendingSends[fid];
         if (!pending) { console.warn(`[File] Resume request for unknown file: ${fid}`); return; }
-        const offset = data.receivedBytes || 0;
-        const startPct = pending.size > 0 ? Math.round(offset / pending.size * 100) : 0;
-        console.log(`[File] Resume: ${pending.name}, from ${(offset/1024/1024).toFixed(1)}MB (${startPct}%)`);
+        const nextSegment = data.nextSegment || Math.floor((data.receivedBytes || 0) / (100 * 1024 * 1024));
+        const SEG_SIZE = 100 * 1024 * 1024;
+        const startOffset = nextSegment * SEG_SIZE;
+        const startPct = pending.size > 0 ? Math.round(startOffset / pending.size * 100) : 0;
+        console.log(`[File] Resume: ${pending.name}, from segment ${nextSegment} (${(startOffset/1024/1024).toFixed(1)}MB, ${startPct}%)`);
 
         const state = PeerConn.peers[peerId];
         if (!state || !state.conn || !state.conn.open) return;
 
-        // Close old Binary DC if still running (from original send)
+        // Prompt user to re-open file
+        const file = await new Promise((resolve) => {
+            this._showFileResumePrompt(pending.name, pending.size, (f) => resolve(f));
+        });
+        if (!file) { console.log(`[File] Resume cancelled: no file opened`); return; }
+
+        // Close old Binary DC if still running
         const oldConn = this._binarySendChannels[fid];
         if (oldConn) { try { oldConn.close(); } catch(e) {}; delete this._binarySendChannels[fid]; }
 
-        let file = await DB.getOutgoingFile(fid);
-        if (!file) {
-            await new Promise(r => setTimeout(r, 2000));
-            file = await DB.getOutgoingFile(fid);
-            if (!file) { console.warn(`[File] OPFS file not found: ${fid}`); return; }
-        }
+        const totalSegments = pending.totalSegments || Math.ceil(pending.size / SEG_SIZE);
 
-        // Show progress card + sidebar (reuse existing if present)
+        // Show progress card + sidebar
         const existingCard = document.getElementById(`transfer-${fid}`);
-        if (!existingCard) {
-            this._insertTransferCard(fid, pending.name, pending.size, true);
-        }
+        if (!existingCard) this._insertTransferCard(fid, pending.name, pending.size, true);
         this._activeSends[peerId] = { fileId: fid, name: pending.name, size: pending.size, pct: startPct };
         this._renderContacts();
-        // Reset speed timer for resume (don't count pre-resume bytes in speed calc)
         this._transferStartTimes[fid] = Date.now();
         this._updateTransferProgress(fid, startPct, `续传中 ${startPct}%`);
         this._updateSidebarTransfer(peerId, `📤 ${pending.name.substring(0,15)}${pending.name.length>15?'...':''} ${startPct}%`);
 
+        // Open Binary DC
         const chunkSize = 262144;
         const fileConn = PeerConn.peer.connect(peerId, { label: 'file-' + fid, serialization: 'binary', reliable: true });
         this._binarySendChannels[fid] = fileConn;
-        await new Promise((resolve, reject) => {
-            fileConn.on('open', resolve); fileConn.on('error', reject);
-            setTimeout(() => reject(new Error('Timeout')), 15000);
-        });
+        await new Promise((resolve2, reject) => { fileConn.on('open', resolve2); fileConn.on('error', reject); setTimeout(() => reject(new Error('Timeout')), 15000); });
+        console.log('[File] Resume Binary DC opened');
 
-        let sentBytes = offset;
-        let sentChunks = 0;
-        while (sentBytes < file.size) {
-            const segSize = 10 * 1024 * 1024;
-            const seg = file.slice(sentBytes, sentBytes + segSize);
-            const segBuf = await new Promise((r2, rj) => { const fr = new FileReader(); fr.onload = (e) => r2(new Uint8Array(e.target.result)); fr.onerror = rj; fr.readAsArrayBuffer(seg); });
-            for (let i = 0; i < segBuf.length; i += chunkSize) {
-                const end = Math.min(i + chunkSize, segBuf.length);
-                fileConn.send(segBuf.slice(i, end)); sentBytes += (end - i); sentChunks++;
-                // Flow control: wait for receiver ack every 10 chunks
-                if (sentChunks % 10 === 0) {
-                    await new Promise(r => {
-                        const ah = (d) => {
-                            if (d.type==='file-ack'&&d.fileId===fid) {
-                                state.conn.off('data',ah);
-                                console.log(`[File] Ack rcvd — progress=${d.progress}, speed=${d.speed || '(none)'}, eta=${d.etaSec}s`);
-                                if (d.speed) {
-                                    ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {};
-                                    ChatApp._transferAckSpeed[fid] = d.speed;
-                                }
-                                if (d.etaSec != null) {
-                                    ChatApp._transferAckEta = ChatApp._transferAckEta || {};
-                                    ChatApp._transferAckEta[fid] = d.etaSec;
-                                }
-                                r();
-                            }
-                        };
-                        state.conn.on('data', ah);
-                        setTimeout(() => { state.conn.off('data',ah); r(); }, 5000);
-                    });
+        let sentChunks = 0, sentBytes = startOffset, currentSegment = nextSegment;
+        try {
+            while (currentSegment < totalSegments) {
+                const offset = currentSegment * SEG_SIZE;
+                const segSize = Math.min(SEG_SIZE, file.size - offset);
+                const seg = file.slice(offset, offset + segSize);
+                const segBuf = await new Promise((r2, rj) => { const fr = new FileReader(); fr.onload = (e) => r2(e.target.result); fr.onerror = rj; fr.readAsArrayBuffer(seg); });
+                const segHash = await this._hashBuffer(segBuf);
+                console.log(`[File] Resume segment ${currentSegment}: ${(segSize/1024/1024).toFixed(1)}MB, hash=${segHash.slice(0,16)}...`);
+
+                state.conn.send({ type: "segment-info", fileId: fid, segmentIndex: currentSegment, hash: segHash, size: segSize });
+                const segAck = await new Promise((resolve) => {
+                    const handler = (d) => {
+                        if (d.type === "segment-ack" && d.fileId === fid && d.segmentIndex === currentSegment) { state.conn.off("data", handler); resolve(true); }
+                        else if (d.type === "segment-retry" && d.fileId === fid && d.segmentIndex === currentSegment) { state.conn.off("data", handler); resolve(false); }
+                    };
+                    state.conn.on("data", handler);
+                });
+                if (!segAck) { console.log(`[File] Resume segment ${currentSegment} retry requested`); continue; }
+
+                for (let i = 0; i < segBuf.byteLength; i += chunkSize) {
+                    const end2 = Math.min(i + chunkSize, segBuf.byteLength);
+                    fileConn.send(segBuf.slice(i, end2)); sentChunks++; sentBytes += (end2 - i);
+                    if (sentChunks % 10 === 0) {
+                        await new Promise(r => {
+                            const ah = (d) => { if (d.type === 'file-ack' && d.fileId === fid) { state.conn.off('data', ah); if (d.speed) { ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {}; ChatApp._transferAckSpeed[fid] = d.speed; } if (d.etaSec != null) { ChatApp._transferAckEta = ChatApp._transferAckEta || {}; ChatApp._transferAckEta[fid] = d.etaSec; } r(); } };
+                            state.conn.on('data', ah); setTimeout(() => { state.conn.off('data', ah); r(); }, 5000);
+                        });
+                    }
                 }
+
+                const segDone = await new Promise((resolve) => {
+                    const handler = (d) => {
+                        if (d.type === "segment-done" && d.fileId === fid && d.segmentIndex === currentSegment) { state.conn.off("data", handler); resolve(true); }
+                        else if (d.type === "segment-retry" && d.fileId === fid && d.segmentIndex === currentSegment) { state.conn.off("data", handler); resolve(false); }
+                    };
+                    state.conn.on("data", handler);
+                });
+                if (!segDone) { console.log(`[File] Resume segment ${currentSegment} needs retry`); continue; }
+
+                currentSegment++;
+                this._pendingSends[fid].currentSegment = currentSegment;
+                this._savePendingSends();
+                const pct = (sentBytes / file.size * 100).toFixed(1);
+                this._updateTransferProgress(fid, parseFloat(pct), `续传中 ${pct}%`);
+                const as = this._activeSends[peerId];
+                if (as) { as.pct = Math.round(parseFloat(pct)); this._updateSidebarTransfer(peerId, `📤 ${as.name.substring(0,15)}${as.name.length>15?'...':''} ${pct}%`); }
             }
-            const pct = Math.round(sentBytes / file.size * 100);
-            this._updateTransferProgress(fid, pct, `续传中 ${pct}%`);
-            const as = this._activeSends[peerId];
-            if (as) { as.pct = pct; this._updateSidebarTransfer(peerId, `📤 ${as.name.substring(0,15)}${as.name.length>15?'...':''} ${pct}%`); }
+        } catch(e) {
+            console.error('[File] Resume error:', e);
+            fileConn.close(); delete this._binarySendChannels[fid]; delete this._activeSends[peerId]; this._renderContacts(); return;
         }
-        state.conn.send({ type: "file-footer", fileId: fid });
-        fileConn.close();
-        delete this._binarySendChannels[fid];
-        this._updateTransferProgress(fid, 100, '等待对方确认...');
 
-        const acked = await new Promise((r) => {
-            const h = (d) => { if (d.type==="file-ack"&&d.fileId===fid) { clearTimeout(t); state.conn.off("data",h); r(true); } };
-            const t = setTimeout(() => { state.conn.off("data",h); r(false); }, 120000);
-            state.conn.on("data", h);
-        });
+        fileConn.close(); delete this._binarySendChannels[fid];
+        this._updateTransferProgress(fid, 100, '发送完成');
 
-        // Clean up progress UI
+        await new Promise((resolve) => { const handler = (d) => { if (d.type === "file-complete" && d.fileId === fid) { state.conn.off("data", handler); resolve(true); } }; state.conn.on("data", handler); });
+
+        const now = Date.now();
+        const msg = { id: `msg_direct_${fid}`, peerId, ts: now, direction: "sent", sent: true, fromId: this.my.id, type: "direct-file", fileName: pending.name, mimeType: pending.mime, fileSize: pending.size, fileId: fid };
         const pr = document.getElementById(`transfer-${fid}`);
         if (pr) pr.remove();
-        delete this._transferThrottle[fid];
-        delete this._transferStartTimes[fid]; delete this._transferAckSpeed?.[fid]; delete this._transferAckEta?.[fid]; 
-        delete this._transferSizes?.[fid];
+        delete this._transferThrottle[fid]; delete this._transferStartTimes[fid]; delete this._transferAckSpeed?.[fid]; delete this._transferAckEta?.[fid]; delete this._transferSizes?.[fid];
         delete this._activeSends[peerId];
-
-        if (acked) {
-            this._clearPendingSend(fid, true);
-            DB.deleteOutgoingFile(fid).catch(() => {});
-            console.log(`[File] Resume ack: ${pending.name}`);
-            // Show completed message
-            const now = Date.now();
-            const msg = { id: `msg_direct_${fid}`, peerId, ts: now, direction: "sent", sent: true, fromId: this.my.id, type: "direct-file", fileName: pending.name, mimeType: pending.mime, fileSize: pending.size, fileId: fid };
-            await DB.put("messages", msg, this.my.aesKey);
-            if (this.activeConv && this.activeConv.id === peerId) this._appendMsg(msg);
-            const contact = this.contacts.find(c => c.userId === peerId);
-            if (contact) { contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + pending.name, ts: now, fromId: this.my.id }; this.saveContact(contact); }
-        }
+        this._clearPendingSend(fid, true);
+        await DB.put("messages", msg, this.my.aesKey);
+        if (this.activeConv && this.activeConv.id === peerId) this._appendMsg(msg);
+        const contact = this.contacts.find(c => c.userId === peerId);
+        if (contact) { contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + pending.name, ts: now, fromId: this.my.id }; this.saveContact(contact); }
         this._renderContacts();
+        console.log(`[File] Resume complete: ${pending.name}`);
+    },
+
+    // Prompt user to re-open file for resume
+    _showFileResumePrompt(fileName, fileSize, callback) {
+        const modal = document.getElementById("alert-modal");
+        const alertText = document.getElementById("alert-text");
+        const sizeStr = this._formatFileSize(fileSize);
+        alertText.innerHTML = `<span class="de">Übertragung unterbrochen. Bitte &quot;${fileName}&quot; (${sizeStr}) erneut öffnen.</span><span class="en">Transfer interrupted. Please re-open &quot;${fileName}&quot; (${sizeStr}).</span><span class="zh">传输中断，请重新打开文件 &quot;${fileName}&quot;（${sizeStr}）。</span>`;
+        const actions = modal.querySelector('.modal-actions');
+        const oldHtml = actions.innerHTML;
+        actions.innerHTML = '';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'cancel-btn';
+        cancelBtn.innerHTML = `<span class="de">Abbrechen</span><span class="en">Cancel</span><span class="zh">取消</span>`;
+        cancelBtn.onclick = () => { modal.style.display = 'none'; actions.innerHTML = oldHtml; callback(null); };
+        const openBtn = document.createElement('button');
+        openBtn.className = 'accept-btn';
+        openBtn.innerHTML = `<span class="de">Datei öffnen</span><span class="en">Open File</span><span class="zh">打开文件</span>`;
+        openBtn.onclick = () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.style.display = 'none';
+            input.onchange = () => { modal.style.display = 'none'; actions.innerHTML = oldHtml; callback(input.files[0] || null); };
+            document.body.appendChild(input);
+            input.click();
+            setTimeout(() => document.body.removeChild(input), 1000);
+        };
+        actions.appendChild(cancelBtn);
+        actions.appendChild(openBtn);
+        modal.classList.add('show');
+        modal.style.display = 'flex';
     },
 
     // ---- Send image file (supports multiple) ----
