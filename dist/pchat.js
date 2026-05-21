@@ -3517,11 +3517,11 @@ const ChatApp = {
         const rejectBtn = document.createElement('button');
         rejectBtn.className = 'cancel-btn';
         rejectBtn.innerHTML = `<span class="de">Ablehnen</span><span class="en">Reject</span><span class="es">Rechazar</span><span class="fr">Refuser</span><span class="he">דחה</span><span class="it">Rifiuta</span><span class="ja">拒否</span><span class="ko">거부</span><span class="pt">Rejeitar</span><span class="zh">拒绝</span>`;
-        rejectBtn.onclick = () => { modal.classList.remove('show'); actions.innerHTML = oldHtml; callback(false); };
+        rejectBtn.onclick = () => { modal.style.display = 'none'; actions.innerHTML = oldHtml; callback(false); };
         const acceptBtn = document.createElement('button');
         acceptBtn.className = 'accept-btn';
         acceptBtn.innerHTML = `<span class="de">Akzeptieren</span><span class="en">Accept</span><span class="es">Aceptar</span><span class="fr">Accepter</span><span class="he">קבל</span><span class="it">Accetta</span><span class="ja">承認</span><span class="ko">수락</span><span class="pt">Aceitar</span><span class="zh">接收</span>`;
-        acceptBtn.onclick = () => { modal.classList.remove('show'); actions.innerHTML = oldHtml; callback(true); };
+        acceptBtn.onclick = () => { modal.style.display = 'none'; actions.innerHTML = oldHtml; callback(true); };
         actions.appendChild(rejectBtn);
         actions.appendChild(acceptBtn);
         modal.classList.add('show');
