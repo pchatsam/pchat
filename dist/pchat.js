@@ -882,8 +882,10 @@ const DB = {
         try { handle = await root.getFileHandle(`${fileId}.download`); } catch(e) {
             handle = await root.getFileHandle(`${fileId}.download`, { create: true });
         }
-        const writable = await handle.createWritable({ keepExistingData: true });
-        await writable.write(segmentBuffer);
+        const file = await handle.getFile();
+        const offset = file.size;
+        const writable = await handle.createWritable();
+        await writable.write({ type: 'write', data: segmentBuffer, position: offset });
         await writable.close();
     },
     // Finalize: verify size, rename .download to final
