@@ -550,7 +550,8 @@ const DB = {
     },
 
     // 利用 peerId 索引做范围查询，避免全表扫描+解密
-    async listMessagesByPeer(peerId, aesKey) {
+    async listMessagesByPeer(peerId, aesKey, opts) {
+        const { limit, beforeTs } = opts || {};
         const tx = this.db.transaction("messages", "readonly");
         const store = tx.objectStore("messages");
         const index = store.index("peerId");
@@ -580,6 +581,16 @@ const DB = {
                     }
                 }
                 results.sort((a, b) => a.ts - b.ts);
+                // Apply limit/beforeTs filter
+                if (beforeTs) {
+                    // Filter out messages at or after beforeTs (return older ones)
+                    const filtered = results.filter(r => r.ts < beforeTs);
+                    results.length = 0;
+                    results.push(...filtered);
+                }
+                if (limit && results.length > limit) {
+                    results.length = limit;
+                }
                 // Fallback: if index returned nothing (old records lack peerId field),
                 // do full table scan and filter by decrypted peerId
                 if (results.length === 0) {
@@ -600,6 +611,14 @@ const DB = {
                             } catch (e) { /* skip undecryptable */ }
                         }
                         allResults.sort((a, b) => a.ts - b.ts);
+                        if (beforeTs) {
+                            const filtered = allResults.filter(r => r.ts < beforeTs);
+                            allResults.length = 0;
+                            allResults.push(...filtered);
+                        }
+                        if (limit && allResults.length > limit) {
+                            allResults.length = limit;
+                        }
                         resolve(allResults);
                     };
                     allReq.onerror = () => reject(allReq.error);
@@ -4792,10 +4811,14 @@ const ChatApp = {
 
     async _loadMessages(peerId) {
         console.log(`[Chat] Loading messages for ${peerId}`);
-        const conv = (await DB.listMessagesByPeer(peerId, this.my.aesKey)).filter(m => !(m.content === "undefined" && !m.type));
+        const PAGE_SIZE = 100;
+        const conv = (await DB.listMessagesByPeer(peerId, this.my.aesKey, { limit: PAGE_SIZE })).filter(m => !(m.content === "undefined" && !m.type));
         const imgCount = conv.filter(m => m.type === 'image').length;
-        console.log(`[Chat] Messages for ${peerId}: ${conv.length} total, ${imgCount} images, aesKey fingerprint: ${this.my.aesKey.substring(0, 16)}...`);
+        console.log(`[Chat] Messages for ${peerId}: ${conv.length} total (latest page), ${imgCount} images`);
         this.currentMessages = conv;
+        // Track pagination state
+        if (!this._pageState) this._pageState = {};
+        this._pageState[peerId] = { hasMore: conv.length >= PAGE_SIZE, oldestTs: conv.length > 0 ? conv[0].ts : 0, loading: false };
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact && conv.length > 0) {
             const last = conv[conv.length - 1];
@@ -4804,6 +4827,15 @@ const ChatApp = {
         const list = document.getElementById("message-list");
         if (!list) { console.error("[Chat] message-list element not found"); return; }
         list.innerHTML = "";
+        // Scroll-to-top detection for loading older messages
+        list.addEventListener("scroll", () => {
+            if (this.activeConv?.id !== peerId) return;
+            const ps = this._pageState?.[peerId];
+            if (!ps || !ps.hasMore || ps.loading) return;
+            if (list.scrollTop < 100) {
+                this._loadOlderMessages(peerId);
+            }
+        });
         list.onclick = (e) => {
             const img = e.target.closest('.img-thumb');
             if (img) {
@@ -4869,6 +4901,102 @@ const ChatApp = {
         }
 
         this._scroll();
+    },
+
+    // Load older messages when scrolling to top
+    async _loadOlderMessages(peerId) {
+        const ps = this._pageState?.[peerId];
+        if (!ps || !ps.hasMore || ps.loading) return;
+        ps.loading = true;
+        console.log(`[Chat] Loading older messages for ${peerId}, beforeTs=${ps.oldestTs}`);
+        const PAGE_SIZE = 100;
+        const older = (await DB.listMessagesByPeer(peerId, this.my.aesKey, { limit: PAGE_SIZE, beforeTs: ps.oldestTs })).filter(m => !(m.content === "undefined" && !m.type));
+        if (older.length === 0) { ps.hasMore = false; ps.loading = false; return; }
+        ps.oldestTs = older[0].ts;
+        ps.hasMore = older.length >= PAGE_SIZE;
+        // Prepend to currentMessages
+        this.currentMessages = [...older, ...this.currentMessages];
+        // Render at top, preserve scroll position
+        const list = document.getElementById("message-list");
+        if (!list) { ps.loading = false; return; }
+        const oldScrollHeight = list.scrollHeight;
+        const frag = document.createDocumentFragment();
+        for (const m of older) this._appendMsgRaw(frag, m);
+        list.insertBefore(frag, list.firstChild);
+        // Restore scroll position
+        const newScrollHeight = list.scrollHeight;
+        list.scrollTop = newScrollHeight - oldScrollHeight;
+        ps.loading = false;
+    },
+
+    // Render a single message into a fragment or list (used by pagination)
+    _appendMsgRaw(container, msg) {
+        if (msg.type === "call-log") {
+            const sysDiv = document.createElement("div");
+            sysDiv.className = "system-message";
+            sysDiv.textContent = msg.content || '';
+            list.appendChild(sysDiv);
+            return;
+        }
+        const wrapper = document.createElement("div");
+        wrapper.className = "message-row";
+        wrapper.dataset.msgId = msg.id;
+        const sent = msg.fromId === this.my.id;
+        const contact = this.contacts.find(cv => cv.userId === msg.peerId);
+        const senderName = sent ? _i18n.t('pchat.msg.self') : (contact ? (contact.nickname || msg.fromId) : msg.fromId);
+        const senderClass = sent ? "sender-avatar self" : "sender-avatar";
+        let bubbleClass = sent ? "sent" : "received";
+        const time = this._formatTime(msg.ts);
+        let innerContent = "";
+        if (msg.type === "image" && msg.fileData) {
+            const mime = (msg.fileId && msg.mimeType) ? 'image/jpeg' : (msg.mimeType || 'image/png');
+            const src = `data:${mime};base64,${msg.fileData}`;
+            innerContent = `<img class="img-thumb" src="${src}" data-msg-id="${msg.id}" data-file-id="${msg.fileId || ''}" data-mime="${msg.mimeType || 'image/png'}">`;
+        } else if (msg.type === "image") {
+            innerContent = `<div class="content" style="opacity:0.5;"><svg width="20" height="20" viewBox="0 0 32 32" style="vertical-align:middle"><rect x="3" y="5" width="26" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="12" r="3" fill="currentColor" opacity="0.5"/><polygon points="3,27 11,18 17,24 22,18 29,25 29,27" fill="currentColor" opacity="0.15"/></svg> ${msg.fileName || '图片'}</div>`;
+        } else if (msg.type === "file" && msg.fileData) {
+            const icon = this._getFileIcon(msg.fileName);
+            const sizeStr = this._formatFileSize(msg.fileSize);
+            innerContent = `<div class="file-attachment" onclick="ChatApp.downloadAttachment('${msg.id}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || _i18n.t('pchat.file.unknown')).replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr}</div></div></div>`;
+        } else if (msg.type === "direct-file") {
+            const icon = this._getFileIcon(msg.fileName);
+            const sizeStr = this._formatFileSize(msg.fileSize);
+            if (sent) {
+                innerContent = `<div class="file-attachment direct-transfer sent"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || '').replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr} · 直传 · 已发送 ✓</div></div></div>`;
+            } else {
+                const safeName = (msg.fileName || 'download').replace(/'/g,"\\'");
+                innerContent = `<div class="file-attachment direct-transfer" onclick="event.stopPropagation();ChatApp.downloadDirectFile('${msg.fileId}','${safeName}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || '').replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr} · 直传</div><button class="tp-done-btn" style="margin-top:4px;" onclick="event.stopPropagation();ChatApp.downloadDirectFile('${msg.fileId}','${safeName}')">下载</button></div></div>`;
+            }
+        } else if (msg.type === "voice") {
+            const durStr = msg.duration ? this._formatDuration(msg.duration) : '';
+            innerContent = `<div class="voice-message" onclick="ChatApp.playVoice('${msg.id}')"><span class="voice-icon">🔊</span><span class="voice-duration">${durStr || ''}</span><div class="voice-wave">${'▁▃▅▇▅▃▁▃▅▇'.repeat(3)}</div></div>`;
+        } else {
+            const text = msg.isHtml ? (msg.content || "") : (msg.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            innerContent = `<div class="content">${text}</div>`;
+        }
+        const deleteBtn = `<button class="msg-delete-btn" onclick="ChatApp.deleteMessage('${msg.id}', event)" title="${_i18n.t('pchat.msg.deleteTitle')}"><svg width="14" height="14" viewBox="0 0 32 32"><line x1="10" y1="10" x2="22" y2="22" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><line x1="22" y1="10" x2="10" y2="22" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>`;
+        let receiptHtml = "";
+        if (sent) {
+            const hasReceipt = msg.receipts && Object.keys(msg.receipts).length > 0;
+            if (this.activeConv && this.activeConv.type === "group") {
+                const group = this.groups.find(g => g.id === this.activeConv.id);
+                if (group) {
+                    let memberList = "";
+                    for (const mid of group.memberIds) {
+                        const c2 = this.contacts.find(x => x.userId === mid);
+                        const nick = c2 ? (c2.nickname || mid) : mid;
+                        const got = msg.receipts && msg.receipts[mid];
+                        const cls = got ? "receipt-yes" : "receipt-no";
+                        memberList += `<span class="${cls}">${nick}</span>`;
+                    }
+                    receiptHtml = `<div class="receipt-list">${memberList}</div>`;
+                }
+            } else if (hasReceipt) {
+                bubbleClass += " received";
+            }
+        }
+        wrapper.innerHTML = `<div class="${senderClass}">${senderName}</div><div class="message ${bubbleClass}">${deleteBtn}${innerContent}${receiptHtml}<div class="time">${time}</div></div>`;
+        container.appendChild(wrapper);
     },
 
     _appendMsg(msg) {
@@ -6702,7 +6830,9 @@ const ChatApp = {
     _scroll() {
         const el = document.getElementById("message-list");
         if (!el) return;
-        // Use rAF so DOM layout settles before measuring scrollHeight (avoids showing half-message)
+        // Only auto-scroll if already near bottom (< 200px from bottom)
+        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+        if (!nearBottom && this._scrollLock !== true) return;
         requestAnimationFrame(() => {
             el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
         });
