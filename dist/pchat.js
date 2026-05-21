@@ -5594,6 +5594,7 @@ const ChatApp = {
     },
 
     rejectCall() {
+        if (this.call) this.call._selfHangup = true;
         this._stopRingtone();
         // Notify caller that we rejected via DC
         const peerId = this.incomingCallPeerId;
@@ -5707,8 +5708,38 @@ const ChatApp = {
         check();
     },
 
+    // Play hangup sound: two short beeps (old telephone style)
+    _playHangupSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.value = 800;
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.08);
+            // Second beep after 120ms gap
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'square';
+            osc2.frequency.value = 800;
+            gain2.gain.setValueAtTime(0.3, ctx.currentTime + 0.12);
+            gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.20);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.start(ctx.currentTime + 0.12);
+            osc2.stop(ctx.currentTime + 0.20);
+            setTimeout(() => ctx.close(), 500);
+        } catch(e) { /* Audio not available */ }
+    },
+
     hangupCall() {
         console.log("[Call] Hangup");
+        if (this.call) this.call._selfHangup = true;
         this._onCallEnd();
     },
 
@@ -5887,6 +5918,10 @@ const ChatApp = {
             }
         }
         
+        // Play hangup sound when remote side ended (not self-hangup)
+        if (!c._selfHangup) { this._playHangupSound(); }
+        c._selfHangup = false;
+
         this._stopCallMedia();
         this._hideCallModal();
         this._hideCallInHeader();
