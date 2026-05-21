@@ -4811,7 +4811,7 @@ const ChatApp = {
 
     async _loadMessages(peerId) {
         console.log(`[Chat] Loading messages for ${peerId}`);
-        const PAGE_SIZE = 100;
+        const PAGE_SIZE = 20;
         const conv = (await DB.listMessagesByPeer(peerId, this.my.aesKey, { limit: PAGE_SIZE })).filter(m => !(m.content === "undefined" && !m.type));
         const imgCount = conv.filter(m => m.type === 'image').length;
         console.log(`[Chat] Messages for ${peerId}: ${conv.length} total (latest page), ${imgCount} images`);
@@ -4909,7 +4909,7 @@ const ChatApp = {
         if (!ps || !ps.hasMore || ps.loading) return;
         ps.loading = true;
         console.log(`[Chat] Loading older messages for ${peerId}, beforeTs=${ps.oldestTs}`);
-        const PAGE_SIZE = 100;
+        const PAGE_SIZE = 20;
         const older = (await DB.listMessagesByPeer(peerId, this.my.aesKey, { limit: PAGE_SIZE, beforeTs: ps.oldestTs })).filter(m => !(m.content === "undefined" && !m.type));
         if (older.length === 0) { ps.hasMore = false; ps.loading = false; return; }
         ps.oldestTs = older[0].ts;
