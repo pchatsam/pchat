@@ -878,7 +878,10 @@ const DB = {
     // Append verified segment to download file
     async appendSegment(fileId, segmentBuffer) {
         const root = await this._getOprfsRoot();
-        const handle = await root.getFileHandle(`${fileId}.download`);
+        let handle;
+        try { handle = await root.getFileHandle(`${fileId}.download`); } catch(e) {
+            handle = await root.getFileHandle(`${fileId}.download`, { create: true });
+        }
         const writable = await handle.createWritable({ keepExistingData: true });
         await writable.write(segmentBuffer);
         await writable.close();
@@ -4060,7 +4063,7 @@ const ChatApp = {
             const opfsSize = await DB.getReceiveFileSize(fid);
             const received = Math.max(netReceived, opfsSize);
             console.log(`[File] Requesting resume for ${info.name}: received=${(received/1024/1024).toFixed(1)}MB / ${(info.size/1024/1024).toFixed(1)}MB`);
-            state.conn.send({ type: "file-resume", fileId: fid, nextSegment: nextSegment, totalSize: info.size });
+            state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, totalSize: info.size });
         }
         // Also check _pendingReceives for transfers that survived page refresh
         for (const [fid, pr] of Object.entries(this._pendingReceives)) {
@@ -4071,6 +4074,7 @@ const ChatApp = {
             const nextSegment = await TransferDB.getNextSegment(fid);
             const totalSegments = Math.ceil(pr.size / (100 * 1024 * 1024));
             const downloadSize = await DB.getDownloadSize(fid);
+            const received = downloadSize;
             console.log(`[File] Resume after refresh: ${pr.name}, segments=${nextSegment}/${totalSegments}, download=${(downloadSize/1024/1024).toFixed(1)}MB`);
             const info = { peerId, name: pr.name, size: pr.size, directTransfer: true, binaryChannel: true, totalSegments, currentSegment: nextSegment, segmentHash: '', segmentSize: 0, segmentReceived: 0, totalRawReceived: downloadSize, totalChunks: -1, chunkCount: 0, _written: downloadSize, expectedBase64Len: -1, expectedHash: '', lastAckBytes: 0, _recvStartTime: Date.now() };
             ft.pending[fid] = info;
