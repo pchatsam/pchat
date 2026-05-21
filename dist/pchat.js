@@ -4145,6 +4145,7 @@ const ChatApp = {
         this._activeSends[peerId] = { fileId: fid, name: pending.name, size: pending.size, pct: startPct };
         this._renderContacts();
         this._transferStartTimes[fid] = Date.now();
+        // (already set, kept for clarity)
         this._updateTransferProgress(fid, startPct, `续传中 ${startPct}%`);
         this._updateSidebarTransfer(peerId, `📤 ${pending.name.substring(0,15)}${pending.name.length>15?'...':''} ${startPct}%`);
 
@@ -4175,6 +4176,14 @@ const ChatApp = {
                 });
                 if (!segAck) { console.log(`[File] Resume segment ${currentSegment} retry requested`); continue; }
 
+                const resSegDone = new Promise((resolve) => {
+                    const handler = (d) => {
+                        if (d.type === "segment-done" && d.fileId === fid && d.segmentIndex === currentSegment) { state.conn.off("data", handler); resolve(true); }
+                        else if (d.type === "segment-retry" && d.fileId === fid && d.segmentIndex === currentSegment) { state.conn.off("data", handler); resolve(false); }
+                    };
+                    state.conn.on("data", handler);
+                });
+
                 for (let i = 0; i < segBuf.byteLength; i += chunkSize) {
                     const end2 = Math.min(i + chunkSize, segBuf.byteLength);
                     fileConn.send(segBuf.slice(i, end2)); sentChunks++; sentBytes += (end2 - i);
@@ -4186,14 +4195,7 @@ const ChatApp = {
                     }
                 }
 
-                const segDone = await new Promise((resolve) => {
-                    const handler = (d) => {
-                        if (d.type === "segment-done" && d.fileId === fid && d.segmentIndex === currentSegment) { state.conn.off("data", handler); resolve(true); }
-                        else if (d.type === "segment-retry" && d.fileId === fid && d.segmentIndex === currentSegment) { state.conn.off("data", handler); resolve(false); }
-                    };
-                    state.conn.on("data", handler);
-                });
-                if (!segDone) { console.log(`[File] Resume segment ${currentSegment} needs retry`); continue; }
+                if (!(await resSegDone)) { console.log(`[File] Resume segment ${currentSegment} needs retry`); continue; }
 
                 currentSegment++;
                 this._pendingSends[fid].currentSegment = currentSegment;
@@ -4580,6 +4582,7 @@ const ChatApp = {
 
             this._insertTransferCard(fileId, file.name, file.size, true);
             this._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
+            this._transferStartTimes[fileId] = Date.now();
             this._renderContacts();
 
             let sentChunks = 0, sentBytes = 0, currentSegment = 0;
@@ -4604,6 +4607,16 @@ const ChatApp = {
                     });
                     if (!segAck) { console.log(`[File] Segment ${currentSegment} retry requested`); continue; }
 
+                    // Register segment completion handler BEFORE sending data
+                    // (segment-done may arrive during flow control file-ack waits)
+                    const segDone = new Promise((resolve) => {
+                        const handler = (data) => {
+                            if (data.type === "segment-done" && data.fileId === fileId && data.segmentIndex === currentSegment) { conn.off("data", handler); resolve(true); }
+                            else if (data.type === "segment-retry" && data.fileId === fileId && data.segmentIndex === currentSegment) { conn.off("data", handler); resolve(false); }
+                        };
+                        conn.on("data", handler);
+                    });
+
                     // Send segment data via Binary DC
                     for (let i = 0; i < segBuf.byteLength; i += chunkSize) {
                         const end2 = Math.min(i + chunkSize, segBuf.byteLength);
@@ -4616,15 +4629,8 @@ const ChatApp = {
                         }
                     }
 
-                    // Wait for segment-done from receiver
-                    const segDone = await new Promise((resolve) => {
-                        const handler = (data) => {
-                            if (data.type === "segment-done" && data.fileId === fileId && data.segmentIndex === currentSegment) { conn.off("data", handler); resolve(true); }
-                            else if (data.type === "segment-retry" && data.fileId === fileId && data.segmentIndex === currentSegment) { conn.off("data", handler); resolve(false); }
-                        };
-                        conn.on("data", handler);
-                    });
-                    if (!segDone) { console.log(`[File] Segment ${currentSegment} needs retry`); continue; }
+                    // Wait for segment-done (already registered before data loop)
+                    if (!(await segDone)) { console.log(`[File] Segment ${currentSegment} needs retry`); continue; }
 
                     currentSegment++;
                     this._pendingSends[fileId].currentSegment = currentSegment;
