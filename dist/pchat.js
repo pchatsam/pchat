@@ -5088,7 +5088,7 @@ const ChatApp = {
         const peerId = ps?.peerId || this.activeConv?.id || '';
         delete this._activeSends[peerId];
 
-        // ---- Receiver side: cancel + clean OPFS receive ----
+        // ---- Notify the other side ----
         const ft = this.fileTransfer;
         const info = ft.pending[fileId];
         if (info) {
@@ -5096,6 +5096,15 @@ const ChatApp = {
             if (peer && peer.conn && peer.conn.open) {
                 peer.conn.send({ type: 'file-cancel', fileId });
             }
+        } else if (ps && peerId) {
+            // Sender is cancelling — notify receiver
+            const peer = PeerConn.peers[peerId];
+            if (peer && peer.conn && peer.conn.open) {
+                peer.conn.send({ type: 'file-cancel', fileId });
+            }
+        }
+        // ---- Receiver side: clean OPFS receive ----
+        if (info) {
             await DB._flushRawBuffer(fileId).catch(() => {});
             await DB.closeDirectFile(fileId).catch(() => {});
             await DB.deleteDirectFile(fileId).catch(() => {});
@@ -5127,6 +5136,7 @@ const ChatApp = {
 
     _onFileCancel(peerId, d) {
         console.log('[Transfer] Received cancel for:', d.fileId);
+        // Receiver side cleanup
         const ft = this.fileTransfer;
         const info = ft.pending[d.fileId];
         if (info) {
@@ -5134,13 +5144,27 @@ const ChatApp = {
             DB.closeDirectFile(d.fileId).catch(() => {});
             DB.deleteDirectFile(d.fileId).catch(() => {});
             delete ft.pending[d.fileId];
+            delete this._activeReceives[peerId];
+            delete this._pendingReceives[d.fileId];
+            this._savePendingReceives();
+        }
+        // Sender side cleanup (receiver cancelled)
+        const ps = this._pendingSends?.[d.fileId];
+        if (ps) {
+            const bc = this._binarySendChannels?.[d.fileId];
+            if (bc) { try { bc.close(); } catch(e) {} delete this._binarySendChannels[d.fileId]; }
+            delete this._pendingSends[d.fileId];
+            this._savePendingSends();
+            delete this._activeSends[peerId];
+        }
+        // Show cancel status then fade
+        const stEl = document.getElementById(`transfer-status-${d.fileId}`);
+        if (stEl) {
+            stEl.textContent = '对方取消传输';
+            stEl.style.color = '#e74c3c';
         }
         const row = document.getElementById(`transfer-${d.fileId}`);
-        if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
-        // Clean up sidebar transfer progress
-        delete this._activeReceives[peerId];
-        delete this._pendingReceives[d.fileId];
-        this._savePendingReceives();
+        if (row) { row.style.opacity = '0.5'; setTimeout(() => { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }, 1500); }
         this._renderContacts();
     },
 
