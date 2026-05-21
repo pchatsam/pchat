@@ -1055,7 +1055,7 @@ const PublicDB = {
 
 // ==================== TransferDB — Segment Progress Tracking ====================
 const TransferDB = {
-    NAME: "PChat_transfer", VER: 1, db: null,
+    NAME: "PChat_transfer", VER: 2, db: null,
     async open() {
         if (this.db) return this.db;
         return new Promise((resolve, reject) => {
@@ -1252,10 +1252,21 @@ const PeerConn = {
                             const computedHash = await ChatApp._hashBuffer(fullBuf);
                             if (computedHash === segBuf.hash) {
                                 console.log(`[File] Segment ${info.currentSegment} hash OK (${(segBuf.total/1024/1024).toFixed(1)}MB)`);
-                                await DB.appendSegment(fileId, fullBuf);
-                                await TransferDB.recordSegment(fileId, info.currentSegment, segBuf.hash, segBuf.total);
+                                try {
+                                    await DB.appendSegment(fileId, fullBuf);
+                                    await TransferDB.recordSegment(fileId, info.currentSegment, segBuf.hash, segBuf.total);
+                                } catch(e) {
+                                    console.error(`[File] Segment write failed:`, e);
+                                    ChatApp.showAlert(_i18n.t('pchat.file.checksumFail'));
+                                    return;
+                                }
                                 const state = PeerConn.peers[info.peerId];
-                                if (state && state.conn && state.conn.open) state.conn.send({ type: 'segment-done', fileId, segmentIndex: info.currentSegment });
+                                if (state && state.conn && state.conn.open) {
+                                    state.conn.send({ type: 'segment-done', fileId, segmentIndex: info.currentSegment });
+                                    console.log(`[File] Sent segment-done for segment ${info.currentSegment}`);
+                                } else {
+                                    console.error(`[File] Cannot send segment-done: state=${!!state}, conn=${!!(state&&state.conn)}, open=${!!(state&&state.conn&&state.conn.open)}`);
+                                }
                                 info.currentSegment++;
                                 if (info.currentSegment >= info.totalSegments) {
                                     console.log(`[File] All segments received for ${info.name}`);
@@ -1279,7 +1290,7 @@ const PeerConn = {
                                     } else { ChatApp.showAlert(_i18n.t('pchat.file.checksumFail')); }
                                 }
                             } else {
-                                console.error(`[File] Segment ${info.currentSegment} hash mismatch`);
+                                console.error(`[File] Segment ${info.currentSegment} hash mismatch: expected ${segBuf.hash.slice(0,16)}..., got ${computedHash.slice(0,16)}...`);
                                 delete DB._segmentBuffers[fileId];
                                 const state = PeerConn.peers[info.peerId];
                                 if (state && state.conn && state.conn.open) state.conn.send({ type: 'segment-retry', fileId, segmentIndex: info.currentSegment });
