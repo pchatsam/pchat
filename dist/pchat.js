@@ -4129,11 +4129,23 @@ const ChatApp = {
         const state = PeerConn.peers[peerId];
         if (!state || !state.conn || !state.conn.open) return;
 
-        // Prompt user to re-open file
-        const file = await new Promise((resolve) => {
-            this._showFileResumePrompt(pending.name, pending.size, (f) => resolve(f));
-        });
-        if (!file) { console.log(`[File] Resume cancelled: no file opened`); return; }
+        // Check if File handle still available (e.g. network drop, no page refresh)
+        let file = this._sentFiles?.[fid];
+        if (file) {
+            console.log(`[File] Resume using cached File handle for ${pending.name}`);
+        } else {
+            // File handle lost (page refresh or too long) — prompt user
+            file = await new Promise((resolve) => {
+                this._showFileResumePrompt(pending.name, pending.size, (f) => resolve(f));
+            });
+            if (!file) { console.log(`[File] Resume cancelled: no file opened`); return; }
+            if (!this._sentFiles) this._sentFiles = {};
+            this._sentFiles[fid] = file;
+        }
+        if (file.size !== pending.size) {
+            console.warn(`[File] Resume file size mismatch: ${file.size} vs ${pending.size}`);
+            // Still proceed — receiver will verify by hash
+        }
 
         // Close old Binary DC if still running
         const oldConn = this._binarySendChannels[fid];
@@ -4224,6 +4236,7 @@ const ChatApp = {
         delete this._transferThrottle[fid]; delete this._transferStartTimes[fid]; delete this._transferAckSpeed?.[fid]; delete this._transferAckEta?.[fid]; delete this._transferSizes?.[fid];
         delete this._activeSends[peerId];
         this._clearPendingSend(fid, true);
+        delete this._sentFiles?.[fid];
         await DB.put("messages", msg, this.my.aesKey);
         if (this.activeConv && this.activeConv.id === peerId) this._appendMsg(msg);
         const contact = this.contacts.find(c => c.userId === peerId);
@@ -4552,7 +4565,9 @@ const ChatApp = {
             const totalSegments = Math.ceil(file.size / SEG_SIZE);
             console.log(`[File] Segmented DC (${(file.size/1024/1024).toFixed(1)}MB, ${totalSegments} segments)`);
 
-            // Track for resume (no OPFS copy)
+            // Track for resume (store File handle, no OPFS copy)
+            if (!this._sentFiles) this._sentFiles = {};
+            this._sentFiles[fileId] = file;
             this._pendingSends[fileId] = { name: file.name, size: file.size, mime: file.type, peerId, progress: 0, ts: Date.now(), totalSegments, currentSegment: 0 };
             this._savePendingSends();
 
@@ -4675,6 +4690,7 @@ const ChatApp = {
             delete this._transferThrottle[fileId]; delete this._transferStartTimes[fileId]; delete this._transferAckSpeed?.[fileId]; delete this._transferAckEta?.[fileId]; delete this._transferSizes?.[fileId];
             delete this._activeSends[peerId];
             this._clearPendingSend(fileId, true);
+            delete this._sentFiles?.[fileId];
             this._renderContacts();
             await DB.put("messages", sentMsg, this.my.aesKey);
             this._appendMsg(sentMsg);
