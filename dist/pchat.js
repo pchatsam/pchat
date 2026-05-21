@@ -1306,10 +1306,10 @@ const PeerConn = {
                         const nowMs = Date.now();
                         if (info._lastChunkTime && nowMs - info._lastChunkTime > 5000) { info._recvStartTime = nowMs; info._resumeBaseBytes = info.totalRawReceived; info._speedWindow = []; }
                         info._recvStartTime = info._recvStartTime || nowMs; info._lastChunkTime = nowMs;
-                        const elapsedSec = Math.max((nowMs - (info._recvStartTime || nowMs)) / 1000, 0.01);
+                        const elapsedSec = Math.max((nowMs - (info._recvStartTime || nowMs)) / 1000, 0.05);
                         const currentSpd = (info.totalRawReceived - (info._resumeBaseBytes || 0)) / elapsedSec;
                         info._speedWindow = info._speedWindow || [];
-                        if (info._speedWindow.length === 0) { for (let i = 0; i < 100; i++) info._speedWindow.push(currentSpd); } else { info._speedWindow.push(currentSpd); info._speedWindow.shift(); }
+                        if (info._speedWindow.length === 0) { for (let i = 0; i < 100; i++) info._speedWindow.push(0); } info._speedWindow.push(currentSpd); info._speedWindow.shift();
                         const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / 100;
                         const speedStr = avgSpd > 1048576 ? `${(avgSpd/1048576).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
                         const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / avgSpd) : 0;
@@ -4101,7 +4101,7 @@ const ChatApp = {
             const downloadSize = await DB.getDownloadSize(fid);
             const received = downloadSize;
             console.log(`[File] Resume after refresh: ${pr.name}, segments=${nextSegment}/${totalSegments}, download=${(downloadSize/1024/1024).toFixed(1)}MB`);
-            const info = { peerId, name: pr.name, size: pr.size, directTransfer: true, binaryChannel: true, totalSegments, currentSegment: nextSegment, segmentHash: '', segmentSize: 0, segmentReceived: 0, totalRawReceived: downloadSize, totalChunks: -1, chunkCount: 0, _written: downloadSize, expectedBase64Len: -1, expectedHash: '', lastAckBytes: 0, _recvStartTime: Date.now() };
+            const info = { peerId, name: pr.name, size: pr.size, directTransfer: true, binaryChannel: true, totalSegments, currentSegment: nextSegment, segmentHash: '', segmentSize: 0, segmentReceived: 0, totalRawReceived: downloadSize, totalChunks: -1, chunkCount: 0, _written: downloadSize, expectedBase64Len: -1, expectedHash: '', lastAckBytes: 0, _recvStartTime: Date.now(), _lastChunkTime: 0, _resumeBaseBytes: downloadSize, _speedWindow: [] };
             ft.pending[fid] = info;
             this._activeReceives[peerId] = { fileId: fid, name: pr.name, size: pr.size, pct: Math.round(received / pr.size * 100) };
             this._renderContacts();
