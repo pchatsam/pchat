@@ -3488,6 +3488,8 @@ const ChatApp = {
         console.log(`[File] Request to receive: ${d.name} (${(d.size/1024/1024).toFixed(1)}MB, ${d.totalSegments} segments)`);
         const ft = this.fileTransfer;
         if (ft.pending[d.fileId]) return;
+        // Mark as processing before dialog to prevent duplicate dialogs
+        ft.pending[d.fileId] = { _processing: true, peerId, name: d.name, size: d.size };
         const accepted = await new Promise((resolve) => {
             this._showFileRequestDialog(d.name, d.size, (v) => resolve(v));
         });
