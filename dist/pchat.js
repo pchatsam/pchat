@@ -4559,6 +4559,10 @@ const ChatApp = {
             // Step 1: Request file transfer (character DC)
             conn.send({ type: "file-request", fileId, name: file.name, mime: file.type, size: file.size, totalSegments, isImage });
             console.log(`[File] Sent file-request, waiting for accept...`);
+            this._insertTransferCard(fileId, file.name, file.size, true);
+            this._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
+            this._updateTransferProgress(fileId, 0, '等待对方接收...');
+            this._renderContacts();
 
             // Step 2: Wait for file-accept
             const accepted = await new Promise((resolve) => {
@@ -4570,8 +4574,12 @@ const ChatApp = {
             });
             if (!accepted) {
                 console.log(`[File] Transfer rejected`);
+                const pr = document.getElementById(`transfer-${fileId}`);
+                if (pr) pr.remove();
+                delete this._activeSends[peerId];
                 delete this._pendingSends[fileId];
                 this._savePendingSends();
+                this._renderContacts();
                 return;
             }
             console.log(`[File] Receiver accepted, opening Binary DC...`);
@@ -4582,10 +4590,9 @@ const ChatApp = {
             await new Promise((resolve, reject) => { fileConn.on('open', resolve); fileConn.on('error', reject); setTimeout(() => reject(new Error('Binary channel timeout')), 15000); });
             console.log('[File] Binary DC opened');
 
-            this._insertTransferCard(fileId, file.name, file.size, true);
-            this._activeSends[peerId] = { fileId, name: file.name, size: file.size, pct: 0 };
+            // Transition from "waiting" to "sending"
             this._transferStartTimes[fileId] = Date.now();
-            this._renderContacts();
+            this._updateTransferProgress(fileId, 0, '发送中 0%');
 
             let sentChunks = 0, sentBytes = 0, currentSegment = 0;
             try {
