@@ -3497,7 +3497,7 @@ const ChatApp = {
         for (const m of conv) this._appendMsg(m);
         this._scroll();
         // Enable scroll-to-top loading after initial scroll settles
-        setTimeout(() => { if (this._pageState?.[peerId]) this._pageState[peerId].loading = false; }, 600);
+        setTimeout(() => { if (this._pageState?.[convId]) this._pageState[convId].loading = false; }, 600);
     },
 
     // ---- Voice Message Receive ----
