@@ -3467,13 +3467,22 @@ const ChatApp = {
                 break;
             }
         }
-        // Re-render current conversation if it's the relevant one
+        // Update receipt status without full re-render
         if (this.activeConv) {
-            // Check if any group contains this peerId, or if it's a 1v1 chat
             const isRelevant = this.activeConv.id === peerId ||
                 (this.activeConv.type === "group" && this.groups.find(g => g.id === this.activeConv.id && g.memberIds.includes(peerId)));
             if (isRelevant) {
-                this._renderMessages(this.activeConv.id);
+                // Just refresh receipt colors on the message row
+                const row = document.querySelector(`.message-row[data-msg-id="${msgId}"]`);
+                if (row) {
+                    const msg = this.currentMessages?.find(m => m.id === msgId);
+                    if (msg && msg.receipts && Object.keys(msg.receipts).length > 0) {
+                        const bubble = row.querySelector('.message');
+                        if (bubble && !bubble.classList.contains('received')) {
+                            bubble.classList.add('received');
+                        }
+                    }
+                }
             }
         }
     },
