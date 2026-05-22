@@ -5005,95 +5005,10 @@ const ChatApp = {
     },
 
     _appendMsg(msg) {
-        // Push to currentMessages ONLY for new real-time messages (not during _loadMessages which already sets currentMessages)
         if (this.activeConv && msg.peerId === this.activeConv.id && this.currentMessages) {
-            if (!this.currentMessages.find(m => m.id === msg.id)) {
-                this.currentMessages.push(msg);
-            }
+            if (!this.currentMessages.find(m => m.id === msg.id)) this.currentMessages.push(msg);
         }
-        const list = document.getElementById("message-list");
-        // System messages (call logs, etc.) — no bubble, no delete
-        if (msg.type === "call-log") {
-            const sysDiv = document.createElement("div");
-            sysDiv.className = "system-msg";
-            sysDiv.textContent = msg.content || "";
-            list.appendChild(sysDiv);
-            this._scroll();
-            return;
-        }
-        
-        const wrapper = document.createElement("div");
-        wrapper.className = "message-row";
-        wrapper.dataset.msgId = msg.id;
-        const sent = msg.fromId === this.my.id;
-        const contact = this.contacts.find(c => c.userId === msg.peerId);
-        const senderName = sent ? _i18n.t('pchat.msg.self') : (contact ? (contact.nickname || msg.fromId) : msg.fromId);
-        const senderClass = sent ? "sender-avatar self" : "sender-avatar";
-        let bubbleClass = sent ? "sent" : "received";
-        const time = this._formatTime(msg.ts);
-        let innerContent = "";
-        if (msg.type === "image" && msg.fileData) {
-            // New messages: fileData is JPEG thumbnail; old messages: full original image
-            const mime = (msg.fileId && msg.mimeType) ? 'image/jpeg' : (msg.mimeType || 'image/png');
-            const src = `data:${mime};base64,${msg.fileData}`;
-            innerContent = `<img class="img-thumb" src="${src}" data-msg-id="${msg.id}" data-file-id="${msg.fileId || ''}" data-mime="${msg.mimeType || 'image/png'}">`;
-        } else if (msg.type === "image") {
-            // Image message without fileData (migration/partial state) - show placeholder
-            innerContent = `<div class="content" style="opacity:0.5;"><svg width="20" height="20" viewBox="0 0 32 32" style="vertical-align:middle"><rect x="3" y="5" width="26" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="12" r="3" fill="currentColor" opacity="0.5"/><polygon points="3,27 11,18 17,24 22,18 29,25 29,27" fill="currentColor" opacity="0.15"/></svg> ${msg.fileName || '图片'}</div>`;
-        } else if (msg.type === "file" && msg.fileData) {
-            const icon = this._getFileIcon(msg.fileName);
-            const sizeStr = this._formatFileSize(msg.fileSize);
-            innerContent = `<div class="file-attachment" onclick="ChatApp.downloadAttachment('${msg.id}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || _i18n.t('pchat.file.unknown')).replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr}</div></div></div>`;
-        } else if (msg.type === "direct-file") {
-            // Direct transfer: file stored in OPFS, not IndexedDB
-            const icon = this._getFileIcon(msg.fileName);
-            const sizeStr = this._formatFileSize(msg.fileSize);
-            if (sent) {
-                innerContent = `<div class="file-attachment direct-transfer sent"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || '').replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr} · 直传 · 已发送 ✓</div></div></div>`;
-            } else {
-                const safeName = (msg.fileName || 'download').replace(/'/g,"\\'");
-                innerContent = `<div class="file-attachment direct-transfer" onclick="event.stopPropagation();ChatApp.downloadDirectFile('${msg.fileId}','${safeName}')"><div class="file-icon">${icon}</div><div class="file-info"><div class="file-name">${(msg.fileName || '').replace(/</g,'&lt;')}</div><div class="file-size">${sizeStr} · 直传</div><button class="tp-done-btn" style="margin-top:4px;" onclick="event.stopPropagation();ChatApp.downloadDirectFile('${msg.fileId}','${safeName}')">下载</button></div></div>`;
-            }
-        } else if (msg.type === "voice" && msg.content) {
-            const dur = msg.duration || 0;
-            const durStr = dur > 0 ? `${Math.floor(dur)}s` : _i18n.t('pchat.msg.voice');
-            innerContent = `<div class="voice-msg" onclick="ChatApp.playVoice('${msg.id}', this)"><span class="voice-icon"><svg width="20" height="20" viewBox="0 0 32 32"><polygon points="8,12 4,12 4,20 8,20 14,25 14,7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M18 10a6 6 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M22 7a10 10 0 0 1 0 18" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5" stroke-linecap="round"/></svg></span><span class="voice-duration">${durStr}</span></div>`;
-        } else {
-            const text = msg.isHtml ? (msg.content || "") : (msg.content || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            innerContent = `<div class="content">${text}</div>`;
-        }
-        const deleteBtn = `<button class="msg-delete-btn" onclick="ChatApp.deleteMessage('${msg.id}', event)" title="${_i18n.t('pchat.msg.deleteTitle')}"><svg width="14" height="14" viewBox="0 0 32 32"><line x1="10" y1="10" x2="22" y2="22" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><line x1="22" y1="10" x2="10" y2="22" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>`;
-        
-        // Receipt status for sent messages
-        let receiptHtml = "";
-        if (sent) {
-            const hasReceipt = msg.receipts && Object.keys(msg.receipts).length > 0;
-            if (this.activeConv && this.activeConv.type === "group") {
-                // Group chat: show member receipt list
-                const group = this.groups.find(g => g.id === this.activeConv.id);
-                if (group) {
-                    let memberList = "";
-                    for (const mid of group.memberIds) {
-                        const c = this.contacts.find(x => x.userId === mid);
-                        const nick = c ? (c.nickname || mid) : mid;
-                        const got = msg.receipts && msg.receipts[mid];
-                        const cls = got ? "receipt-yes" : "receipt-no";
-                        memberList += `<span class="${cls}">${nick}</span>`;
-                    }
-                    receiptHtml = `<div class="receipt-list">${memberList}</div>`;
-                }
-            }
-            // Add received class for 1v1 color change
-            if (hasReceipt) {
-                bubbleClass += " received";
-            }
-        }
-        
-        wrapper.innerHTML = `<div class="${senderClass}">${senderName}</div><div class="message ${bubbleClass}">${deleteBtn}${innerContent}${receiptHtml}<div class="time">${time}</div></div>`;
-        list.appendChild(wrapper);
-        this._scroll();
-        // Enable scroll-to-top loading after initial scroll settles
-        setTimeout(() => { if (this._pageState?.[peerId]) this._pageState[peerId].loading = false; }, 600);
+        this._appendMsgRaw(document.getElementById("message-list"), msg);
     },
 
     // ---- Transfer progress UI ----
