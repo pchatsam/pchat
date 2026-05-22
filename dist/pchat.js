@@ -3508,14 +3508,19 @@ const ChatApp = {
         };
         for (const m of conv) this._appendMsg(m);
         this._scroll();
-        if (this._pageState?.[convId]?.hasMore) {
-            const moreBtn = document.createElement("div");
-            moreBtn.id = "load-more-btn";
-            moreBtn.style.cssText = "text-align:center;padding:12px;color:var(--green);cursor:pointer;font-size:13px;";
-            moreBtn.textContent = "加载更多...";
-            moreBtn.onclick = () => this._loadOlderMessages(convId);
-            container.insertBefore(moreBtn, container.firstChild);
+        const sentinel2 = document.createElement("div");
+        sentinel2.id = "scroll-sentinel";
+        sentinel2.style.cssText = "height:1px;flex-shrink:0;";
+        container.insertBefore(sentinel2, container.firstChild);
+        if (!this._scrollObserver) {
+            this._scrollObserver = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting) {
+                    const pid = this.activeConv?.id;
+                    if (pid) this._loadOlderMessages(pid);
+                }
+            }, { threshold: 0 });
         }
+        this._scrollObserver.observe(sentinel2);
     },
 
     // ---- Voice Message Receive ----
@@ -4866,15 +4871,20 @@ const ChatApp = {
         };
         for (const m of conv) this._appendMsg(m);
         this._scroll();
-        // Add "load more" button if there are older messages
-        if (this._pageState?.[peerId]?.hasMore) {
-            const moreBtn = document.createElement("div");
-            moreBtn.id = "load-more-btn";
-            moreBtn.style.cssText = "text-align:center;padding:12px;color:var(--green);cursor:pointer;font-size:13px;";
-            moreBtn.textContent = "加载更多...";
-            moreBtn.onclick = () => this._loadOlderMessages(peerId);
-            list.insertBefore(moreBtn, list.firstChild);
+        // Add sentinel for IntersectionObserver-based scroll loading
+        const sentinel = document.createElement("div");
+        sentinel.id = "scroll-sentinel";
+        sentinel.style.cssText = "height:1px;flex-shrink:0;";
+        list.insertBefore(sentinel, list.firstChild);
+        if (!this._scrollObserver) {
+            this._scrollObserver = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting) {
+                    const pid = this.activeConv?.id;
+                    if (pid) this._loadOlderMessages(pid);
+                }
+            }, { threshold: 0 });
         }
+        this._scrollObserver.observe(sentinel);
 
         // Insert progress cards for any active file transfers from/to this peer (≥10MB only)
         const ft = this.fileTransfer;
@@ -4931,12 +4941,14 @@ const ChatApp = {
     async _loadOlderMessages(peerId) {
         const ps = this._pageState?.[peerId];
         if (!ps || !ps.hasMore) return;
+        ps.loading = true;
         console.log(`[Chat] Loading older messages for ${peerId}, beforeTs=${ps.oldestTs}`);
         const PAGE_SIZE = 20;
         const older = (await DB.listMessagesByPeer(peerId, this.my.aesKey, { limit: PAGE_SIZE, beforeTs: ps.oldestTs })).filter(m => !(m.content === "undefined" && !m.type));
         if (older.length === 0) { ps.hasMore = false; ps.loading = false; return; }
         ps.oldestTs = older[0].ts;
         ps.hasMore = older.length >= PAGE_SIZE;
+        ps.loading = false;
         // Prepend to currentMessages
         this.currentMessages = [...older, ...this.currentMessages];
         // Render at top, preserve scroll position
