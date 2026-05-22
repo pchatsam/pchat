@@ -3495,11 +3495,15 @@ const ChatApp = {
             }
         };
         for (const m of conv) this._appendMsg(m);
-        this._msgAppending = true;
         this._scroll();
-        requestAnimationFrame(() => { this._msgAppending = false; });
-        // Enable scroll-to-top loading after initial scroll settles
-        setTimeout(() => { if (this._pageState?.[convId]) this._pageState[convId].loading = false; }, 600);
+        if (this._pageState?.[convId]?.hasMore) {
+            const moreBtn = document.createElement("div");
+            moreBtn.id = "load-more-btn";
+            moreBtn.style.cssText = "text-align:center;padding:12px;color:var(--green);cursor:pointer;font-size:13px;";
+            moreBtn.textContent = "加载更多...";
+            moreBtn.onclick = () => this._loadOlderMessages(convId);
+            container.insertBefore(moreBtn, container.firstChild);
+        }
     },
 
     // ---- Voice Message Receive ----
@@ -4823,7 +4827,7 @@ const ChatApp = {
         this.currentMessages = conv;
         // Track pagination state
         if (!this._pageState) this._pageState = {};
-        this._pageState[peerId] = { hasMore: conv.length >= PAGE_SIZE, oldestTs: conv.length > 0 ? conv[0].ts : 0, loading: true };
+        this._pageState[peerId] = { hasMore: conv.length >= PAGE_SIZE, oldestTs: conv.length > 0 ? conv[0].ts : 0 };
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact && conv.length > 0) {
             const last = conv[conv.length - 1];
@@ -4832,15 +4836,6 @@ const ChatApp = {
         const list = document.getElementById("message-list");
         if (!list) { console.error("[Chat] message-list element not found"); return; }
         list.innerHTML = "";
-        // Scroll-to-top detection for loading older messages
-        list.addEventListener("scroll", () => {
-            if (this.activeConv?.id !== peerId) return;
-            const ps = this._pageState?.[peerId];
-            if (!ps) return;
-            if (list.scrollTop < 100 && ps.hasMore && !ps.loading && !this._msgAppending) {
-                this._loadOlderMessages(peerId);
-            }
-        });
         list.onclick = (e) => {
             const img = e.target.closest('.img-thumb');
             if (img) {
@@ -4858,9 +4853,24 @@ const ChatApp = {
             }
         };
         for (const m of conv) this._appendMsg(m);
-        this._msgAppending = true;
         this._scroll();
-        requestAnimationFrame(() => { this._msgAppending = false; });
+        if (this._pageState?.[convId]?.hasMore) {
+            const moreBtn = document.createElement("div");
+            moreBtn.id = "load-more-btn";
+            moreBtn.style.cssText = "text-align:center;padding:12px;color:var(--green);cursor:pointer;font-size:13px;";
+            moreBtn.textContent = "加载更多...";
+            moreBtn.onclick = () => this._loadOlderMessages(convId);
+            container.insertBefore(moreBtn, container.firstChild);
+        }
+        // Add "load more" button if there are older messages
+        if (this._pageState?.[peerId]?.hasMore) {
+            const moreBtn = document.createElement("div");
+            moreBtn.id = "load-more-btn";
+            moreBtn.style.cssText = "text-align:center;padding:12px;color:var(--green);cursor:pointer;font-size:13px;";
+            moreBtn.textContent = "加载更多...";
+            moreBtn.onclick = () => this._loadOlderMessages(peerId);
+            list.insertBefore(moreBtn, list.firstChild);
+        }
 
         // Insert progress cards for any active file transfers from/to this peer (≥10MB only)
         const ft = this.fileTransfer;
@@ -4916,8 +4926,7 @@ const ChatApp = {
     // Load older messages when scrolling to top
     async _loadOlderMessages(peerId) {
         const ps = this._pageState?.[peerId];
-        if (!ps || !ps.hasMore || ps.loading) return;
-        ps.loading = true;
+        if (!ps || !ps.hasMore) return;
         console.log(`[Chat] Loading older messages for ${peerId}, beforeTs=${ps.oldestTs}`);
         const PAGE_SIZE = 20;
         const older = (await DB.listMessagesByPeer(peerId, this.my.aesKey, { limit: PAGE_SIZE, beforeTs: ps.oldestTs })).filter(m => !(m.content === "undefined" && !m.type));
@@ -4934,9 +4943,20 @@ const ChatApp = {
         for (const m of older) this._appendMsgRaw(frag, m);
         list.insertBefore(frag, list.firstChild);
         // Restore scroll position
+        // Remove old "load more" button
+        const oldBtn = document.getElementById("load-more-btn");
+        if (oldBtn) oldBtn.remove();
+        // Add new button if there are still more
+        if (ps.hasMore) {
+            const moreBtn = document.createElement("div");
+            moreBtn.id = "load-more-btn";
+            moreBtn.style.cssText = "text-align:center;padding:12px;color:var(--green);cursor:pointer;font-size:13px;";
+            moreBtn.textContent = "加载更多...";
+            moreBtn.onclick = () => this._loadOlderMessages(peerId);
+            list.insertBefore(moreBtn, list.firstChild);
+        }
         const newScrollHeight = list.scrollHeight;
         list.scrollTop = newScrollHeight - oldScrollHeight;
-        ps.loading = false;
     },
 
     // Render a single message into a fragment or list (used by pagination)
@@ -5013,9 +5033,7 @@ const ChatApp = {
         if (this.activeConv && msg.peerId === this.activeConv.id && this.currentMessages) {
             if (!this.currentMessages.find(m => m.id === msg.id)) this.currentMessages.push(msg);
         }
-        this._msgAppending = true;
         this._appendMsgRaw(document.getElementById("message-list"), msg);
-        requestAnimationFrame(() => { this._msgAppending = false; });
     },
 
     // ---- Transfer progress UI ----
