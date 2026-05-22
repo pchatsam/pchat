@@ -3475,11 +3475,14 @@ const ChatApp = {
                 // Just refresh receipt colors on the message row
                 const row = document.querySelector(`.message-row[data-msg-id="${msgId}"]`);
                 if (row) {
-                    const msg = this.currentMessages?.find(m => m.id === msgId);
-                    if (msg && msg.receipts && Object.keys(msg.receipts).length > 0) {
-                        const bubble = row.querySelector('.message');
-                        if (bubble && !bubble.classList.contains('received')) {
-                            bubble.classList.add('received');
+                    const bubble = row.querySelector('.message');
+                    if (bubble && !bubble.classList.contains('received')) {
+                        bubble.classList.add('received');
+                        // Also update currentMessages cache
+                        const msg = this.currentMessages?.find(m => m.id === msgId);
+                        if (msg) {
+                            if (!msg.receipts) msg.receipts = {};
+                            msg.receipts[peerId] = Date.now();
                         }
                     }
                 }
