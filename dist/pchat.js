@@ -4832,7 +4832,7 @@ const ChatApp = {
         list.innerHTML = "";
         // Scroll-to-top detection for loading older messages
         list.addEventListener("scroll", () => {
-            if (this._scrollLock) return;
+            if (this._scrollLock) { this._scrollLock = false; return; }
             if (this.activeConv?.id !== peerId) return;
             const ps = this._pageState?.[peerId];
             if (!ps) return;
