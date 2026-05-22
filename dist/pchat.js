@@ -3496,6 +3496,8 @@ const ChatApp = {
         };
         for (const m of conv) this._appendMsg(m);
         this._scroll();
+        // Enable scroll-to-top loading after initial scroll settles
+        setTimeout(() => { if (this._pageState?.[peerId]) this._pageState[peerId].loading = false; }, 600);
     },
 
     // ---- Voice Message Receive ----
@@ -4819,7 +4821,7 @@ const ChatApp = {
         this.currentMessages = conv;
         // Track pagination state
         if (!this._pageState) this._pageState = {};
-        this._pageState[peerId] = { hasMore: conv.length >= PAGE_SIZE, oldestTs: conv.length > 0 ? conv[0].ts : 0, loading: false };
+        this._pageState[peerId] = { hasMore: conv.length >= PAGE_SIZE, oldestTs: conv.length > 0 ? conv[0].ts : 0, loading: true };
         const contact = this.contacts.find(c => c.userId === peerId);
         if (contact && conv.length > 0) {
             const last = conv[conv.length - 1];
@@ -4903,6 +4905,8 @@ const ChatApp = {
         }
 
         this._scroll();
+        // Enable scroll-to-top loading after initial scroll settles
+        setTimeout(() => { if (this._pageState?.[peerId]) this._pageState[peerId].loading = false; }, 600);
     },
 
     // Load older messages when scrolling to top
@@ -5089,6 +5093,8 @@ const ChatApp = {
         wrapper.innerHTML = `<div class="${senderClass}">${senderName}</div><div class="message ${bubbleClass}">${deleteBtn}${innerContent}${receiptHtml}<div class="time">${time}</div></div>`;
         list.appendChild(wrapper);
         this._scroll();
+        // Enable scroll-to-top loading after initial scroll settles
+        setTimeout(() => { if (this._pageState?.[peerId]) this._pageState[peerId].loading = false; }, 600);
     },
 
     // ---- Transfer progress UI ----
