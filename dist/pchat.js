@@ -5009,6 +5009,7 @@ const ChatApp = {
             if (!this.currentMessages.find(m => m.id === msg.id)) this.currentMessages.push(msg);
         }
         this._appendMsgRaw(document.getElementById("message-list"), msg);
+        this._scroll();
     },
 
     // ---- Transfer progress UI ----
