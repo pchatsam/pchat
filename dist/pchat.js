@@ -3508,19 +3508,13 @@ const ChatApp = {
         };
         for (const m of conv) this._appendMsg(m);
         this._scroll();
-        const sentinel2 = document.createElement("div");
-        sentinel2.id = "scroll-sentinel";
-        sentinel2.style.cssText = "height:1px;flex-shrink:0;";
-        container.insertBefore(sentinel2, container.firstChild);
-        if (!this._scrollObserver) {
-            this._scrollObserver = new IntersectionObserver((entries) => {
-                if (entries[0].isIntersecting) {
-                    const pid = this.activeConv?.id;
-                    if (pid) this._loadOlderMessages(pid);
-                }
-            }, { threshold: 0 });
+        if (this._pageState?.[convId]?.hasMore) {
+            const btn = document.createElement("div");
+            btn.style.cssText = "text-align:center;padding:10px;color:var(--green);cursor:pointer;font-size:13px;";
+            btn.textContent = "加载更多...";
+            btn.onclick = () => { btn.remove(); this._loadOlderMessages(convId); };
+            container.insertBefore(btn, container.firstChild);
         }
-        this._scrollObserver.observe(sentinel2);
     },
 
     // ---- Voice Message Receive ----
@@ -4871,20 +4865,13 @@ const ChatApp = {
         };
         for (const m of conv) this._appendMsg(m);
         this._scroll();
-        // Add sentinel for IntersectionObserver-based scroll loading
-        const sentinel = document.createElement("div");
-        sentinel.id = "scroll-sentinel";
-        sentinel.style.cssText = "height:1px;flex-shrink:0;";
-        list.insertBefore(sentinel, list.firstChild);
-        if (!this._scrollObserver) {
-            this._scrollObserver = new IntersectionObserver((entries) => {
-                if (entries[0].isIntersecting) {
-                    const pid = this.activeConv?.id;
-                    if (pid) this._loadOlderMessages(pid);
-                }
-            }, { threshold: 0 });
+        if (this._pageState?.[peerId]?.hasMore) {
+            const btn = document.createElement("div");
+            btn.style.cssText = "text-align:center;padding:10px;color:var(--green);cursor:pointer;font-size:13px;";
+            btn.textContent = "加载更多...";
+            btn.onclick = () => { btn.remove(); this._loadOlderMessages(peerId); };
+            list.insertBefore(btn, list.firstChild);
         }
-        this._scrollObserver.observe(sentinel);
 
         // Insert progress cards for any active file transfers from/to this peer (≥10MB only)
         const ft = this.fileTransfer;
