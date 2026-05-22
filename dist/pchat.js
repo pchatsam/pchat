@@ -253,7 +253,7 @@ _i18n.fmt = function(key) {
 // Encryption chain: Plaintext → RSA encrypt (peer's pubkey) → DataChannel → RSA decrypt (my privkey) → AES encrypt → IndexedDB
 //
 const Crypto = {
-    // 密钥指纹：公钥 PEM 的 MD5 前 8 位
+    // Key fingerprint: first 8 chars of public key PEM MD5 hash
     // Returns MD5 hash of public key PEM, first 8 chars (unique fingerprint)
     keyFingerprint(pem) {
         if (!pem) return 'null';
@@ -314,7 +314,7 @@ const Crypto = {
             return this.encryptChunks(pubKeyPem, plaintext);
         }
         const pub = forge.pki.publicKeyFromPem(pubKeyPem);
-        // 将 UTF-16 字符串转为 byte string（支持中文）
+        // Convert UTF-16 string to byte string (supports CJK)
         const byteString = forge.util.encodeUtf8(plaintext);
         const enc = pub.encrypt(byteString, 'RSA-OAEP', {
             md: forge.md.sha256.create(),
@@ -334,7 +334,7 @@ const Crypto = {
         }
         // Original single-chunk decryption
         const priv = forge.pki.privateKeyFromPem(privKeyPem);
-        // 从私钥派生公钥，确认公私钥是否匹配
+        // Derive public key from private to verify keypair matches
         const pubFromPriv = forge.pki.setRsaPublicKey(priv.n, priv.e);
         const pubPemFromPriv = forge.pki.publicKeyToPem(pubFromPriv);
         console.log(`[Crypto] Derived pubkey from this privkey fp=${Crypto.keyFingerprint(pubPemFromPriv)}`);
@@ -344,11 +344,11 @@ const Crypto = {
         const dec = priv.decrypt(enc, 'RSA-OAEP', {
             md: forge.md.sha256.create(),
         });
-        // 将 byte string 转回 UTF-16 字符串（支持中文）
+        // Convert byte string back to UTF-16 string (supports CJK)
         return forge.util.decodeUtf8(dec);
     },
 
-    // 生成 16 字节随机 salt (hex 编码, 32 字符)
+    // Generate 16-byte random salt (hex-encoded, 32 chars)
     randomSalt() {
         const bytes = new Uint8Array(16);
         crypto.getRandomValues(bytes);
@@ -359,7 +359,7 @@ const Crypto = {
     // salt: optional 16-byte hex string, falls back to "pchat-salt" if null/undefined
     // 100,000 iterations for brute-force resistance
     deriveAesKey(password, salt) {
-        // salt: 可选，16 字节 hex 编码字符串。未提供则回退到固定盐
+        // salt: optional 16-byte hex string. Falls back to fixed salt if not provided
         const saltVal = salt ? CryptoJS.enc.Hex.parse(salt) : CryptoJS.enc.Utf8.parse("pchat-salt");
         return CryptoJS.PBKDF2(password, saltVal, {
             keySize: 256 / 32,
@@ -370,7 +370,7 @@ const Crypto = {
 
     async encryptAes(key, plaintext) {
         const encrypted = CryptoJS.AES.encrypt(plaintext, key);
-        return encrypted.toString(); // OpenSSL 格式: "Salted__..."
+        return encrypted.toString(); // OpenSSL format: "Salted__..."
     },
 
     async decryptAes(key, ciphertext) {
@@ -549,7 +549,7 @@ const DB = {
         });
     },
 
-    // 利用 peerId 索引做范围查询，避免全表扫描+解密
+    // Use peerId index for range query to avoid full table scan + decrypt
     async listMessagesByPeer(peerId, aesKey, opts) {
         const { limit, beforeTs } = opts || {};
         const tx = this.db.transaction("messages", "readonly");
@@ -657,7 +657,7 @@ const DB = {
         return new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
     },
 
-    // Salt 存储（明文，不加密 — salt 无需保密）
+    // Salt storage (plaintext, unencrypted — salt does not need secrecy)
     async getSalt() {
         return new Promise((resolve) => {
             const req = this._store("user").get("_salt");
@@ -1375,7 +1375,7 @@ const PeerConn = {
             const state = { conn, myKey, peerKey: null, connected: false };
             this.peers[conn.peer] = state;
             
-            // 注册 open 回调（PeerJS 要求在 connection 回调中立即注册）
+            // Register open callback (PeerJS requires immediate registration in connection callback)
             conn.on("open", () => {
                 PeerConn._debug && console.log(`[PeerConn] Connection opened from ${conn.peer}`);
             });
@@ -1460,13 +1460,13 @@ const PeerConn = {
                 if (!state.myKey) {
                     state.myKey = await Crypto.generateKeypair();
                 }
-                // 已有公钥的联系人（重连），设置 peerKey 用于加密
+                // Contact with existing public key (reconnect), set peerKey for encryption
                 if (contact && contact.publicKey) {
                     state.peerKey = contact.publicKey;
                 }
                 // For new contacts, _requestFriend sends the add message
             } else {
-                // 接收方：从 contact 加载密钥对和对方公钥
+                // Receiver: load keypair and peer public key from contact
                 const contact = ChatApp.contacts.find(c => c.userId === peerId);
                 PeerConn._debug && console.log(`[PeerConn] Receiver to ${peerId}, contact found: ${!!contact}, has publicKey: ${contact && !!contact.publicKey}`);
                 if (contact && contact.keypair) {
@@ -1474,14 +1474,14 @@ const PeerConn = {
                 }
                 if (!state.myKey) {
                     state.myKey = await Crypto.generateKeypair();
-                    // 保存新生成的密钥对到 contact
+                    // Save newly generated keypair to contact
                     const contact2 = ChatApp.contacts.find(c => c.userId === peerId);
                     if (contact2 && !contact2.keypair) {
                         contact2.keypair = state.myKey;
                         ChatApp.saveContact(contact2);
                     }
                 }
-                // 如果已有公钥（已完成的联系人），设置 peerKey 用于加密
+                // If public key exists (completed contact handshake), set peerKey for encryption
                 if (contact && contact.publicKey) {
                     state.peerKey = contact.publicKey;
                 }
@@ -1755,7 +1755,7 @@ const PeerConn = {
             return false;
         }
         PeerConn._debug && console.log(`[PeerConn] Sending chat to ${peerId}: ${content.substring(0, 50)}`);
-        // 公钥交换完成后用 RSA 加密
+        // After public key exchange, encrypt with RSA
         let sendContent = content;
         if (s.peerKey) {
             PeerConn._debug && console.log(`[PeerConn] Encrypting for ${peerId}, peerKey fp=${Crypto.keyFingerprint(s.peerKey)}`);
@@ -2205,7 +2205,7 @@ const ChatApp = {
 
         this._deleteConfirmUserId = userId;
 
-        // 移除旧监听，避免重复绑定
+        // Remove old listener to avoid duplicate bindings
         const newCancelBtn = cancelBtn ? cancelBtn.cloneNode(true) : null;
         const newOkBtn = okBtn ? okBtn.cloneNode(true) : null;
         if (cancelBtn && newCancelBtn) cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
@@ -2242,14 +2242,14 @@ const ChatApp = {
 
         const userId = this._deleteConfirmUserId;
         try {
-            // 用密码派生密钥，尝试读取 user 记录验证密码
+            // Derive key from password, try reading user record to verify password
             await DB.openFor(userId);
             // Read salt (old accounts without salt fall back to fixed salt)
             const salt = await DB.getSalt();
             const testKey = await Crypto.deriveAesKey(inputPw, salt);
             const user = await DB.get("user", "current", testKey);
             if (user && user.userId) {
-                // 密码正确，执行删除
+                // Password correct, proceed with deletion
                 this._hide("delete-confirm-modal");
                 await AccountManager.removeAccount(userId);
                 this.init();
@@ -2290,13 +2290,13 @@ const ChatApp = {
             return;
         }
 
-        // 生成/复用密钥对
+        // Generate/reuse keypair
         if (!state.myKey) state.myKey = await Crypto.generateKeypair();
         console.log(`[Accept] myKey fp=${Crypto.keyFingerprint(state.myKey.publicKey)}, peerKey fp=${Crypto.keyFingerprint(data.publicKey)}`);
-        // 设置对方的公钥（用于发送消息时加密）
+        // Set peer public key (used for encrypting outgoing messages)
         state.peerKey = data.publicKey;
 
-        // 保存联系人（对方向我发送的公钥）
+        // Save contact (peer's public key sent to us)
         let contact = this.contacts.find(c => c.userId === peerId);
         if (!contact) {
             contact = {
@@ -2323,7 +2323,7 @@ const ChatApp = {
         } catch(e) {
             console.warn(`[Accept] Cross-encrypt FAILED:`, e.message);
         }
-        // 发送 accept 响应（明文：自己的 ID、昵称、公钥）
+        // Send accept response (plaintext: own ID, nickname, public key)
         state.conn.send({
             type: "accept",
             id: this.my.id,
@@ -2331,7 +2331,7 @@ const ChatApp = {
             nickname: this.my.nickname,
         });
 
-        // 隐藏卡片
+        // Hide card
         const card = document.getElementById('friend-request-card');
         if (card) card.style.display = 'none';
         this._pendingFriendRequest = null;
@@ -2351,7 +2351,7 @@ const ChatApp = {
         this._renderContacts();
     },
 
-    // 收到好友请求（add 消息）
+    // Received friend request (add message)
     async _onAddRequest(peerId, data) {
         const nickname = data.nickname || peerId;
         const state = PeerConn.peers[peerId];
@@ -2360,18 +2360,18 @@ const ChatApp = {
             return;
         }
 
-        // 如果已经是好友（有公钥），忽略重复请求
+        // If already a contact (has public key), ignore duplicate request
         const existing = this.contacts.find(c => c.userId === peerId);
         if (existing && existing.publicKey) {
             PeerConn._debug && console.log(`[PeerConn] Already friends with ${peerId}, ignoring add`);
             return;
         }
 
-        // 新联系人，显示接受卡片
+        // New contact, show accept card
         PeerConn._debug && console.log(`[PeerConn] Add request from ${peerId} (${nickname}), publicKey present: ${!!data.publicKey}`);
         this._pendingFriendRequest = { peerId, nickname, data: { publicKey: data.publicKey } };
 
-        // 显示内联卡片
+        // Show inline card
         PeerConn._debug && console.log(`[PeerConn] Showing friend request card for ${nickname}`);
         const card = document.getElementById('friend-request-card');
         PeerConn._debug && console.log(`[PeerConn] friend-request-card element:`, card);
@@ -2387,7 +2387,7 @@ const ChatApp = {
 
 
     // ---- Init ----
-    // 格式化时间
+    // Format timestamp
     _formatTime(ts) {
         const now = Date.now();
         const diff = now - ts;
@@ -2553,7 +2553,7 @@ const ChatApp = {
         el.classList.remove('show');
     },
 
-    // Loading 进度条
+    // Loading progress bar
     _showLoading(progress, text) {
         const el = document.getElementById("login-loading");
         const bar = document.getElementById("login-loading-bar");
@@ -2587,7 +2587,7 @@ const ChatApp = {
 
         this.my.id = Crypto.generateId();
         this.my.nickname = nick;
-        // 生成随机 salt（16 字节 hex）
+        // Generate random salt (16-byte hex)
         const salt = Crypto.randomSalt();
         this._showLoading(30, _i18n.t('pchat.loading.deriveVerifyKey'));
         const verifyKey = await Crypto.deriveAesKey(pw, salt);
@@ -2600,15 +2600,15 @@ const ChatApp = {
         await DB.openFor(this.my.id);
 
         this._showLoading(80, _i18n.t('pchat.loading.saveUser'));
-        // 先存 salt（明文，不加密）
+        // Store salt first (plaintext, unencrypted)
         await DB.putRaw("user", { id: "_salt", salt: salt });
-        // 再存加密的用户记录
+        // Then store encrypted user record
         await DB.put("user", { id: "current", userId: this.my.id, nickname: nick, ts: Date.now(), cachedKey: this.my.aesKey }, verifyKey);
 
         // Save to account list
         await AccountManager.addAccount(this.my.id, nick);
 
-        // 保存邀请人 ID（PeerJS 初始化后发送好友请求）
+        // Save inviter ID (send friend request after PeerJS init)
         const inv = JSON.parse(localStorage.getItem("pchat_invite") || "null");
         if (inv && inv.inviterId) this.pendingInviteId = inv.inviterId;
         localStorage.removeItem("pchat_invite");
@@ -2807,7 +2807,7 @@ const ChatApp = {
             origBtn.classList.remove("confirm");
             this._deleteTimer = null;
         }, 5000);
-        // Replace click handler: on "确认" click, actually delete
+        // Replace click handler: on confirm click, actually delete
         btn.onclick = (e) => {
             e.stopPropagation();
             clearTimeout(this._deleteTimer);
@@ -3984,12 +3984,12 @@ const ChatApp = {
         const { type, id: convId } = this.activeConv;
 
         if (type === "group") {
-            // 群聊：给群内每个成员单独发送
+            // Group chat: send individually to each member
             const group = this.groups.find(g => g.id === convId);
             if (!group) return;
-            // 用同一条 msgId 关联所有成员的发送记录
+            // Use same msgId to link send records for all members
             const msgId = `msg_${convId}_${now}`;
-            // 先建一条汇总消息，含初始 receipts
+            // Create a summary message first with initial receipts
             const receipts = {};
             let anySent = false;
             for (const memberId of group.memberIds) {
@@ -3998,23 +3998,23 @@ const ChatApp = {
                     const sent = await PeerConn.send(memberId, content, msgId);
                     if (sent) anySent = true;
                     receipts[memberId] = sent ? Date.now() : null;
-                    // 更新每个联系人的最后消息
+                    // Update last message for each contact
                     contact.lastMessage = { content: rawContent, ts: now, fromId: this.my.id, isHtml };
                     this.saveContact(contact);
                 }
             }
-            // 全部发送失败时提示
+            // Alert when all send attempts fail
             if (!anySent && group.memberIds.length > 0) {
                 this.showAlert(_i18n.t('pchat.alert.peerOffline'));
             }
-            // 存一条汇总消息
+            // Store a summary message
             const msg = { id: msgId, peerId: convId, content: rawContent, ts: now, direction: "sent", fromId: this.my.id, receipts, isHtml };
             await DB.put("messages", msg, this.my.aesKey);
             this._appendMsg(msg);
             this._renderContacts();
             input.value = "";
         } else {
-            // 单聊：检查握手是否完成
+            // 1v1 chat: check if handshake is complete
             const contact = this.contacts.find(c => c.userId === convId);
             if (!contact || !contact.publicKey) {
                 this.showAlert(_i18n.t('pchat.alert.friendNotReady'));
@@ -4459,7 +4459,7 @@ const ChatApp = {
 
     // Compute SHA-256 hash of base64 data (works in any context)
     _hashBase64(base64Str) {
-        // CryptoJS 内置 Base64 → WordArray 转换
+        // CryptoJS built-in Base64 → WordArray conversion
         const wordArray = CryptoJS.enc.Base64.parse(base64Str);
         return CryptoJS.SHA256(wordArray).toString(CryptoJS.enc.Hex);
     },
@@ -5122,7 +5122,7 @@ const ChatApp = {
     _transferSpeedCalcAt: {},
     _updateTransferProgress(transferId, pct, status, fileId, fileName) {
         // Throttle: max 1 DOM update per 100ms per transfer
-        // Always allow: status changes (e.g. "等待对方确认") and completion (≥99%)
+        // Always allow: status changes (e.g. "waiting for peer") and completion (≥99%)
         const now = Date.now();
         const last = this._transferThrottle[transferId] || 0;
         const isComplete = parseFloat(pct) >= 99;
@@ -5397,7 +5397,7 @@ const ChatApp = {
     },
 
     async _openImageFromDb(msgId, fileId, mime) {
-        // 先取消息记录（只取一次）
+        // Fetch message records (fetch once only)
         const msg = await DB.get("messages", msgId, this.my.aesKey);
         console.log('[ImageViewer] aesKey fingerprint:', this.my.aesKey.substring(0, 16) + '...', 'fileId:', fileId, 'msg.fileId:', msg?.fileId);
 
@@ -5426,7 +5426,7 @@ const ChatApp = {
         }
         if (!fullData) return;
 
-        // 复用已读取的 msg 对象
+        // Reuse already-read msg object
         const thumbData = msg && msg.fileData ? msg.fileData : fullData;
         const thumbSrc = `data:${mime || 'image/jpeg'};base64,${thumbData}`;
         this._currentImageMsgId = msgId;
@@ -5493,20 +5493,20 @@ const ChatApp = {
         c.active = true;
         c.peerId = peerId;
         c.mediaConnection = call;
-        c.state = "waiting"; // 等待接听
-        c.direction = "sent"; // 主叫标记
+        c.state = "waiting"; // Waiting for answer
+        c.direction = "sent"; // Caller flag
         c.startTime = null;
         
         call.on("stream", (remoteStream) => {
             if (c.audio) { c.audio.pause(); c.audio.srcObject = null; }
             c.audio = new Audio(); c.audio.srcObject = remoteStream; c.audio.play();
             
-            // 收到对方音频，说明已接通
+            // Received peer audio — call is connected
             if (c.state === "waiting") {
                 c.state = "connected";
                 c.startTime = Date.now();
                 this._showCallInHeader();
-                // 启动计时器（更新 header 中的计时器）
+                // Start timer (updates timer in header)
                 c.timerInterval = setInterval(() => {
                     const elapsed = Math.floor((Date.now() - c.startTime) / 1000);
                     const min = Math.floor(elapsed / 60).toString().padStart(2, '0');
@@ -5533,7 +5533,7 @@ const ChatApp = {
             this._pushNav(() => this.hangupCall());
         }
         
-        // 显示等待接听状态
+        // Show waiting-for-answer state
         this._updateCallModal("waiting");
         
         const btn = document.getElementById("call-btn");
@@ -5569,7 +5569,7 @@ const ChatApp = {
         }
     },
 
-    // 显示来电 modal（接收方）
+    // Show incoming call modal (receiver side)
     _showIncomingCallModal(name) {
         const modal = document.getElementById("call-modal");
         if (!modal) return;
@@ -5591,14 +5591,14 @@ const ChatApp = {
             });
         }
         
-        // 接收方：显示接听 + 挂断按钮
+        // Receiver: show answer + hangup buttons
         const actionsEl = document.getElementById("call-actions");
         const hangupBtnEl = document.getElementById("call-hangup-btn");
         if (actionsEl) actionsEl.style.display = "flex";
         if (hangupBtnEl) hangupBtnEl.style.display = "none";
     },
     
-    // 更新 modal 按钮状态（等待接听时）
+    // Update modal button state (while waiting for answer)
     _updateCallModal(state) {
         const statusEl = document.getElementById("call-status");
         const actionsEl = document.getElementById("call-actions");
@@ -5611,7 +5611,7 @@ const ChatApp = {
         }
     },
     
-    // 通话接通：隐藏 modal，显示 header 下的通话状态栏
+    // Call connected: hide modal, show call status bar under header
     _showCallInHeader() {
         this._hideCallModal();
         
@@ -5631,7 +5631,7 @@ const ChatApp = {
         this._startCallPing();
     },
     
-    // 通话结束：隐藏通话状态栏，恢复拨打按钮
+    // Call ended: hide call status bar, restore call button
     _hideCallInHeader() {
         const callBtn = document.getElementById("call-btn");
         const statusBar = document.getElementById("call-status-bar");
@@ -5658,7 +5658,7 @@ const ChatApp = {
         }
     },
     
-    // 更新 header 中计时器
+    // Update timer in header
     _updateCallHeaderTimer() {
         const timerEl = document.getElementById("call-status-timer");
         if (!timerEl || !this.call.startTime) return;
@@ -5690,7 +5690,7 @@ const ChatApp = {
             c.active = true; c.peerId = peerId; c.localStream = localStream;
             c.mediaConnection = call; c.startTime = Date.now();
             c.state = "connected";
-            c.direction = "received"; // 接听标记
+            c.direction = "received"; // Receiver flag
             call.answer(localStream);
             call.on("stream", (remoteStream) => {
                 if (c.audio) { c.audio.pause(); c.audio.srcObject = null; }
@@ -5705,7 +5705,7 @@ const ChatApp = {
             const contact = this.contacts.find(ct => ct.userId === peerId);
             const name = contact ? (contact.nickname || peerId) : peerId;
             
-            // 通话接通：隐藏 modal，显示 header 中的通话栏
+            // Call connected: hide modal, show call bar in header
             this._showCallInHeader();
             
             c.timerInterval = setInterval(() => {
@@ -5998,7 +5998,7 @@ const ChatApp = {
         }
     },
 
-    // 通话结束统一处理
+    // Unified call-end handling
     async _onCallEnd(reconnecting) {
         const c = this.call;
         
@@ -6055,14 +6055,14 @@ const ChatApp = {
         this._hideCallInHeader();
         this._resetCallUI();
         
-        // BUG-014: 清理残留的 _pendingCall，防止通话异常结束后残留
+        // Clean up stale _pendingCall to prevent orphaned call state after abnormal end
         if (this._pendingCall) {
             try { this._pendingCall.close(); } catch(e) {}
             this._pendingCall = null;
         }
     },
     
-    // 记录通话消息到对话
+    // Record call message to conversation
     async _recordCallMessage(peerId, durationSeconds, direction) {
         const now = Date.now();
         const durStr = this._formatDuration(durationSeconds);
@@ -6091,7 +6091,7 @@ const ChatApp = {
         }
     },
     
-    // 格式化时长
+    // Format duration
     _formatDuration(seconds) {
         if (seconds < 60) return _i18n.fmt('pchat.duration.seconds', 'n', seconds);
         const min = Math.floor(seconds / 60);
@@ -6116,7 +6116,7 @@ const ChatApp = {
         const btn = document.getElementById("call-btn");
         if (btn) { btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M7 5c-2 2-2 8 0 14s8 12 14 14c2-2 4-5 4-7l-5-5-2 2c-3-2-7-6-7-10l2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'; btn.classList.remove("active"); }
         
-        // 重置 modal 按钮状态
+        // Reset modal button state
         const actionsEl = document.getElementById("call-actions");
         const hangupBtnEl = document.getElementById("call-hangup-btn");
         if (actionsEl) actionsEl.style.display = "flex";
@@ -6801,8 +6801,8 @@ const ChatApp = {
         if (img2Close) { img2Close.removeAttribute("src"); img2Close.style.visibility = "hidden"; }
         const img = document.getElementById("image-viewer-img");
         img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null;
-        img.onload = null;  // 清理图片加载事件
-        img.style.transform = '';  // 重置缩放/平移变换
+        img.onload = null;  // Clear image load event
+        img.style.transform = '';  // Reset zoom/pan transform
         const container = document.getElementById("image-viewer-container");
         container.ontouchstart = null; container.ontouchmove = null; container.ontouchend = null;
         const toolbar = document.getElementById("image-viewer-toolbar");
@@ -7146,7 +7146,7 @@ const ChatApp = {
     showNewAccount() {
         location.hash = "";
         localStorage.removeItem("pchat_invite");
-        // 隐藏已有账户列表区域，显示注册表单
+        // Hide existing account list, show registration form
         const accountList = document.getElementById("account-select-panel");
         if (accountList) accountList.style.display = "none";
         const pwForm = document.getElementById("login-password-panel");
@@ -7229,7 +7229,7 @@ const ChatApp = {
             const userStore = sourceDb.transaction("user", "readonly").objectStore("user");
 
             // Verify password
-            // 读取 salt（老账户无 salt 则回退到固定盐）
+            // Read salt (old accounts without salt fall back to fixed salt)
             const saltRecord = await new Promise((resolve) => {
                 const req = userStore.get("_salt");
                 req.onsuccess = () => {
