@@ -5010,8 +5010,17 @@ const ChatApp = {
         }
         this._msgAppending = true;
         this._appendMsgRaw(document.getElementById("message-list"), msg);
-        this._scroll();
-        this._msgAppending = false;
+        const el = document.getElementById("message-list");
+        if (el) {
+            requestAnimationFrame(() => {
+                el.scrollTop = el.scrollHeight;
+                requestAnimationFrame(() => {
+                    this._msgAppending = false;
+                });
+            });
+        } else {
+            this._msgAppending = false;
+        }
     },
 
     // ---- Transfer progress UI ----
