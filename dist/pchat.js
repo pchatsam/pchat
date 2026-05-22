@@ -589,7 +589,8 @@ const DB = {
                     results.push(...filtered);
                 }
                 if (limit && results.length > limit) {
-                    results.length = limit;
+                    // Keep the latest (last) messages, not oldest
+                    results.splice(0, results.length - limit);
                 }
                 // Fallback: if index returned nothing (old records lack peerId field),
                 // do full table scan and filter by decrypted peerId
@@ -617,7 +618,7 @@ const DB = {
                             allResults.push(...filtered);
                         }
                         if (limit && allResults.length > limit) {
-                            allResults.length = limit;
+                            allResults.splice(0, allResults.length - limit);
                         }
                         resolve(allResults);
                     };
