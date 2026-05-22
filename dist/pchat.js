@@ -4854,14 +4854,6 @@ const ChatApp = {
         };
         for (const m of conv) this._appendMsg(m);
         this._scroll();
-        if (this._pageState?.[convId]?.hasMore) {
-            const moreBtn = document.createElement("div");
-            moreBtn.id = "load-more-btn";
-            moreBtn.style.cssText = "text-align:center;padding:12px;color:var(--green);cursor:pointer;font-size:13px;";
-            moreBtn.textContent = "加载更多...";
-            moreBtn.onclick = () => this._loadOlderMessages(convId);
-            container.insertBefore(moreBtn, container.firstChild);
-        }
         // Add "load more" button if there are older messages
         if (this._pageState?.[peerId]?.hasMore) {
             const moreBtn = document.createElement("div");
