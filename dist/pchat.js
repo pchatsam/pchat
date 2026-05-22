@@ -4832,8 +4832,9 @@ const ChatApp = {
         list.addEventListener("scroll", () => {
             if (this.activeConv?.id !== peerId) return;
             const ps = this._pageState?.[peerId];
-            if (!ps || !ps.hasMore || ps.loading) return;
-            if (list.scrollTop < 100) {
+            if (!ps) return;
+            if (list.scrollTop < 100 && ps.hasMore && !ps.loading) {
+                console.log(`[Chat] scrollTop=${list.scrollTop}, loading older messages`);
                 this._loadOlderMessages(peerId);
             }
         });
