@@ -3495,7 +3495,9 @@ const ChatApp = {
             }
         };
         for (const m of conv) this._appendMsg(m);
+        this._msgAppending = true;
         this._scroll();
+        requestAnimationFrame(() => { this._msgAppending = false; });
         // Enable scroll-to-top loading after initial scroll settles
         setTimeout(() => { if (this._pageState?.[convId]) this._pageState[convId].loading = false; }, 600);
     },
@@ -4856,6 +4858,9 @@ const ChatApp = {
             }
         };
         for (const m of conv) this._appendMsg(m);
+        this._msgAppending = true;
+        this._scroll();
+        requestAnimationFrame(() => { this._msgAppending = false; });
 
         // Insert progress cards for any active file transfers from/to this peer (≥10MB only)
         const ft = this.fileTransfer;
