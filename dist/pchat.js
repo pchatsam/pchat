@@ -4937,7 +4937,7 @@ const ChatApp = {
             const sysDiv = document.createElement("div");
             sysDiv.className = "system-message";
             sysDiv.textContent = msg.content || '';
-            list.appendChild(sysDiv);
+            container.appendChild(sysDiv);
             return;
         }
         const wrapper = document.createElement("div");
