@@ -4835,7 +4835,7 @@ const ChatApp = {
             if (this.activeConv?.id !== peerId) return;
             const ps = this._pageState?.[peerId];
             if (!ps) return;
-            if (list.scrollTop < 100 && ps.hasMore && !ps.loading) {
+            if (list.scrollTop < 100 && ps.hasMore && !ps.loading && !this._msgAppending) {
                 this._loadOlderMessages(peerId);
             }
         });
@@ -5008,14 +5008,10 @@ const ChatApp = {
         if (this.activeConv && msg.peerId === this.activeConv.id && this.currentMessages) {
             if (!this.currentMessages.find(m => m.id === msg.id)) this.currentMessages.push(msg);
         }
-        // Lock scroll-to-top during DOM change to prevent reflow scroll events
-        const peerId = this.activeConv?.id;
-        if (!this._pageState) this._pageState = {};
-        if (peerId && !this._pageState[peerId]) this._pageState[peerId] = { loading: true, hasMore: false, oldestTs: 0 };
-        else if (peerId) this._pageState[peerId].loading = true;
+        this._msgAppending = true;
         this._appendMsgRaw(document.getElementById("message-list"), msg);
         this._scroll();
-        if (peerId) this._pageState[peerId].loading = false;
+        this._msgAppending = false;
     },
 
     // ---- Transfer progress UI ----
