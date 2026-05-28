@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.4
+ * Version: 20260527.5
  * Lines: ~7000
  */
 
@@ -916,6 +916,7 @@ const DB = {
         await writable.write({ type: 'write', data: segmentBuffer, position: offset });
         await writable.close();
         this._segOffsets[fileId] = offset + segmentBuffer.byteLength;
+        console.log(`[OPFS] appendSegment ${fileId}: wrote ${(segmentBuffer.byteLength/1024/1024).toFixed(2)}MB at offset ${(offset/1024/1024).toFixed(1)}MB, new total=${(this._segOffsets[fileId]/1024/1024).toFixed(2)}MB`);
     },
     // Finalize: verify size, rename .download to final
     async finalizeSegmentedFile(fileId, expectedSize) {
@@ -941,7 +942,7 @@ const DB = {
             }
             await finalWritable.close();
             await root.removeEntry(`${fileId}.download`);
-            console.log(`[OPFS] Finalized ${fileId}, size=${file.size}`);
+            console.log(`[OPFS] Finalized ${fileId}, size=${file.size}, expected=${expectedSize}, match=${file.size===expectedSize}`);
             return { fileId, size: file.size };
         } catch(e) {
             console.error('[OPFS] Finalize error:', e);
