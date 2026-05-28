@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.5
+ * Version: 20260527.6
  * Lines: ~7000
  */
 
@@ -913,7 +913,15 @@ const DB = {
             // 是新段，保存 base offset
         }
         const writable = await handle.createWritable();
-        await writable.write({ type: 'write', data: segmentBuffer, position: offset });
+        // 分块写入，每次 16MB
+        const CHUNK = 16 * 1024 * 1024;
+        let pos = offset;
+        const buf = new Uint8Array(segmentBuffer);
+        while (pos < offset + buf.byteLength) {
+            const end = Math.min(pos + CHUNK, offset + buf.byteLength);
+            await writable.write({ type: 'write', data: buf.slice(pos - offset, end - offset), position: pos });
+            pos = end;
+        }
         await writable.close();
         this._segOffsets[fileId] = offset + segmentBuffer.byteLength;
         console.log(`[OPFS] appendSegment ${fileId}: wrote ${(segmentBuffer.byteLength/1024/1024).toFixed(2)}MB at offset ${(offset/1024/1024).toFixed(1)}MB, new total=${(this._segOffsets[fileId]/1024/1024).toFixed(2)}MB`);
@@ -929,16 +937,17 @@ const DB = {
                 await root.removeEntry(`${fileId}.download`);
                 return null;
             }
-            // Stream copy from .download to final to avoid OOM for large files
+            // Stream copy from .download to final, 16MB chunks
             try { await root.removeEntry(`pchat-${fileId}`); } catch(e) {}
             const finalHandle = await root.getFileHandle(`pchat-${fileId}`, { create: true });
             const finalWritable = await finalHandle.createWritable();
-            const STREAM_SIZE = 100 * 1024 * 1024; // 100MB chunks
+            const STREAM = 16 * 1024 * 1024;
             let offset = 0;
             while (offset < file.size) {
-                const blob = file.slice(offset, offset + STREAM_SIZE);
+                const end = Math.min(offset + STREAM, file.size);
+                const blob = file.slice(offset, end);
                 await finalWritable.write(await blob.arrayBuffer());
-                offset += STREAM_SIZE;
+                offset = end;
             }
             await finalWritable.close();
             await root.removeEntry(`${fileId}.download`);
