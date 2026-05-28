@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.3
+ * Version: 20260527.4
  * Lines: ~7000
  */
 
@@ -5353,9 +5353,12 @@ const ChatApp = {
 
     _formatFileSize(bytes) {
         if (!bytes) return '0 B';
+        // Windows 用 1024 进制，其他系统用 1000 进制
+        const win = /Win/i.test(navigator.platform || '');
+        const base = win ? 1024 : 1000;
         const units = ['B', 'KB', 'MB', 'GB'];
         let i = 0, size = bytes;
-        while (size >= 1000 && i < units.length - 1) { size /= 1000; i++; }
+        while (size >= base && i < units.length - 1) { size /= base; i++; }
         return size.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
     },
 
