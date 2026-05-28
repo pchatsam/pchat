@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.7
+ * Version: 20260527.8
  * Lines: ~7000
  */
 
@@ -896,43 +896,52 @@ const DB = {
         return { handle, fileName };
     },
     // Append verified segment to download file
-    // 每段写入独立文件，最后合并
-    async writeSegmentFile(fileId, segmentIndex, buffer) {
+    // 在单个 .download 文件末尾追加写入 segment
+    async appendSegment(fileId, segmentBuffer, segmentIndex) {
         const root = await this._getOprfsRoot();
-        const segName = `pchat-${fileId}-seg${segmentIndex}`;
-        try { await root.removeEntry(segName); } catch(e) {}
-        const handle = await root.getFileHandle(segName, { create: true });
-        const writable = await handle.createWritable();
-        await writable.write(buffer);
+        let handle;
+        try { handle = await root.getFileHandle(`${fileId}.download`); } catch(e) {
+            handle = await root.getFileHandle(`${fileId}.download`, { create: true });
+        }
+        // keepExistingData: true 防止截断已有数据
+        const writable = await handle.createWritable({ keepExistingData: true });
+        const file = await handle.getFile();
+        const offset = file.size;
+        const CHUNK = 16 * 1024 * 1024;
+        let pos = 0;
+        const buf = new Uint8Array(segmentBuffer);
+        while (pos < buf.byteLength) {
+            const end = Math.min(pos + CHUNK, buf.byteLength);
+            await writable.write({ type: 'write', data: buf.slice(pos, end), position: offset + pos });
+            pos = end;
+        }
         await writable.close();
     },
 
-    async finalizeSegmentedFile(fileId, expectedSize, totalSegments) {
+    async finalizeSegmentedFile(fileId, expectedSize) {
         const root = await this._getOprfsRoot();
         try {
+            const downloadHandle = await root.getFileHandle(`${fileId}.download`);
+            const file = await downloadHandle.getFile();
+            if (file.size !== expectedSize) {
+                console.error(`[OPFS] Finalize size mismatch: expected ${expectedSize}, got ${file.size}`);
+                await root.removeEntry(`${fileId}.download`);
+                return null;
+            }
             try { await root.removeEntry(`pchat-${fileId}`); } catch(e) {}
             const finalHandle = await root.getFileHandle(`pchat-${fileId}`, { create: true });
             const finalWritable = await finalHandle.createWritable();
-            const CHUNK = 16 * 1024 * 1024;
-            let totalWritten = 0, fOffset = 0;
-            for (let seg = 0; seg < totalSegments; seg++) {
-                const segName = `pchat-${fileId}-seg${seg}`;
-                const segHandle = await root.getFileHandle(segName);
-                const segFile = await segHandle.getFile();
-                let pos = 0;
-                while (pos < segFile.size) {
-                    const end = Math.min(pos + CHUNK, segFile.size);
-                    const blob = segFile.slice(pos, end);
-                    await finalWritable.write({ type: 'write', data: await blob.arrayBuffer(), position: fOffset });
-                    const len = end - pos;
-                    pos = end; fOffset += len;
-                }
-                totalWritten += segFile.size;
-                await root.removeEntry(segName);
+            const STREAM = 16 * 1024 * 1024;
+            let offset = 0;
+            while (offset < file.size) {
+                const end = Math.min(offset + STREAM, file.size);
+                const blob = file.slice(offset, end);
+                await finalWritable.write(await blob.arrayBuffer());
+                offset = end;
             }
             await finalWritable.close();
-            console.log(`[OPFS] Finalized ${fileId}, size=${totalWritten}, expected=${expectedSize}, match=${totalWritten===expectedSize}`);
-            return { fileId, size: totalWritten };
+            await root.removeEntry(`${fileId}.download`);
+            return { fileId, size: file.size };
         } catch(e) {
             console.error('[OPFS] Finalize error:', e);
             return null;
@@ -1275,7 +1284,7 @@ const PeerConn = {
                             if (computedHash === segBuf.hash) {
                                 console.log(`[File] Segment ${info.currentSegment} hash OK (${(segBuf.total/1024/1024).toFixed(1)}MB)`);
                                 try {
-                                    await DB.writeSegmentFile(fileId, info.currentSegment, fullBuf);
+                                    await DB.appendSegment(fileId, fullBuf, info.currentSegment);
                                     await TransferDB.recordSegment(fileId, info.currentSegment, segBuf.hash, segBuf.total);
                                 } catch(e) {
                                     console.error(`[File] Segment write failed:`, e);
@@ -1294,7 +1303,7 @@ const PeerConn = {
                                     console.log(`[File] All segments received for ${info.name}`);
                                     const skd = `${fileId}_seg${info?.currentSegment||0}`; delete DB._segmentBuffers[skd]; delete DB._segmentBuffers[fileId];
                                     delete ft.pending[fileId];
-                                    const result = await DB.finalizeSegmentedFile(fileId, info.size, info.totalSegments);
+                                    const result = await DB.finalizeSegmentedFile(fileId, info.size);
                                     if (result) {
                                         const now = Date.now();
                                         const msg = { id: `msg_${info.peerId}_${now}_${Math.random().toString(36).slice(2,6)}`, peerId: info.peerId, ts: now, direction: 'received', fromId: info.peerId, type: 'direct-file', fileName: info.name, mimeType: info.mime, fileSize: info.size, fileId };
