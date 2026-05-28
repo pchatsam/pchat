@@ -1256,9 +1256,9 @@ const PeerConn = {
                         console.log('[BinaryDC] First chunk, dataLen:', arr.byteLength);
                     }
                     if (!DB._segmentBuffers) DB._segmentBuffers = {};
-                    let segBuf = DB._segmentBuffers[`${fileId}_seg${info.currentSegment}`];
                     const ft = ChatApp.fileTransfer;
                     const info = ft.pending[fileId];
+                    let segBuf = DB._segmentBuffers[`${fileId}_seg${info?.currentSegment||0}`];
                     if (info && info.totalSegments > 0 && info.segmentHash) {
                         if (!segBuf) {
                             segBuf = { chunks: [], total: 0, hash: info.segmentHash, expectedSize: info.segmentSize || info.size };
