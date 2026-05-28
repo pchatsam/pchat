@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260520.1
+ * Version: 20260527.1
  * Lines: ~7000
  */
 
@@ -1256,12 +1256,13 @@ const PeerConn = {
                         console.log('[BinaryDC] First chunk, dataLen:', arr.byteLength);
                     }
                     if (!DB._segmentBuffers) DB._segmentBuffers = {};
-                    let segBuf = DB._segmentBuffers[fileId];
+                    let segBuf = DB._segmentBuffers[`${fileId}_seg${info.currentSegment}`];
                     const ft = ChatApp.fileTransfer;
                     const info = ft.pending[fileId];
                     if (info && info.totalSegments > 0 && info.segmentHash) {
                         if (!segBuf) {
                             segBuf = { chunks: [], total: 0, hash: info.segmentHash, expectedSize: info.segmentSize || info.size };
+                            DB._segmentBuffers[`${fileId}_seg${info.currentSegment}`] = segBuf;
                             DB._segmentBuffers[fileId] = segBuf;
                         }
                         segBuf.chunks.push(arr);
@@ -1292,7 +1293,7 @@ const PeerConn = {
                                 info.currentSegment++;
                                 if (info.currentSegment >= info.totalSegments) {
                                     console.log(`[File] All segments received for ${info.name}`);
-                                    delete DB._segmentBuffers[fileId];
+                                    const skd = `${fileId}_seg${info?.currentSegment||0}`; delete DB._segmentBuffers[skd]; delete DB._segmentBuffers[fileId];
                                     delete ft.pending[fileId];
                                     const result = await DB.finalizeSegmentedFile(fileId, info.size);
                                     if (result) {
@@ -1313,7 +1314,7 @@ const PeerConn = {
                                 }
                             } else {
                                 console.error(`[File] Segment ${info.currentSegment} hash mismatch: expected ${segBuf.hash.slice(0,16)}..., got ${computedHash.slice(0,16)}...`);
-                                delete DB._segmentBuffers[fileId];
+                                const skd = `${fileId}_seg${info?.currentSegment||0}`; delete DB._segmentBuffers[skd]; delete DB._segmentBuffers[fileId];
                                 const state = PeerConn.peers[info.peerId];
                                 if (state && state.conn && state.conn.open) state.conn.send({ type: 'segment-retry', fileId, segmentIndex: info.currentSegment });
                             }
@@ -3600,13 +3601,15 @@ const ChatApp = {
         info.segmentSize = d.size;
         info.segmentReceived = 0;
         if (!DB._segmentBuffers) DB._segmentBuffers = {};
-        DB._segmentBuffers[d.fileId] = { chunks: [], total: 0, hash: d.hash, expectedSize: d.size };
+        const segKey = `${d.fileId}_seg${d.segmentIndex}`;
+        DB._segmentBuffers[segKey] = { chunks: [], total: 0, hash: d.hash, expectedSize: d.size, segIndex: d.segmentIndex };
+        DB._segmentBuffers[d.fileId] = DB._segmentBuffers[segKey];
         const state = PeerConn.peers[peerId];
         if (state && state.conn && state.conn.open) state.conn.send({ type: "segment-ack", fileId: d.fileId, segmentIndex: d.segmentIndex });
     },
     _onSegmentDone(peerId, d) { /* handled in Binary DC data handler */ },
     _onSegmentRetry(peerId, d) {
-        if (DB._segmentBuffers) delete DB._segmentBuffers[d.fileId];
+        if (DB._segmentBuffers) { const skr = `${d.fileId}_seg${d.segmentIndex||0}`; delete DB._segmentBuffers[skr]; delete DB._segmentBuffers[d.fileId]; }
     },
     _onFileComplete(peerId, d) {
         console.log(`[File] Transfer complete: ${d.fileId}`);
