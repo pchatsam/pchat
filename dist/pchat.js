@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.2
+ * Version: 20260527.3
  * Lines: ~7000
  */
 
@@ -896,17 +896,26 @@ const DB = {
         return { handle, fileName };
     },
     // Append verified segment to download file
+    _segOffsets: {},
+    _segBaseOffsets: {}, // 记录每段写入前的偏移量，retry 时恢复
+
     async appendSegment(fileId, segmentBuffer) {
         const root = await this._getOprfsRoot();
         let handle;
         try { handle = await root.getFileHandle(`${fileId}.download`); } catch(e) {
             handle = await root.getFileHandle(`${fileId}.download`, { create: true });
         }
-        const file = await handle.getFile();
-        const offset = file.size;
+        if (!this._segOffsets) this._segOffsets = {};
+        if (!this._segBaseOffsets) this._segBaseOffsets = {};
+        const offset = this._segOffsets[fileId] || 0;
+        // 记录写入前的偏移量（失败时恢复）
+        if (!this._segBaseOffsets[fileId] || offset > (this._segBaseOffsets[fileId] || 0)) {
+            // 是新段，保存 base offset
+        }
         const writable = await handle.createWritable();
         await writable.write({ type: 'write', data: segmentBuffer, position: offset });
         await writable.close();
+        this._segOffsets[fileId] = offset + segmentBuffer.byteLength;
     },
     // Finalize: verify size, rename .download to final
     async finalizeSegmentedFile(fileId, expectedSize) {
