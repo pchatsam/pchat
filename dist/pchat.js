@@ -5277,6 +5277,8 @@ const ChatApp = {
             this._appendMsg(msg);
         }
 
+        console.log(`[File] Finalized: expected=${info.size}, actual=${msg.fileSize}`);
+
         const ackPeer = PeerConn.peers[info.peerId];
         if (ackPeer && ackPeer.conn && ackPeer.conn.open) {
             ackPeer.conn.send({ type: "file-ack", fileId });
