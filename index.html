@@ -26,7 +26,6 @@
     })();
     </script>
     <!--  Local dependencies (no CDN needed)  -->
-    <script src="./dist/peerjs.min.js"></script>
     <script src="./dist/crypto-js.js"></script>
     <script src="./dist/forge.min.js"></script>
 </head>
@@ -272,6 +271,7 @@
             <div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
                 <span id="sidebar-version" style="font-size:11px;color:#666;"></span>
                 <div style="display:flex;gap:6px;">
+                    <button id="manual-global-btn" onclick="ChatApp.showManualConnect()" title="手动连接" style="background:none;border:1px solid var(--border);color:var(--text3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">手动连接</button>
                     <button id="clear-opfs-btn" onclick="ChatApp.clearOPFS()" title="" style="background:none;border:1px solid var(--border);color:var(--text3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">🗑️</button>
                     <button id="logout-btn" onclick="ChatApp.logout()" title="" style="background:none;border:1px solid var(--border);color:var(--text3);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;"><span class="de">Abmelden</span><span class="en">Logout</span><span class="es">Cerrar sesión</span><span class="fr">Déconnexion</span><span class="he">התנתק</span><span class="it">Esci</span><span class="ja">ログアウト</span><span class="ko">로그아웃</span><span class="pt">Sair</span><span class="zh">退出</span></button>
                 </div>
@@ -492,6 +492,45 @@
             <div class="modal-actions">
                 <button id="delete-confirm-cancel" class="btn-secondary"><span class="de">Abbrechen</span><span class="en">Cancel</span><span class="es">Cancelar</span><span class="fr">Annuler</span><span class="he">ביטול</span><span class="it">Annulla</span><span class="ja">キャンセル</span><span class="ko">취소</span><span class="pt">Cancelar</span><span class="zh">取消</span></button>
                 <button id="delete-confirm-ok" class="btn-primary" style="background:#d32f2f;"><span class="de">Löschen</span><span class="en">Delete</span><span class="es">Eliminar</span><span class="fr">Supprimer</span><span class="he">מחק</span><span class="it">Elimina</span><span class="ja">削除</span><span class="ko">삭제</span><span class="pt">Excluir</span><span class="zh">删除</span></button>
+            </div>
+        </div>
+    </div>
+
+    <!--  手动连接弹窗  -->
+    <div id="manual-modal" class="modal">
+        <div class="modal-content" style="max-width:420px;width:90%;">
+            <h3 id="manual-modal-title">手动连接</h3>
+            <div id="manual-modal-body" style="font-size:13px;">
+                <div style="display:flex;gap:6px;margin-bottom:8px;">
+                    <button id="manual-offer-btn" style="flex:1;padding:8px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">生成连接码</button>
+                    <button id="manual-input-btn" style="flex:1;padding:8px;background:var(--border);color:var(--text);border:none;border-radius:4px;cursor:pointer;font-size:13px;">输入连接码</button>
+                </div>
+                <div id="manual-offer-area" style="display:none;">
+                    <div style="font-size:12px;color:var(--dim);margin-bottom:4px;">将连接码通过任意渠道发送给对方（微信/Telegram 等）</div>
+                    <textarea id="manual-offer-text" readonly style="width:100%;height:70px;font-size:10px;resize:none;padding:4px;border:1px solid var(--border);border-radius:4px;word-break:break-all;background:var(--bg);color:var(--text);box-sizing:border-box;"></textarea>
+                    <div style="display:flex;gap:6px;margin-top:6px;">
+                        <button id="manual-copy-btn" style="flex:1;padding:6px;background:var(--green);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">复制</button>
+                    </div>
+                    <div id="manual-offer-answer-section" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+                        <div style="font-size:12px;color:var(--dim);margin-bottom:4px;">粘贴对方的回复</div>
+                        <textarea id="manual-offer-answer-input" placeholder="粘贴回复..." style="width:100%;height:60px;font-size:10px;resize:none;padding:4px;border:1px solid var(--border);border-radius:4px;word-break:break-all;background:var(--bg);color:var(--text);box-sizing:border-box;"></textarea>
+                        <button id="manual-offer-answer-btn" style="margin-top:6px;width:100%;padding:6px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">完成连接</button>
+                    </div>
+                </div>
+                <div id="manual-input-area" style="display:none;">
+                    <div style="font-size:12px;color:var(--dim);margin-bottom:4px;">粘贴对方发来的连接码</div>
+                    <textarea id="manual-input-text" placeholder="粘贴连接码..." style="width:100%;height:70px;font-size:10px;resize:none;padding:4px;border:1px solid var(--border);border-radius:4px;word-break:break-all;background:var(--bg);color:var(--text);box-sizing:border-box;"></textarea>
+                    <button id="manual-connect-btn" style="margin-top:6px;width:100%;padding:6px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">连接</button>
+                    <div id="manual-answer-area" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+                        <div style="font-size:12px;color:var(--dim);margin-bottom:4px;">将以下回复发送给对方</div>
+                        <textarea id="manual-answer-text" readonly style="width:100%;height:70px;font-size:10px;resize:none;padding:4px;border:1px solid var(--border);border-radius:4px;word-break:break-all;background:var(--bg);color:var(--text);box-sizing:border-box;"></textarea>
+                        <button id="manual-answer-copy-btn" style="margin-top:6px;width:100%;padding:6px;background:var(--green);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">复制回复</button>
+                    </div>
+                </div>
+                <div id="manual-status" style="font-size:12px;color:var(--yellow);margin-top:6px;display:none;text-align:center;"></div>
+            </div>
+            <div class="modal-actions">
+                <button id="manual-close-modal-btn" class="btn-secondary">关闭</button>
             </div>
         </div>
     </div>

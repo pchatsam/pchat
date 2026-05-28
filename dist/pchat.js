@@ -1188,463 +1188,509 @@ const AccountManager = {
 };
 
 
-// ==================== PeerConn — PeerJS WebRTC Connection Manager ====================
-// Wraps PeerJS for WebRTC DataChannel and MediaConnection management.
-// Handles signaling (via 0.peerjs.com), connection lifecycle, heartbeats, and reconnection.
-//
-// Core state:
-//   peer                       — PeerJS instance
-//   peers[peerId]              — { conn, myKey, peerKey, connected }
-//   _amOffline                 — true when disconnected from signaling server
-//   _reconnectTimers[peerId]   — Exponential backoff reconnect timers
-//   _heartbeats[peerId]        — Heartbeat interval + pong tracking
-//
-// Message routing: All incoming data goes to ChatApp for processing.
-// Supports binary DataChannel for large file transfers (>10MB).
-//
-// Replaces WebRTC + WebSocket signaling with PeerJS-managed connections
-
-const PeerConn = {
-    peer: null,
-    // peerId → { conn: DataConnection, myKey, peerKey, connected }
-    peers: {},
-    _amOffline: false,          // true when we lost signaling server
-    _reconnectTimers: {},       // peerId → {timer, delay, attempts}
-    _heartbeats: {},            // peerId → {intervalId, lastPong, missCount}
-
-    // Heartbeat constants
-    HB_INTERVAL: 5000,          // ping every 5s
-    HB_TIMEOUT: 10000,          // no pong for 10s → dead
-
-    // Initialize PeerJS instance
-    // Initialize PeerJS with custom ID and STUN servers
-    // Configures 5 STUN servers (latency-sorted) for NAT traversal
-    // Calls callback(assignedId) when peer connection is open
-    init(myId, callback) {
-        PeerConn._debug && console.log("[PeerConn] Connecting with user ID:", myId);
-        const peerConfig = {
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.chat.bilibili.com:3478' },
-                    { urls: 'stun:stun.miwifi.com:3478' },
-                    { urls: 'stun:stun.cloudflare.com:3478' },
-                    { urls: 'stun:stun.nextcloud.com:3478' },
-                    { urls: 'stun:stun.l.google.com:19302' },
-                ]
+// ==================== ManualDataChannel — 手动信令通道包装器 ====================
+// 将原生 RTCDataChannel 包装为与 PeerJS DataConnection 兼容的接口，
+// 使手动信令建立的连接可以被 PeerConn.peers 和上层 ChatApp 无缝使用。
+class ManualDataChannel {
+    constructor(dc) {
+        this.dc = dc;
+        this.open = dc.readyState === 'open';
+        this.peer = dc._peerId || '';
+        this.label = dc.label;
+        this._events = {};
+        const self = this;
+        if (this.open) {
+            // DC 已打开，下一 tick 触发 open 事件
+            setTimeout(() => self._emit('open'), 0);
+        }
+        dc.onopen = () => { self.open = true; self._emit('open'); };
+        dc.onclose = () => { self.open = false; self._emit('close'); };
+        dc.onerror = (e) => { self._emit('error', e); };
+        dc.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                self._emit('data', data);
+            } catch(err) {
+                console.warn('[ManualDC] Failed to parse message:', err);
             }
         };
-        this.peer = new Peer(myId, peerConfig);
-        this.peer.on("open", (id) => {
-            PeerConn._debug && console.log("[PeerConn] Peer ID assigned:", id);
-            if (id !== myId) {
-                PeerConn._debug && console.warn("[PeerConn] ID mismatch: requested", myId, "but got", id);
-            }
-            callback(id);
-        });
+    }
+    send(data) {
+        if (!this.open) return;
+        this.dc.send(JSON.stringify(data));
+    }
+    on(event, fn) {
+        if (!this._events[event]) this._events[event] = [];
+        this._events[event].push(fn);
+    }
+    off(event, fn) {
+        if (!this._events[event]) return;
+        if (fn) {
+            this._events[event] = this._events[event].filter(f => f !== fn);
+        } else {
+            delete this._events[event];
+        }
+    }
+    _emit(event, ...args) {
+        const fns = this._events[event];
+        if (fns) fns.forEach(fn => fn(...args));
+    }
+    close() {
+        this.dc.close();
+        this._events = {};
+    }
+}
 
-        this.peer.on("connection", async (conn) => {
-            // Binary file transfer channel — handle separately
-            if (conn.label && conn.label.startsWith('file-')) {
-                const fileId = conn.label.slice(5); // 'file-xxx' → 'xxx'
-                PeerConn._debug && console.log('[PeerConn] Binary file channel from', conn.peer, 'fileId:', fileId);
-                let _chunkCount = 0;
-                conn.on('data', async (chunk) => {
-                    let raw = chunk;
-                    if (chunk instanceof Blob) raw = await chunk.arrayBuffer();
-                    const arr = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
-                    if (_chunkCount === 0) {
-                        console.log('[BinaryDC] First chunk, dataLen:', arr.byteLength);
-                    }
-                    if (!DB._segmentBuffers) DB._segmentBuffers = {};
-                    let segBuf = DB._segmentBuffers[fileId];
-                    const ft = ChatApp.fileTransfer;
-                    const info = ft.pending[fileId];
-                    if (info && info.totalSegments > 0 && info.segmentHash) {
-                        if (!segBuf) {
-                            segBuf = { chunks: [], total: 0, hash: info.segmentHash, expectedSize: info.segmentSize || info.size };
-                            DB._segmentBuffers[fileId] = segBuf;
-                        }
-                        segBuf.chunks.push(arr);
-                        segBuf.total += arr.byteLength || arr.length;
-                        info.segmentReceived = (info.segmentReceived || 0) + (arr.byteLength || arr.length);
-                        if (segBuf.total >= segBuf.expectedSize) {
-                            const blob = new Blob(segBuf.chunks);
-                            const fullBuf = await blob.arrayBuffer();
-                            segBuf.chunks = [];
-                            const computedHash = await ChatApp._hashBuffer(fullBuf);
-                            if (computedHash === segBuf.hash) {
-                                console.log(`[File] Segment ${info.currentSegment} hash OK (${(segBuf.total/1024/1024).toFixed(1)}MB)`);
-                                try {
-                                    await DB.appendSegment(fileId, fullBuf);
-                                    await TransferDB.recordSegment(fileId, info.currentSegment, segBuf.hash, segBuf.total);
-                                } catch(e) {
-                                    console.error(`[File] Segment write failed:`, e);
-                                    ChatApp.showAlert(_i18n.t('pchat.file.checksumFail'));
-                                    return;
-                                }
-                                const state = PeerConn.peers[info.peerId];
-                                if (state && state.conn && state.conn.open) {
-                                    state.conn.send({ type: 'segment-done', fileId, segmentIndex: info.currentSegment });
-                                    console.log(`[File] Sent segment-done for segment ${info.currentSegment}`);
-                                } else {
-                                    console.error(`[File] Cannot send segment-done: state=${!!state}, conn=${!!(state&&state.conn)}, open=${!!(state&&state.conn&&state.conn.open)}`);
-                                }
-                                info.currentSegment++;
-                                if (info.currentSegment >= info.totalSegments) {
-                                    console.log(`[File] All segments received for ${info.name}`);
-                                    delete DB._segmentBuffers[fileId];
-                                    delete ft.pending[fileId];
-                                    const result = await DB.finalizeSegmentedFile(fileId, info.size);
-                                    if (result) {
-                                        const now = Date.now();
-                                        const msg = { id: `msg_${info.peerId}_${now}_${Math.random().toString(36).slice(2,6)}`, peerId: info.peerId, ts: now, direction: 'received', fromId: info.peerId, type: 'direct-file', fileName: info.name, mimeType: info.mime, fileSize: info.size, fileId };
-                                        await DB.putRaw('messages', msg);
-                                        const progressRow = document.getElementById(`transfer-${fileId}`);
-                                        if (progressRow) progressRow.remove();
-                                        delete ChatApp._transferThrottle[fileId]; delete ChatApp._transferStartTimes[fileId]; delete ChatApp._transferSizes?.[fileId];
-                                        delete ChatApp._activeReceives[info.peerId]; delete ChatApp._pendingReceives[fileId];
-                                        ChatApp._savePendingReceives();
-                                        if (ChatApp.activeConv && ChatApp.activeConv.id === info.peerId) ChatApp._appendMsg(msg);
-                                        const ackPeer = PeerConn.peers[info.peerId];
-                                        if (ackPeer && ackPeer.conn && ackPeer.conn.open) ackPeer.conn.send({ type: 'file-complete', fileId });
-                                        const contact = ChatApp.contacts.find(c => c.userId === info.peerId);
-                                        if (contact) { contact.lastMessage = { content: _i18n.t('pchat.file.prefixFile') + ' ' + info.name, ts: now, fromId: info.peerId }; ChatApp.saveContact(contact); ChatApp._renderContacts(); }
-                                    } else { ChatApp.showAlert(_i18n.t('pchat.file.checksumFail')); }
-                                }
-                            } else {
-                                console.error(`[File] Segment ${info.currentSegment} hash mismatch: expected ${segBuf.hash.slice(0,16)}..., got ${computedHash.slice(0,16)}...`);
-                                delete DB._segmentBuffers[fileId];
-                                const state = PeerConn.peers[info.peerId];
-                                if (state && state.conn && state.conn.open) state.conn.send({ type: 'segment-retry', fileId, segmentIndex: info.currentSegment });
-                            }
-                        }
-                        info.chunkCount = (info.chunkCount || 0) + 1;
-                        info.totalRawReceived = (info.totalRawReceived || 0) + (arr.byteLength || arr.length);
-                        _chunkCount++;
-                        const pct = info.size > 0 ? Math.min(99, Math.round(info.totalRawReceived / info.size * 100)) : 0;
-                        ChatApp._updateTransferProgress(fileId, pct, null);
-                        const nowMs = Date.now();
-                        if (info._lastChunkTime && nowMs - info._lastChunkTime > 5000) { info._recvStartTime = nowMs; info._resumeBaseBytes = info.totalRawReceived; info._speedWindow = []; }
-                        info._recvStartTime = info._recvStartTime || nowMs; info._lastChunkTime = nowMs;
-                        const elapsedSec = Math.max((nowMs - (info._recvStartTime || nowMs)) / 1000, 0.05);
-                        const currentSpd = (info.totalRawReceived - (info._resumeBaseBytes || 0)) / elapsedSec;
-                        info._speedWindow = info._speedWindow || [];
-                        if (info._speedWindow.length === 0) { for (let i = 0; i < 100; i++) info._speedWindow.push(0); } info._speedWindow.push(currentSpd); info._speedWindow.shift();
-                        const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / 100;
-                        const speedStr = avgSpd > 1048576 ? `${(avgSpd/1048576).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
-                        const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / avgSpd) : 0;
-                        ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {}; ChatApp._transferAckSpeed[fileId] = speedStr;
-                        ChatApp._transferAckEta = ChatApp._transferAckEta || {}; ChatApp._transferAckEta[fileId] = etaSec;
-                        if (info.chunkCount % 10 === 0) {
-                            const ackPeer = PeerConn.peers[info.peerId];
-                            if (ackPeer && ackPeer.conn && ackPeer.conn.open) ackPeer.conn.send({ type: 'file-ack', fileId, progress: pct, speed: speedStr, etaSec });
-                        }
-                        const stEl = document.getElementById(`transfer-status-${fileId}`);
-                        if (stEl && stEl.textContent === '重连中...') stEl.textContent = '接收中...';
-                        const ar = ChatApp._activeReceives[info.peerId];
-                        if (ar) { const now = Date.now(); if (!ar._lastSidebarUpdate || now - ar._lastSidebarUpdate >= 500 || info.chunkCount % 100 === 0) { ar._lastSidebarUpdate = now; ar.pct = pct; ChatApp._updateSidebarTransfer(info.peerId, `📥 ${ar.name.substring(0, 15)}${ar.name.length > 15 ? '...' : ''} ${pct}%`); } }
-                    } else {
-                        // Legacy base64 direct transfer fallback
-                        DB.bufferRawChunk(fileId, arr).catch(e => console.error('[OPFS] bufferRawChunk:', e));
-                        if (info) {
-                            info.chunkCount = (info.chunkCount || 0) + 1;
-                            info.totalRawReceived = (info.totalRawReceived || 0) + (arr.byteLength || arr.length);
-                            _chunkCount++;
-                            if (info.totalRawReceived >= info.size) ChatApp._finalizeDirectReceive(fileId);
-                        }
-                    }
-                });
-                conn.on('close', async () => {
-                    PeerConn._debug && console.log('[PeerConn] Binary file channel closed:', fileId);
-                    // Safety net: if data complete but not finalized yet
-                    const ft = ChatApp.fileTransfer;
-                    const info = ft.pending[fileId];
-                    if (info && info.totalRawReceived >= info.size) {
-                        await ChatApp._finalizeDirectReceive(fileId);
-                    }
-                });
-                conn.on('error', (e) => PeerConn._debug && console.error('[PeerConn] Binary file channel error:', fileId, e));
-                return;
-            }
-            PeerConn._debug && console.log("[PeerConn] Incoming connection from", conn.peer);
-            let myKey = null;
-            const contact = ChatApp.contacts.find(c => c.userId === conn.peer);
-            if (contact && contact.keypair) {
-                myKey = contact.keypair;
-                PeerConn._debug && console.log(`[PeerConn] Receiver loaded keypair for ${conn.peer}, fp=${Crypto.keyFingerprint(myKey.publicKey)}`);
-            }
-            const state = { conn, myKey, peerKey: null, connected: false };
-            this.peers[conn.peer] = state;
-            
-            // Register open callback (PeerJS requires immediate registration in connection callback)
-            conn.on("open", () => {
-                PeerConn._debug && console.log(`[PeerConn] Connection opened from ${conn.peer}`);
-            });
-            
-            this._bind(conn, conn.peer, false);
-        });
+// ==================== PeerConn — WebSocket 信令 + WebRTC 连接管理 ====================
+// 使用 0.peerjs.com 公共 WebSocket 信令服务器，不再依赖 PeerJS 库。
+// RTCPeerConnection + DataChannel 全部由本模块原生管理。
+//
+// 信令格式（兼容 PeerJS 服务器）:
+//   OFFER:  {type:"OFFER", payload:{sdp,sdp:{sdp,type:offer},type:data,connectionId,...}, dst:peerId}
+//   ANSWER: {type:"ANSWER", payload:{connectionId,sdp,sdp:{sdp,type:answer},type:data}, dst:peerId, src:myId}
+//   CANDIDATE: {type:"CANDIDATE", payload:{candidate:{..},type:data,connectionId}, dst:peerId}
+//
+// Core state:
+//   peers[peerId] — { pc, dc(ManualDataChannel), myKey, peerKey, connected }
+//   ws — WebSocket 到信令服务器
+//   _amOffline — 信令服务器断连标志
 
-        this.peer.on("call", (call) => {
-            PeerConn._debug && console.log("[PeerConn] Incoming call from", call.peer);
-            ChatApp._onIncomingPeerCall(call);
-        });
+const PEERJS_SERVER = 'wss://0.peerjs.com:443/peerjs?key=peerjs&version=1.5.5';
 
-        this.peer.on("error", (err) => {
-            if (err.type === "peer-unavailable") {
-                PeerConn._debug && console.log(`[PeerConn] ${err.message}`);
-            } else {
-                PeerConn._debug && console.error(`[PeerConn] Error: ${err.type} ${err.message}`);
-            }
-        });
+const PeerConn = {
+    ws: null,
+    myId: null,
+    peers: {},           // peerId → { pc, conn(ManualDataChannel), myKey, peerKey, connected, connectionId }
+    _amOffline: false,
+    _sigBuffer: [],      // WS 断连时缓冲的信令消息
+    _wsSendCount: 0, _wsSendWindow: 0,  // 发送频率限制
+    _reconnectTimers: {},
+    _heartbeats: {},
+    _pendingConnects: {}, // peerId → { resolve, reject }
+    HB_INTERVAL: 3000,
+    HB_TIMEOUT: 10000,
 
-        this.peer.on("disconnected", () => {
-            PeerConn._debug && console.log("[PeerConn] Disconnected from server, reconnecting...");
-            this._amOffline = true;
-            // Stop all reconnect timers — we'll restart them when signaling recovers
-            for (const pid of Object.keys(this._reconnectTimers)) {
-                this._cancelReconnect(pid);
-            }
-            this.peer.reconnect();
+    // ========== 初始化 ==========
+    init(myId, callback) {
+        this.myId = myId;
+        this._connectWS().then(() => {
+            callback(myId);
         });
     },
 
-    // Connect to a peer via data connection
+    _connectWS() {
+        const self = this;
+        return new Promise((resolve, reject) => {
+            const token = Math.random().toString(36).slice(2, 10);
+            const ws = new WebSocket(`${PEERJS_SERVER}&id=${self.myId}&token=${token}`);
+            ws.onopen = () => {};
+            ws.onmessage = (e) => {
+                const m = JSON.parse(e.data);
+                if (m.type === 'OPEN') {
+                    self.ws = ws;
+                    self._amOffline = false;
+                    self._setupWSHeartbeat();
+                    PeerConn._debug && console.log('[PeerConn] WS 已注册, id=', self.myId);
+                    resolve();
+                }
+            };
+            ws.onerror = () => { reject(new Error('WS connect error')); };
+            ws.onclose = () => {
+                PeerConn._debug && console.log('[PeerConn] WS 断开');
+                self._amOffline = true;
+                clearInterval(self._wsHbTimer);
+                self._reconnectWS();
+            };
+            setTimeout(() => reject(new Error('WS timeout')), 10000);
+        });
+    },
+
+    _setupWSHeartbeat() {
+        const self = this;
+        let wsActive = Date.now();
+        this.ws.addEventListener('message', () => { wsActive = Date.now(); });
+        const origSend = this.ws.send.bind(this.ws);
+        this.ws.send = function(data) {
+            wsActive = Date.now();
+            return origSend(data);
+        };
+        this._wsHbTimer = setInterval(() => {
+            if (Date.now() - wsActive > 5000 && self.ws && self.ws.readyState === WebSocket.OPEN) {
+                self.ws.send(JSON.stringify({ type: 'HEARTBEAT' }));
+            }
+        }, 5000);
+    },
+
+    _reconnectWS() {
+        const self = this;
+        (function tryConnect(delay) {
+            setTimeout(() => {
+                PeerConn._debug && console.log('[PeerConn] WS 重连...');
+                self._connectWS().then(() => {
+                    self._reconnectAll();
+                    self._flushBuffer();
+                }).catch(() => tryConnect(1000));
+            }, delay);
+        })(500);
+    },
+
+    _sendWS(data) {
+        const now = Date.now();
+        if (Math.floor(now / 1000) !== this._wsSendWindow) { this._wsSendCount = 0; this._wsSendWindow = Math.floor(now / 1000); }
+        if (this._wsSendCount >= 3) { this._sigBuffer.push(data); return; }
+        this._wsSendCount++;
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(data);
+        } else {
+            this._sigBuffer.push(data);
+        }
+    },
+
+    _flushBuffer() {
+        while (this._sigBuffer.length && this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this._sendWS(this._sigBuffer.shift());
+        }
+    },
+
+    _onWSMessage(msg) {
+        const m = JSON.parse(msg);
+        const cid = m.payload?.connectionId;
+        if (!cid && m.type !== 'OFFER') return;
+        // 查找对应 connectionId 的 peer
+        let peerId = null;
+        for (const [pid, s] of Object.entries(this.peers)) {
+            if (s.connectionId === cid) { peerId = pid; break; }
+        }
+        if (m.type === 'OFFER' && !peerId) {
+            // 新连接请求：根据 src 找 peerId
+            peerId = m.src || (m.payload?.metadata?.nickname === 'A' ? null : null);
+            if (!peerId) {
+                // 遍历 contacts 找匹配
+                const contacts = ChatApp.contacts || [];
+                for (const c of contacts) {
+                    if (c.userId === (m.src || '')) { peerId = c.userId; break; }
+                }
+            }
+        }
+        if (!peerId && m.type === 'OFFER') {
+            PeerConn._debug && console.log('[PeerConn] 未识别 OFFER, src=', m.src);
+            return;
+        }
+        if (!peerId) { PeerConn._debug && console.log('[PeerConn] 未找到 connectionId:', cid); return; }
+
+        this._handleSignaling(peerId, m);
+    },
+
+    _handleSignaling(peerId, m) {
+        const state = this.peers[peerId];
+        if (!state || !state.pc) return;
+        const pc = state.pc;
+        try {
+            if (m.type === 'ANSWER' && pc.signalingState === 'have-local-offer') {
+                PeerConn._debug && console.log('[PeerConn] 收到 ANSWER from', peerId);
+                pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: m.payload.sdp.sdp }));
+            } else if (m.type === 'OFFER') {
+                PeerConn._debug && console.log('[PeerConn] 收到 OFFER from', peerId, '(ICE restart)');
+                (async () => {
+                    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: m.payload.sdp.sdp }));
+                    const a = await pc.createAnswer();
+                    await pc.setLocalDescription(a);
+                    this._sendWS(JSON.stringify({ type: 'ANSWER', payload: { connectionId: state.connectionId, sdp: { sdp: a.sdp, type: 'answer' }, type: 'data' }, dst: peerId, src: this.myId }));
+                })();
+            } else if (m.type === 'CANDIDATE') {
+                pc.addIceCandidate(new RTCIceCandidate(m.payload.candidate)).catch(() => {});
+            }
+        } catch (e) {
+            PeerConn._debug && console.warn('[PeerConn] 信令处理错误:', e.message);
+        }
+    },
+
+    // ========== 连接到 peer ==========
     async connect(peerId) {
-        // If we're recovering from offline, always force-reconnect (old DC may be in limbo)
-        if (!this._amOffline && this.peers[peerId] && this.peers[peerId].conn && this.peers[peerId].conn.open) {
-            PeerConn._debug && console.log(`[PeerConn] Already connected to ${peerId}`);
+        if (this.peers[peerId]?.connected) {
+            PeerConn._debug && console.log('[PeerConn] 已连接', peerId);
             return this.peers[peerId];
         }
-        // Clean up stale state
-        if (this.peers[peerId] && this.peers[peerId].conn) {
-            try { this.peers[peerId].conn.close(); } catch(e) {}
-        }
-        this._stopHeartbeat(peerId);
-        this._cancelReconnect(peerId);
+        // 清理旧状态
+        this._cleanupPeer(peerId);
 
-        let myKey;
         const contact = ChatApp.contacts.find(c => c.userId === peerId);
-        if (contact && contact.keypair) {
-            myKey = contact.keypair;
-        } else {
-            myKey = await Crypto.generateKeypair();
-        }
-        const conn = this.peer.connect(peerId, {
-            reliable: true,
-            metadata: { nickname: ChatApp.my.nickname },
+        let myKey = contact?.keypair;
+        if (!myKey) myKey = await Crypto.generateKeypair();
+        
+        const cid = 'dc_' + Math.random().toString(36).slice(2, 10);
+        const pc = new RTCPeerConnection({
+            iceServers: [
+                { urls: 'stun:stun.chat.bilibili.com:3478' },
+                { urls: 'stun:stun.miwifi.com:3478' },
+                { urls: 'stun:stun.cloudflare.com:3478' },
+                { urls: 'stun:stun.l.google.com:19302' },
+            ]
         });
-
-        const state = { conn, myKey, peerKey: null, connected: false };
+        const dc = pc.createDataChannel('chat');
+        const wrapper = new ManualDataChannel(dc);
+        const state = { pc, conn: wrapper, myKey, peerKey: contact?.publicKey || null, connected: false, connectionId: cid };
         this.peers[peerId] = state;
-        this._bind(conn, peerId, true);
 
-        return state;
+        // 绑定事件
+        this._bindRawDC(peerId, state, dc);
+
+        // 创建 offer
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        // 发送 OFFER
+        this._sendWS(JSON.stringify({
+            type: 'OFFER',
+            payload: {
+                sdp: { sdp: offer.sdp, type: 'offer' },
+                type: 'data',
+                connectionId: cid,
+                metadata: { nickname: ChatApp.my?.nickname || '' },
+                label: cid,
+                reliable: true,
+                serialization: 'binary'
+            },
+            dst: peerId
+        }));
+        PeerConn._debug && console.log('[PeerConn] 已发送 OFFER →', peerId);
+
+        // 等待 ICE 连接
+        return new Promise((resolve) => {
+            const onOpen = () => {
+                state.connected = true;
+                this._startHeartbeat(peerId);
+                this.flushPending(peerId);
+                ChatApp._resendUnacked(peerId);
+                ChatApp._requestFileResume(peerId);
+                resolve(state);
+            };
+            if (dc.readyState === 'open') onOpen();
+            else dc.addEventListener('open', onOpen, { once: true });
+            setTimeout(() => { if (!state.connected) resolve(state); }, 20000);
+        });
     },
 
-    // Bind event handlers to data connection
-    _bind(conn, peerId, initiator) {
-        conn.on("open", async () => {
-            PeerConn._debug && console.log(`[PeerConn] Connected to ${peerId}`);
-            const state = this.peers[peerId];
-            if (!state) return;
+    _bindRawDC(peerId, state, dc) {
+        const wrapper = state.conn;
+        const pc = state.pc;
+        
+        // 接收二进制文件通道
+        pc.ondatachannel = (e) => {
+            const fdc = e.channel;
+            if (fdc.label && fdc.label.startsWith('file-')) {
+                const fileId = fdc.label.slice(5);
+                PeerConn._debug && console.log('[PeerConn] Binary file channel:', fileId);
+                fdc.onmessage = (ev) => {
+                    let raw = ev.data;
+                    if (raw instanceof Blob) raw = raw.arrayBuffer();
+                    Promise.resolve(raw).then(buf => {
+                        const arr = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+                        if (!DB._segmentBuffers) DB._segmentBuffers = {};
+                        let segBuf = DB._segmentBuffers[fileId];
+                        const ft = ChatApp.fileTransfer;
+                        const info = ft.pending[fileId];
+                        if (info && info.totalSegments > 0 && info.segmentHash) {
+                            if (!segBuf) {
+                                segBuf = { chunks: [], total: 0, hash: info.segmentHash, expectedSize: info.segmentSize || info.size };
+                                DB._segmentBuffers[fileId] = segBuf;
+                            }
+                            segBuf.chunks.push(arr);
+                            segBuf.total += arr.byteLength || arr.length;
+                            info.segmentReceived = (info.segmentReceived || 0) + (arr.byteLength || arr.length);
+                            if (segBuf.total >= segBuf.expectedSize) {
+                                ChatApp._onSegmentDone(peerId, { fileId, segmentIndex: info.currentSegment });
+                            }
+                        } else {
+                            DB.bufferRawChunk(fileId, arr, info?.name || fileId);
+                            info.totalRawReceived = (info.totalRawReceived || 0) + (arr.byteLength || arr.length);
+                            info._written = (info._written || 0) + (arr.byteLength || arr.length);
+                            // 处理进度
+                            if (info.size > 0 && info.totalRawReceived >= info.size) {
+                                ChatApp._finalizeDirectReceive(fileId);
+                            }
+                        }
+                    });
+                };
+            }
+        };
+        
+        dc.addEventListener('open', () => {
+            PeerConn._debug && console.log('[PeerConn] DC open', peerId);
             state.connected = true;
             ChatApp._renderContacts();
-            PeerConn._cancelReconnect(peerId);  // reset backoff on success
-            PeerConn._startHeartbeat(peerId);
-
-            if (initiator) {
-                const contact = ChatApp.contacts.find(c => c.userId === peerId);
-                PeerConn._debug && console.log(`[PeerConn] Initiator to ${peerId}, contact found: ${!!contact}, has publicKey: ${contact && !!contact.publicKey}`);
-                if (contact && contact.keypair) {
-                    state.myKey = contact.keypair;
-                }
-                if (!state.myKey) {
-                    state.myKey = await Crypto.generateKeypair();
-                }
-                // Contact with existing public key (reconnect), set peerKey for encryption
-                if (contact && contact.publicKey) {
-                    state.peerKey = contact.publicKey;
-                }
-                // For new contacts, _requestFriend sends the add message
-            } else {
-                // Receiver: load keypair and peer public key from contact
-                const contact = ChatApp.contacts.find(c => c.userId === peerId);
-                PeerConn._debug && console.log(`[PeerConn] Receiver to ${peerId}, contact found: ${!!contact}, has publicKey: ${contact && !!contact.publicKey}`);
-                if (contact && contact.keypair) {
-                    state.myKey = contact.keypair;
-                }
-                if (!state.myKey) {
-                    state.myKey = await Crypto.generateKeypair();
-                    // Save newly generated keypair to contact
-                    const contact2 = ChatApp.contacts.find(c => c.userId === peerId);
-                    if (contact2 && !contact2.keypair) {
-                        contact2.keypair = state.myKey;
-                        ChatApp.saveContact(contact2);
-                    }
-                }
-                // If public key exists (completed contact handshake), set peerKey for encryption
-                if (contact && contact.publicKey) {
-                    state.peerKey = contact.publicKey;
-                }
-            }
-
-            this.flushPending(peerId);
-            // Resend recent messages that were sent but never acked
-            ChatApp._resendUnacked(peerId);
-            // Request resume for any incomplete file transfers
-            ChatApp._requestFileResume(peerId);
-            // Resume voice call if it was in reconnect mode
-            if (ChatApp.call._reconnecting && ChatApp.call.peerId === peerId) {
-                console.log("[Call] DC reconnected, call in reconnect mode, direction=", ChatApp.call.direction);
-                // Only the original caller re-initiates the call (once)
-                if (ChatApp.call.direction === "sent") {
-                    ChatApp.call._reconnecting = false;
-                    ChatApp._reconnectCall(peerId);
-                }
-                // Receiver: _reconnecting stays true until auto-answered in _onIncomingPeerCall
-            }
         });
-
-        conn.on("error", (err) => {
-            PeerConn._debug && console.log(`[PeerConn] ${peerId} connection error:`, err);
-        });
-
-        conn.on("data", async (data) => {
-            try {
-                if (!data || !data.type) { PeerConn._debug && console.log(`[PeerConn] ${peerId} data ignored (no type)`, data); return; }
-                if (data.type !== "_ping" && data.type !== "_pong") {
-                    PeerConn._debug && console.log(`[PeerConn] ${peerId} data type=${data.type}`, data);
-                }
-                const state = this.peers[peerId];
-                if (data.type === "add") {
-                    PeerConn._debug && console.log(`[PeerConn] ${peerId} received add request`, data);
-                    // Auto-close QR modal when someone scans it
-                    ChatApp.closeQRModal();
-                    ChatApp._onAddRequest(peerId, data);
-                } else if (data.type === "accept") {
-                    // Peer accepted our friend request
-                    if (state) state.peerKey = data.key;
-                    const userId = data.id || peerId;
-                    ChatApp._onAcceptReceived(userId, data.key, data.nickname);
-                } else if (data.type === "reject") {
-                    ChatApp._onPeerReject(peerId);
-                } else if (data.type === "chat") {
-                    // Only process chat if handshake is complete (contact has publicKey)
-                    const contact = ChatApp.contacts.find(c => c.userId === peerId);
-                    if (!contact || !contact.publicKey) {
-                        PeerConn._debug && console.log(`[PeerConn] Ignoring chat from ${peerId} - handshake not complete`);
-                        return;
-                    }
-                    let content = data.content;
-                    if (data.encrypted && state && state.myKey) {
-                        PeerConn._debug && console.log(`[PeerConn] Decrypting from ${peerId}, myKey pubFp=${Crypto.keyFingerprint(state.myKey.publicKey)}`);
-                        PeerConn._debug && console.log(`[PeerConn] Decrypting from ${peerId}, myKey privFp=${Crypto.keyFingerprint(state.myKey.privateKey)}`);
-
-
-                        try { content = await Crypto.decryptChunks(state.myKey.privateKey, data.content); }
-                        catch(e) { PeerConn._debug && console.warn(`[PeerConn] RSA decrypt failed for ${peerId}, falling back to plaintext:`, e.message, '| privKeyLen:', state.myKey.privateKey.length, '| dataLen:', data.content.length); }
-                    } else {
-                        PeerConn._debug && console.log(`[PeerConn] Not decrypting from ${peerId}, encrypted=${data.encrypted}, hasMyKey=${!!(state && state.myKey)}`);
-                    }
-                    ChatApp.onChatMsg(peerId, content, data.ts);
-                    // Dispatch custom event for extensions
-                    window.dispatchEvent(new CustomEvent('pchat-message', { detail: { peerId, content, ts: data.ts } }));
-                    // Auto-send read receipt
-                    if (state && state.conn && state.conn.open && data.id) {
-                        state.conn.send({ type: "receipt", msgId: data.id });
-                    }
-                } else if (data.type === "voice") {
-                    const contact = ChatApp.contacts.find(c => c.userId === peerId);
-                    if (!contact || !contact.publicKey) return;
-                    ChatApp.onVoiceMsg(peerId, data.content, data.ts, data.duration);
-                } else if (data.type === "file-header") {
-                    const contact = ChatApp.contacts.find(c => c.userId === peerId);
-                    if (!contact || !contact.publicKey) return;
-                    ChatApp._onFileHeader(peerId, data);
-                } else if (data.type === "file-chunk") {
-                    ChatApp._onFileChunk(data);
-                } else if (data.type === "file-footer") {
-                    ChatApp._onFileFooter(peerId, data);
-                } else if (data.type === "file-cancel") {
-                    ChatApp._onFileCancel(peerId, data);
-                } else if (data.type === "file-resume") {
-                    // Sender: receiver wants us to resume a transfer
-                    ChatApp._handleFileResume(peerId, data);
-                } else if (data.type === "file-request") {
-                    ChatApp._onFileRequest(peerId, data);
-                } else if (data.type === "segment-info") {
-                    ChatApp._onSegmentInfo(peerId, data);
-                } else if (data.type === "segment-done") {
-                    ChatApp._onSegmentDone(peerId, data);
-                } else if (data.type === "segment-retry") {
-                    ChatApp._onSegmentRetry(peerId, data);
-                } else if (data.type === "file-complete") {
-                    ChatApp._onFileComplete(peerId, data);
-                } else if (data.type === "receipt") {
-                    // Received read receipt for a message
-                    ChatApp._onReceiptReceived(peerId, data.msgId);
-                } else if (data.type === "id-change") {
-                    // Contact changed their ID - update contact list
-                    ChatApp._onIdChangeNotification(peerId, data);
-                } else if (data.type === "_ping") {
-                    // Heartbeat: reply pong immediately
-                    if (state && state.conn && state.conn.open) {
-                        state.conn.send({ type: "_pong", ts: data.ts });
-                    }
-                } else if (data.type === "_pong") {
-                    // Heartbeat: update lastPong timestamp
-                    const hb = PeerConn._heartbeats[peerId];
-                    if (hb) { hb.lastPong = Date.now(); hb.missCount = 0; }
-                } else if (data.type === "call-ping") {
-                    // Call-specific ping: reply pong immediately with same timestamp
-                    if (state && state.conn && state.conn.open) {
-                        state.conn.send({ type: "call-pong", ts: data.ts });
-                    }
-                } else if (data.type === "call-pong") {
-                    // Call-specific pong: calculate and display latency
-                    ChatApp._onCallPong(data.ts);
-                } else if (data.type === "call-cancelled") {
-                    // Caller hung up before we answered
-                    console.log("[Call] Received call-cancelled from", peerId);
-                    ChatApp._stopRingtone();
-                    ChatApp._hideCallModal();
-                    ChatApp._closeAlertModal();
-                    ChatApp._hideFriendRequestModal();
-                    if (ChatApp._pendingCall) {
-                        try { ChatApp._pendingCall.close(); } catch(e) {}
-                        ChatApp._pendingCall = null;
-                    }
-                } else if (data.type === "call-rejected") {
-                    // Receiver rejected our call
-                    console.log("[Call] Call rejected by", peerId);
-                    ChatApp.hangupCall();
-                } else if (data.type === "transfer-request" || data.type === "transfer-start" ||
-                           data.type === "table-start" || data.type === "table-done" ||
-                           data.type === "transfer-chunk" || data.type === "transfer-complete") {
-                    // Transfer messages routed to transfer handler
-                    await ChatApp._handleTransferInData(data);
-                }
-            } catch (err) { PeerConn._debug && console.error("[PeerConn] parse:", err); }
-        });
-
-        conn.on("close", () => {
-            PeerConn._debug && console.log(`[PeerConn] Disconnected from ${peerId}`);
-            const state = this.peers[peerId];
-            if (state) state.connected = false;
-            PeerConn._stopHeartbeat(peerId);
+        dc.addEventListener('close', () => {
+            PeerConn._debug && console.log('[PeerConn] DC close', peerId);
+            state.connected = false;
+            this._stopHeartbeat(peerId);
             ChatApp._markTransfersReconnecting(peerId);
             ChatApp._onPeerDisconnected(peerId);
-            if (!PeerConn._amOffline) {
-                ChatApp._renderContacts();
+        });
+        dc.addEventListener('message', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.type === '_ping') {
+                    if (state.conn && state.conn.open) state.conn.send({ type: '_pong', ts: data.ts });
+                    return;
+                }
+                if (data.type === '_pong') {
+                    const hb = this._heartbeats[peerId];
+                    if (hb) { hb.lastPong = Date.now(); hb.missCount = 0; }
+                    return;
+                }
+                // 其他消息路由到 ChatApp
+                if (data.type === 'chat') {
+                    const contact = ChatApp.contacts.find(c => c.userId === peerId);
+                    if (!contact || !contact.publicKey) return;
+                    let content = data.content;
+                    if (data.encrypted && state.myKey) {
+                        Crypto.decryptChunks(state.myKey.privateKey, data.content).then(c => {
+                            ChatApp.onChatMsg(peerId, c, data.ts);
+                            if (state.conn && state.conn.open && data.id) state.conn.send({ type: 'receipt', msgId: data.id });
+                        }).catch(() => {});
+                    } else {
+                        ChatApp.onChatMsg(peerId, content, data.ts);
+                        if (state.conn && state.conn.open && data.id) state.conn.send({ type: 'receipt', msgId: data.id });
+                    }
+                } else if (data.type === 'add') {
+                    ChatApp._onAddRequest(peerId, data);
+                } else if (data.type === 'accept') {
+                    if (state) state.peerKey = data.key;
+                    ChatApp._onAcceptReceived(data.id || peerId, data.key, data.nickname);
+                } else if (data.type === 'receipt') {
+                    ChatApp._onReceiptReceived(peerId, data.msgId);
+                } else if (data.type === 'id-change') {
+                    ChatApp._onIdChangeNotification(peerId, data);
+                } else if (data.type === 'voice') {
+                    ChatApp.onVoiceMsg(peerId, data.content, data.ts, data.duration);
+                } else if (data.type === 'file-header') {
+                    const contact = ChatApp.contacts.find(c => c.userId === peerId);
+                    if (contact && contact.publicKey) ChatApp._onFileHeader(peerId, data);
+                } else if (data.type === 'file-chunk') {
+                    ChatApp._onFileChunk(data);
+                } else if (data.type === 'file-footer') {
+                    ChatApp._onFileFooter(peerId, data);
+                } else if (data.type === 'file-cancel') {
+                    ChatApp._onFileCancel(peerId, data);
+                } else if (data.type === 'file-resume') {
+                    ChatApp._handleFileResume(peerId, data);
+                } else if (data.type === 'file-request') {
+                    ChatApp._onFileRequest(peerId, data);
+                } else if (data.type === 'file-ack') {
+                    ChatApp._onFileAck(peerId, data);
+                } else if (data.type === 'file-accept') {
+                    ChatApp._onFileAccept(peerId, data);
+                } else if (data.type === 'file-reject') {
+                    ChatApp._onFileReject(peerId, data);
+                } else if (data.type === 'segment-info') {
+                    ChatApp._onSegmentInfo(peerId, data);
+                } else if (data.type === 'segment-done') {
+                    ChatApp._onSegmentDone(peerId, data);
+                } else if (data.type === 'segment-retry') {
+                    ChatApp._onSegmentRetry(peerId, data);
+                } else if (data.type === 'file-complete') {
+                    ChatApp._onFileComplete(peerId, data);
+                } else if (data.type === 'call-ping') {
+                    // Voice call ping
+                } else if (data.type === 'call-pong') {
+                    // Voice call pong
+                }
+                // 其他类型由 wrapper._emit('data', data) 处理
+            } catch (err) {
+                PeerConn._debug && console.warn('[PeerConn] DC msg parse error:', err);
             }
         });
 
-        conn.on("error", (err) => {
-            PeerConn._debug && console.error(`[PeerConn] Connection error (${peerId}):`, err);
+        // ICE restart on DC state change (网络切换)
+        let lastPing = Date.now();
+        const pingCheck = setInterval(() => {
+            if (dc.readyState === 'open' && Date.now() - lastPing > 5000) {
+                PeerConn._debug && console.log('[PeerConn] DC ping 超时, ICE restart', peerId);
+                pc.createOffer({ iceRestart: true }).then(offer => {
+                    pc.setLocalDescription(offer);
+                    this._sendWS(JSON.stringify({
+                        type: 'OFFER',
+                        payload: { sdp: { sdp: offer.sdp, type: 'offer' }, type: 'data', connectionId: state.connectionId, metadata: {}, label: state.connectionId, reliable: true, serialization: 'binary' },
+                        dst: peerId
+                    }));
+                });
+            }
+        }, 3000);
+        dc.addEventListener('close', () => clearInterval(pingCheck));
+
+        // ICE candidate
+        pc.onicecandidate = (e) => {
+            if (!e.candidate) return;
+            const c = e.candidate;
+            this._sendWS(JSON.stringify({
+                type: 'CANDIDATE',
+                payload: {
+                    candidate: { candidate: c.candidate, sdpMid: c.sdpMid || '0', sdpMLineIndex: c.sdpMLineIndex || 0, usernameFragment: c.usernameFragment || '' },
+                    type: 'data',
+                    connectionId: state.connectionId
+                },
+                dst: peerId
+            }));
+        };
+
+        // 接收方处理 OFFER
+        this.ws.addEventListener('message', (e) => {
+            try {
+                const m = JSON.parse(e.data);
+                if (m.payload?.connectionId === state.connectionId) {
+                    this._handleSignaling(peerId, m);
+                }
+            } catch (err) {}
         });
     },
 
-    // ---- Heartbeat ----
+    _cleanupPeer(peerId) {
+        const s = this.peers[peerId];
+        if (s) {
+            try { s.pc?.close(); } catch (e) {}
+            try { s.conn?.close(); } catch (e) {}
+            delete this.peers[peerId];
+        }
+    },
+
+    // ========== 发送消息 ==========
+    async send(peerId, content, msgId) {
+        const s = this.peers[peerId];
+        if (!s || !s.conn || !s.conn.open) return false;
+        let sendContent = content;
+        if (s.peerKey) {
+            try { sendContent = await Crypto.encryptChunks(s.peerKey, content); } catch (e) {}
+        }
+        s.conn.send({ type: 'chat', id: msgId, content: sendContent, ts: Date.now(), encrypted: sendContent !== content });
+        return true;
+    },
+
+    async flushPending(peerId) {
+        const msgs = await ChatApp.getMessages(peerId);
+        const pending = msgs.filter(m => m.direction === 'sent' && !m.sent && m.type !== 'call-log');
+        const state = this.peers[peerId];
+        if (!state || !state.conn || !state.conn.open) return;
+        for (const m of pending) {
+            if (m.type === 'voice' && m.content) {
+                state.conn.send({ type: 'voice', content: m.content, ts: m.ts, duration: m.duration || 0 });
+                m.sent = true;
+                ChatApp.DB_put_msg(m);
+            } else if (m.type === 'file' || m.type === 'image') {
+                ChatApp._retryPendingFile(peerId, m);
+            } else if (m.content !== undefined) {
+                let sendContent = m.content;
+                if (state.peerKey) {
+                    try { sendContent = await Crypto.encryptChunks(state.peerKey, m.content); } catch (e) {}
+                }
+                state.conn.send({ type: 'chat', id: m.id, content: sendContent, ts: m.ts, encrypted: sendContent !== m.content });
+                m.sent = true;
+                ChatApp.DB_put_msg(m);
+            }
+        }
+    },
+
+    // ========== 心跳 ==========
     _startHeartbeat(peerId) {
         this._stopHeartbeat(peerId);
         const hb = { lastPong: Date.now(), missCount: 0, intervalId: null };
@@ -1654,26 +1700,14 @@ const PeerConn = {
                 this._stopHeartbeat(peerId);
                 return;
             }
-            // Send ping
-            state.conn.send({ type: "_ping", ts: Date.now() });
-            // Check timeout
-            const elapsed = Date.now() - hb.lastPong;
-            if (elapsed > this.HB_TIMEOUT) {
+            state.conn.send({ type: '_ping', ts: Date.now() });
+            if (Date.now() - hb.lastPong > this.HB_TIMEOUT) {
                 hb.missCount++;
-                PeerConn._debug && console.warn(`[PeerConn] Heartbeat timeout for ${peerId}, miss=${hb.missCount}, elapsed=${elapsed}ms`);
-                if (hb.missCount >= 2) {
-                    // DC is dead
-                    PeerConn._debug && console.warn(`[PeerConn] DC dead for ${peerId}, closing`);
+                if (hb.missCount >= 3) {
+                    PeerConn._debug && console.log('[PeerConn] DC 心跳超时', peerId);
                     this._stopHeartbeat(peerId);
-                    if (state.conn) { try { state.conn.close(); } catch(e) {} }
-                    state.connected = false;
-                    ChatApp._markTransfersReconnecting(peerId);
-                    ChatApp._onPeerDisconnected(peerId);
-                    ChatApp._renderContacts();
-                    // If our signaling is still up, try to reconnect
-                    if (!this._amOffline) {
-                        this._scheduleReconnect(peerId);
-                    }
+                    // 触发重连
+                    this._scheduleReconnect(peerId);
                 }
             }
         }, this.HB_INTERVAL);
@@ -1682,166 +1716,49 @@ const PeerConn = {
 
     _stopHeartbeat(peerId) {
         const hb = this._heartbeats[peerId];
-        if (hb) {
-            if (hb.intervalId) clearInterval(hb.intervalId);
-            delete this._heartbeats[peerId];
-        }
+        if (hb) { clearInterval(hb.intervalId); delete this._heartbeats[peerId]; }
     },
 
-    // ---- Reconnect backoff ----
-    // Schedule reconnect with exponential backoff: 2→4→6→8→10→12→14→16→18→20→20→...
+    // ========== 重连 ==========
     _scheduleReconnect(peerId) {
-        // Only reconnect for contacts with completed handshake
         const contact = ChatApp.contacts.find(c => c.userId === peerId);
         if (!contact || !contact.publicKey) return;
-
         const existing = this._reconnectTimers[peerId];
-        if (existing && existing.timer) return; // already scheduled
-
-        const rt = existing || { attempts: 0, delay: 0, timer: null };
-        // Calculate backoff
-        if (rt.attempts < 10) {
-            rt.delay = (rt.attempts + 1) * 2000;  // 2s, 4s, ..., 20s
-        } else {
-            rt.delay = 20000;  // cap at 20s
-        }
-        rt.attempts++;
-        PeerConn._debug && console.log(`[PeerConn] Scheduling reconnect to ${peerId}, attempt=${rt.attempts}, delay=${rt.delay}ms`);
-
+        let delay = existing ? Math.min(existing.delay * 2, 20000) : 2000;
+        const attempts = (existing?.attempts || 0) + 1;
+        PeerConn._debug && console.log('[PeerConn] 重连', peerId, 'delay=', delay, 'attempts=', attempts);
+        const rt = { delay, attempts, timer: null };
         rt.timer = setTimeout(async () => {
-            const wasAttempts = rt.attempts;  // save before delete
             delete this._reconnectTimers[peerId];
-            if (!this._amOffline) {
-                try {
-                    await this.connect(peerId);
-                } catch(e) {
-                    PeerConn._debug && console.warn(`[PeerConn] Reconnect failed for ${peerId}:`, e.message);
-                }
+            if (!this.peers[peerId]?.connected) {
+                try { await this.connect(peerId); } catch (e) {}
             }
-            const s = this.peers[peerId];
-            if (!s || !s.connected) {
-                // Pass saved attempts so counter doesn't reset
-                const nextRt = { attempts: wasAttempts, delay: 0, timer: null };
-                this._reconnectTimers[peerId] = nextRt;
-                this._scheduleReconnect(peerId);
-            }
-        }, rt.delay);
+        }, delay);
         this._reconnectTimers[peerId] = rt;
     },
 
     _cancelReconnect(peerId) {
         const rt = this._reconnectTimers[peerId];
-        if (rt) {
-            if (rt.timer) clearTimeout(rt.timer);
-            delete this._reconnectTimers[peerId];
-        }
+        if (rt) { clearTimeout(rt.timer); delete this._reconnectTimers[peerId]; }
     },
 
-    // Called when our signaling recovers: reconnect all contacts that lost DC
     _reconnectAll() {
         for (const c of ChatApp.contacts) {
             if (!c.publicKey) continue;
             const s = this.peers[c.userId];
-            if (!s || !s.connected) {
-                this._scheduleReconnect(c.userId);
-            }
+            if (!s || !s.connected) this._scheduleReconnect(c.userId);
         }
     },
 
-    // Send chat message to peer
-    async send(peerId, content, msgId) {
-        const s = this.peers[peerId];
-        if (!s || !s.conn || !s.conn.open) {
-            PeerConn._debug && console.log(`[PeerConn] Cannot send to ${peerId}, conn.open=${s ? s.conn?.open : false}`);
-            return false;
-        }
-        PeerConn._debug && console.log(`[PeerConn] Sending chat to ${peerId}: ${content.substring(0, 50)}`);
-        // After public key exchange, encrypt with RSA
-        let sendContent = content;
-        if (s.peerKey) {
-            PeerConn._debug && console.log(`[PeerConn] Encrypting for ${peerId}, peerKey fp=${Crypto.keyFingerprint(s.peerKey)}`);
-            try { sendContent = await Crypto.encryptChunks(s.peerKey, content); }
-            catch(e) { PeerConn._debug && console.warn('[PeerConn] Encrypt failed:', e.message); }
-        } else {
-            PeerConn._debug && console.log(`[PeerConn] No peerKey for ${peerId}, sending plaintext`);
-        }
-        s.conn.send({ type: "chat", id: msgId, content: sendContent, ts: Date.now(), encrypted: sendContent !== content });
-        return true;
-    },
+    call(peerId, stream) { return null; }, // TODO: voice call
 
-    // Flush pending messages (text, voice, files)
-    async flushPending(peerId) {
-        const msgs = await ChatApp.getMessages(peerId);
-        const pending = msgs.filter(m => m.direction === "sent" && !m.sent && m.type !== "call-log");
-        const state = this.peers[peerId];
-        if (!state || !state.conn || !state.conn.open) return;
-        PeerConn._debug && console.log(`[PeerConn] Flushing ${pending.length} pending messages to ${peerId}`);
-        for (const m of pending) {
-            if (m.type === "voice" && m.content) {
-                state.conn.send({ type: "voice", content: m.content, ts: m.ts, duration: m.duration || 0 });
-                m.sent = true;
-                ChatApp.DB_put_msg(m);
-            } else if (m.type === "file" || m.type === "image") {
-                // File retry: handled by ChatApp._retryPendingFile
-                ChatApp._retryPendingFile(peerId, m);
-            } else if (m.content !== undefined) {
-                let sendContent = m.content;
-                if (state.peerKey) {
-                    try { sendContent = await Crypto.encryptChunks(state.peerKey, m.content); }
-                    catch(e) { PeerConn._debug && console.warn('[PeerConn] Flush encrypt failed:', e.message); }
-                }
-                state.conn.send({ type: "chat", id: m.id, content: sendContent, ts: m.ts, encrypted: sendContent !== m.content });
-                m.sent = true;
-                ChatApp.DB_put_msg(m);
-            }
-        }
-    },
-
-    // Send voice message
-    sendVoice(peerId, base64data, ts, duration) {
-        const s = this.peers[peerId];
-        if (!s || !s.conn || !s.conn.open) return false;
-        s.conn.send({ type: "voice", content: base64data, ts, duration });
-        return true;
-    },
-
-    // Send file header
-    sendFileHeader(conn, fileId, name, mime, size, totalChunks, isImage) {
-        conn.send({ type: "file-header", fileId, name, mime, size, totalChunks, isImage });
-    },
-
-    // Send file chunk
-    sendFileChunk(conn, fileId, index, data) {
-        conn.send({ type: "file-chunk", fileId, index, data });
-    },
-
-    // Send file footer
-    sendFileFooter(conn, fileId) {
-        conn.send({ type: "file-footer", fileId });
-    },
-
-    // Initiate voice call via PeerJS
-    async call(peerId) {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            const call = this.peer.call(peerId, stream);
-            ChatApp.call.localStream = stream;
-            ChatApp._onOutgoingPeerCall(call, peerId);
-            return call;
-        } catch (err) {
-            PeerConn._debug && console.error("[PeerConn] Call error:", err);
-            ChatApp.showAlert(_i18n.t('pchat.alert.callError'));
-            return null;
-        }
-    },
-
-    // Close peer connection
     close() {
-        if (this.peer) {
-            this.peer.destroy();
-            this.peer = null;
-        }
-    },
+        if (this.ws) { this.ws.close(); this.ws = null; }
+        clearInterval(this._wsHbTimer);
+        for (const pid of Object.keys(this.peers)) this._cleanupPeer(pid);
+        for (const pid of Object.keys(this._reconnectTimers)) this._cancelReconnect(pid);
+        for (const pid of Object.keys(this._heartbeats)) this._stopHeartbeat(pid);
+    }
 };
 
 // ==================== ChatApp — Main Application Controller ====================
@@ -2111,10 +2028,10 @@ const ChatApp = {
 
         const reconnect = () => {
             if (!this.my || !this.my.id) return;  // not logged in
-            if (!PeerConn.peer || PeerConn.peer.destroyed) {
+            if (!PeerConn.ws || PeerConn.ws.readyState > 1) {
                 this._initPeer();
             } else if (PeerConn._amOffline) {
-                PeerConn.peer.reconnect();
+                PeerConn._reconnectWS();
             } else {
                 PeerConn._reconnectAll();
             }
@@ -2874,30 +2791,7 @@ const ChatApp = {
     _initPeer() {
         this._loadPendingSends();
         PeerConn.init(this.my.id, async (id) => {
-            console.log("[PeerJS] Initialized with ID:", id);
-            
-            // Check if ID was taken by someone else
-            if (id !== this.my.id) {
-                PeerConn._debug && console.warn("[PeerConn] ID conflict: your ID", this.my.id, "is taken");
-                const oldId = this.my.id;
-                const peer = PeerConn.peer;
-                if (peer) peer.destroy();
-                
-                // Ask user if they want to change ID
-                const confirmed = confirm(_i18n.fmt('pchat.alert.idConflict', 'id', oldId));
-                if (!confirmed) {
-                    // User declined - return to login
-                    this._show('setup-panel');
-                    this._hide('main-panel');
-                    return;
-                }
-                
-                // Change ID
-                await this._changeMyId(oldId);
-                // Notify contacts after ID change (will happen after PeerJS is ready)
-                this._notifyIdChange(oldId);
-                return;
-            }
+            console.log("[PeerConn] Initialized with ID:", id);
             
             const wasOffline = PeerConn._amOffline;
             PeerConn._amOffline = false;
@@ -3355,6 +3249,202 @@ const ChatApp = {
 
         this._requestFriend(id);
         document.getElementById("add-friend-input").value = "";
+    },
+
+    // ---- 手动连接（应急通道）----
+    showManualConnect() {
+        const modal = document.getElementById('manual-modal');
+        document.getElementById('manual-modal-title').textContent = '手动连接';
+
+        // 重置状态
+        document.getElementById('manual-offer-area').style.display = 'none';
+        document.getElementById('manual-input-area').style.display = 'none';
+        document.getElementById('manual-answer-area').style.display = 'none';
+        document.getElementById('manual-offer-answer-section').style.display = 'none';
+        document.getElementById('manual-status').style.display = 'none';
+        document.getElementById('manual-input-text').value = '';
+
+        modal.style.display = 'flex';
+        modal.classList.add('show');
+
+        const self = this;
+
+        const offerBtn = document.getElementById('manual-offer-btn');
+        const newOfferBtn = offerBtn.cloneNode(true);
+        offerBtn.parentNode.replaceChild(newOfferBtn, offerBtn);
+        newOfferBtn.onclick = () => self._startManualOffer();
+
+        const inputBtn = document.getElementById('manual-input-btn');
+        const newInputBtn = inputBtn.cloneNode(true);
+        inputBtn.parentNode.replaceChild(newInputBtn, inputBtn);
+        newInputBtn.onclick = () => {
+            document.getElementById('manual-offer-area').style.display = 'none';
+            document.getElementById('manual-input-area').style.display = 'block';
+        };
+
+        const copyBtn = document.getElementById('manual-copy-btn');
+        const newCopyBtn = copyBtn.cloneNode(true);
+        copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
+        newCopyBtn.onclick = () => {
+            const ta = document.getElementById('manual-offer-text');
+            ta.select();
+            document.execCommand('copy');
+            document.getElementById('manual-offer-answer-section').style.display = 'block';
+        };
+
+        const connectBtn = document.getElementById('manual-connect-btn');
+        const newConnectBtn = connectBtn.cloneNode(true);
+        connectBtn.parentNode.replaceChild(newConnectBtn, connectBtn);
+        newConnectBtn.onclick = () => self._processManualInput();
+
+        const answerCopyBtn = document.getElementById('manual-answer-copy-btn');
+        const newAnswerCopyBtn = answerCopyBtn.cloneNode(true);
+        answerCopyBtn.parentNode.replaceChild(newAnswerCopyBtn, answerCopyBtn);
+        newAnswerCopyBtn.onclick = () => {
+            const ta = document.getElementById('manual-answer-text');
+            ta.select();
+            document.execCommand('copy');
+        };
+
+        const offerAnswerBtn = document.getElementById('manual-offer-answer-btn');
+        const newOfferAnswerBtn = offerAnswerBtn.cloneNode(true);
+        offerAnswerBtn.parentNode.replaceChild(newOfferAnswerBtn, offerAnswerBtn);
+        newOfferAnswerBtn.onclick = () => self._completeManualOfferSide();
+
+        const closeBtn = document.getElementById('manual-close-modal-btn');
+        const newCloseBtn = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+        newCloseBtn.onclick = () => self._closeManualModal();
+    },
+
+    _closeManualModal() {
+        const modal = document.getElementById('manual-modal');
+        modal.style.display = 'none';
+        modal.classList.remove('show');
+    },
+
+    async _startManualOffer() {
+        const status = document.getElementById('manual-status');
+        status.style.display = 'block';
+        status.textContent = '正在生成连接码...';
+        status.style.color = 'var(--yellow)';
+
+        document.getElementById('manual-offer-area').style.display = 'block';
+        document.getElementById('manual-input-area').style.display = 'none';
+        document.getElementById('manual-offer-answer-section').style.display = 'none';
+
+        try {
+            const offerStr = await PeerConn.generateManualOffer();
+            document.getElementById('manual-offer-text').value = offerStr;
+            status.textContent = '连接码已生成，请复制并发送给对方';
+            status.style.color = 'var(--green)';
+        } catch(e) {
+            console.error('[Manual] Generate offer failed:', e);
+            status.textContent = '生成失败: ' + e.message;
+            status.style.color = 'var(--accent)';
+        }
+    },
+
+    async _completeManualOfferSide() {
+        const input = document.getElementById('manual-offer-answer-input').value.trim();
+        if (!input) return;
+        const status = document.getElementById('manual-status');
+        status.textContent = '正在完成连接...';
+        status.style.color = 'var(--yellow)';
+
+        try {
+            const parsed = PeerConn.parseManualString(input);
+            if (!parsed || parsed.type !== 'answer') {
+                status.textContent = '回复格式无效';
+                status.style.color = 'var(--accent)';
+                return;
+            }
+            const ok = await PeerConn.completeManual(parsed);
+            if (ok) {
+                status.textContent = '连接成功！与 ' + parsed.userId + ' 已建立 P2P 通道';
+                status.style.color = 'var(--green)';
+                ChatApp._renderContacts();
+                if (!ChatApp.activeConv) {
+                    ChatApp.openConversation('contact', parsed.userId);
+                }
+            } else {
+                status.textContent = '连接超时，请重试';
+                status.style.color = 'var(--accent)';
+            }
+        } catch(e) {
+            console.error('[Manual] Complete failed:', e);
+            status.textContent = '连接失败: ' + e.message;
+            status.style.color = 'var(--accent)';
+        }
+    },
+
+    async _processManualInput() {
+        const input = document.getElementById('manual-input-text').value.trim();
+        if (!input) return;
+
+        const status = document.getElementById('manual-status');
+        status.style.display = 'block';
+        status.textContent = '正在解析连接码...';
+        status.style.color = 'var(--yellow)';
+
+        try {
+            const parsed = PeerConn.parseManualString(input);
+            if (!parsed) {
+                status.textContent = '连接码格式无效';
+                status.style.color = 'var(--accent)';
+                return;
+            }
+
+            if (parsed.type === 'offer') {
+                status.textContent = '收到连接请求，正在生成回复...';
+                const answerStr = await PeerConn.acceptManualOffer(parsed);
+
+                document.getElementById('manual-answer-area').style.display = 'block';
+                document.getElementById('manual-answer-text').value = answerStr;
+                status.textContent = '请将回复复制给对方，等待连接建立...';
+                status.style.color = 'var(--green)';
+
+                this._autoFinalizeManual(parsed);
+            } else if (parsed.type === 'answer') {
+                status.textContent = '收到回复，正在完成连接...';
+                const ok = await PeerConn.completeManual(parsed);
+                if (ok) {
+                    status.textContent = '连接成功！' + (parsed.userId);
+                    status.style.color = 'var(--green)';
+                    ChatApp._renderContacts();
+                    if (!ChatApp.activeConv) {
+                        ChatApp.openConversation('contact', parsed.userId);
+                    }
+                } else {
+                    status.textContent = '连接超时，请重试';
+                    status.style.color = 'var(--accent)';
+                }
+            }
+        } catch(e) {
+            console.error('[Manual] Process input failed:', e);
+            status.textContent = '处理失败: ' + e.message;
+            status.style.color = 'var(--accent)';
+        }
+    },
+
+    async _autoFinalizeManual(parsed) {
+        const status = document.getElementById('manual-status');
+        for (let i = 0; i < 150; i++) {
+            await new Promise(r => setTimeout(r, 200));
+            const dc = PeerConn._manualDC;
+            if (dc && dc.readyState === 'open') {
+                const ok = await PeerConn.finalizeManual(parsed);
+                if (ok && status.textContent.indexOf('连接成功') === -1) {
+                    status.textContent = '连接成功！与 ' + (parsed.userId) + ' 已建立 P2P 通道';
+                    status.style.color = 'var(--green)';
+                    ChatApp._renderContacts();
+                    if (!ChatApp.activeConv) {
+                        ChatApp.openConversation('contact', parsed.userId);
+                    }
+                }
+                return;
+            }
+        }
     },
 
     // ---- Save contact to IndexedDB ----
@@ -4204,7 +4294,8 @@ const ChatApp = {
 
         // Open Binary DC
         const chunkSize = 262144;
-        const fileConn = PeerConn.peer.connect(peerId, { label: 'file-' + fid, serialization: 'binary', reliable: true });
+        if (!state.pc) return;
+        const fileConn = new ManualDataChannel(state.pc.createDataChannel('file-' + fid, { ordered: true }));
         this._binarySendChannels[fid] = fileConn;
         await new Promise((resolve2, reject) => { fileConn.on('open', resolve2); fileConn.on('error', reject); setTimeout(() => reject(new Error('Timeout')), 15000); });
         console.log('[File] Resume Binary DC opened');
@@ -4639,7 +4730,9 @@ const ChatApp = {
             console.log(`[File] Receiver accepted, opening Binary DC...`);
 
             // Step 3: Open Binary DC
-            const fileConn = PeerConn.peer.connect(peerId, { label: 'file-' + fileId, serialization: 'binary', reliable: true });
+            const state = PeerConn.peers[peerId];
+            if (!state || !state.pc) return;
+            const fileConn = new ManualDataChannel(state.pc.createDataChannel('file-' + fileId, { ordered: true }));
             this._binarySendChannels[fileId] = fileConn;
             await new Promise((resolve, reject) => { fileConn.on('open', resolve); fileConn.on('error', reject); setTimeout(() => reject(new Error('Binary channel timeout')), 15000); });
             console.log('[File] Binary DC opened');
@@ -5836,7 +5929,7 @@ const ChatApp = {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             c.localStream = stream;
             
-            const call = PeerConn.peer.call(peerId, stream);
+            const call = PeerConn.call(peerId, stream);
             // Clean up old media connection without triggering _onCallEnd UI cleanup
             if (c.mediaConnection) {
                 c._reconnectingCall = true;
@@ -6875,7 +6968,7 @@ const ChatApp = {
                 if (tok.id === this.my.id && tok.ts > this._lastTokenTs + 3000) {
                     // Another tab logged in as us — silently exit
                     clearInterval(this._loginHeartbeat);
-                    if (PeerConn.peer) PeerConn.peer.destroy();
+                    if (PeerConn.ws) { PeerConn.close(); }
                     Object.values(PeerConn.peers).forEach(s => { try { s.conn.close(); } catch(e){} });
                     location.hash = '';
                     location.reload();
@@ -7221,6 +7314,9 @@ const ChatApp = {
 
             this._transferPeer = new Peer(transferId, {
                 debug: 1,
+                host: '127.0.0.1',
+                port: 19999,
+                secure: false,
                 config: {
                     iceServers: [
                         { urls: 'stun:stun.chat.bilibili.com:3478' },
