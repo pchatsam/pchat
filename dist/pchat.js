@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.12
+ * Version: 20260527.13
  * Lines: ~7000
  */
 
@@ -6345,8 +6345,8 @@ const ChatApp = {
         let isDragging = false;
 
         img.onpointerdown = (e) => {
-            if (e.pointerType === 'touch' && e.isPrimary === false) return;
             if (e.button !== 0) return;
+            if (e.pointerType === 'touch' && e.isPrimary === false) return;
             e.preventDefault();
             isDragging = true;
             dragStartX = e.clientX;
@@ -6357,6 +6357,8 @@ const ChatApp = {
             if (img2) img2.style.transition = 'none';
             this._resetToolbarTimer();
         };
+
+        img.oncontextmenu = (e) => { e.preventDefault(); };
 
         img.onpointermove = (e) => {
             if (!isDragging) return;
@@ -6821,7 +6823,7 @@ const ChatApp = {
         const img2Close = document.getElementById("image-viewer-img2");
         if (img2Close) { img2Close.removeAttribute("src"); img2Close.style.visibility = "hidden"; }
         const img = document.getElementById("image-viewer-img");
-        img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null;
+        img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null; img.oncontextmenu = null;
         img.onload = null;  // Clear image load event
         img.style.transform = '';  // Reset zoom/pan transform
         const container = document.getElementById("image-viewer-container");
