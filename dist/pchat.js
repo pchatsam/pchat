@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.14
+ * Version: 20260527.15
  * Lines: ~7000
  */
 
@@ -6778,6 +6778,22 @@ const ChatApp = {
             }
             img.style.transition = 'none';
             img.src = src;
+            img.onload = () => {
+                if (img.naturalWidth === 0) return;
+                img.style.width = img.naturalWidth + 'px';
+                img.style.height = img.naturalHeight + 'px';
+                img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
+                const vw = window.innerWidth, vh = window.innerHeight;
+                const rot = item.rotation || 0;
+                const rotW = (rot % 180 === 90) ? img.naturalHeight : img.naturalWidth;
+                const rotH = (rot % 180 === 90) ? img.naturalWidth : img.naturalHeight;
+                iv.zoom = Math.min(vw / rotW, vh / rotH);
+                iv.minZoom = iv.zoom;
+                iv.panX = 0; iv.panY = 0;
+                img.style.transition = 'transform 0.3s ease';
+                void img.offsetWidth;
+                this._updateImageTransform();
+            };
             this._updateImageTransform();
             img2.style.transition = 'none';
             img2.style.transform = 'translate(-50%,-50%) scale(1)';
