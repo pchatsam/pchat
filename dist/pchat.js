@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.28
+ * Version: 20260527.29
  * Lines: ~7000
  */
 
@@ -6790,7 +6790,13 @@ const ChatApp = {
         if (newIdx < 0 || newIdx >= iv.swipeImages.length) return;
         const img = document.getElementById("image-viewer-img");
         const img2 = document.getElementById("image-viewer-img2");
-        if (!img2 || iv.zoom > iv.minZoom + 0.01) return; // 放大了不翻页
+        if (!img2) return;
+        if (iv.zoom > iv.minZoom + 0.01) {
+            // 先恢复适应屏幕，再翻页
+            iv.zoom = iv.minZoom; iv.panX = 0; iv.panY = 0;
+            this._updateImageTransform();
+            await new Promise(r => setTimeout(r, 150));
+        }
         // 设置 img2 的邻居 peek
         const src = this._getSrcForIndex(newIdx);
         if (!src) return;
