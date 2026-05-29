@@ -320,6 +320,8 @@ body {
     display:flex;align-items:center;justify-content:center;
 }
 #image-viewer-toolbar button:hover{background:rgba(78,204,163,.4);}
+.desktop-nav{display:none}
+@media (min-width:768px){.desktop-nav{display:flex}}
 #zoom-percent{
     position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
     color:#fff;font-size:36px;font-weight:600;background:rgba(0,0,0,.6);

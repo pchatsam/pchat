@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./logo.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./dist/chat.css?v=20260527.10">
+    <link rel="stylesheet" href="./dist/chat.css?v=20260527.11">
     <!--  i18n: detect browser language and show/hide language spans  -->
     <script>
     (function(){
@@ -499,9 +499,11 @@
     <!--  Image viewer  -->
     <div id="image-viewer" onclick="ChatApp.closeImageViewer(event)">
         <div id="image-viewer-toolbar">
-            <button id="rotate-btn" onclick="ChatApp.rotateImage(event)" title="↺">↻</button>
-            <button id="download-img-btn" onclick="ChatApp.downloadImage(event)" title=""><svg width="20" height="20" viewBox="0 0 32 32"><line x1="16" y1="4" x2="16" y2="19" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="10,13 16,21 22,13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="6" y1="27" x2="26" y2="27" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
-            <button id="close-img-btn" onclick="ChatApp.closeImageViewer()" title=""><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="10" y1="10" x2="22" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="22" y1="10" x2="10" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+            <button id="prev-img-btn" onclick="ChatApp.prevImage(event)" class="desktop-nav"><svg width="22" height="22" viewBox="0 0 32 32"><polyline points="20,6 10,16 20,26" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="rotate-btn" onclick="ChatApp.rotateImage(event)">↻</button>
+            <button id="download-img-btn" onclick="ChatApp.downloadImage(event)"><svg width="20" height="20" viewBox="0 0 32 32"><line x1="16" y1="4" x2="16" y2="19" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="10,13 16,21 22,13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="6" y1="27" x2="26" y2="27" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+            <button id="next-img-btn" onclick="ChatApp.nextImage(event)" class="desktop-nav"><svg width="22" height="22" viewBox="0 0 32 32"><polyline points="12,6 22,16 12,26" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="close-img-btn" onclick="ChatApp.closeImageViewer()"><svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="10" y1="10" x2="22" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><line x1="22" y1="10" x2="10" y2="22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         </div>
         <div id="image-viewer-container">
             <img id="image-viewer-img" src="" alt="">
@@ -512,9 +514,9 @@
 
     <script src="./dist/qrcode.min.js"></script>
     <script src="./dist/jsqr.min.js"></script>
-    <script src="./dist/pchat.js?v=20260527.10"></script>
+    <script src="./dist/pchat.js?v=20260527.11"></script>
     <script>
-        const PCHAT_VERSION = '20260527.10';
+        const PCHAT_VERSION = '20260527.11';
         console.log('[PChat] Version: ' + PCHAT_VERSION);
         document.getElementById('app-version').textContent = 'v' + PCHAT_VERSION;
         document.getElementById('sidebar-version').textContent = 'v' + PCHAT_VERSION;
