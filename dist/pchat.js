@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.18
+ * Version: 20260527.19
  * Lines: ~7000
  */
 
@@ -6789,8 +6789,8 @@ const ChatApp = {
         if (newIdx < 0 || newIdx >= iv.swipeImages.length) return;
         const img = document.getElementById("image-viewer-img");
         const img2 = document.getElementById("image-viewer-img2");
-        if (!img2) return;
-        // 设置 img2 的邻居 peek（和 pointermove 一样）
+        if (!img2 || iv.zoom > iv.minZoom + 0.01) return; // 放大了不翻页
+        // 设置 img2 的邻居 peek
         const src = this._getSrcForIndex(newIdx);
         if (!src) return;
         if (img2.src !== src) {
@@ -6802,11 +6802,18 @@ const ChatApp = {
         } else {
             img2.onload = () => { if (img2.naturalWidth > 0) { img2.style.width = img2.naturalWidth + 'px'; img2.style.height = img2.naturalHeight + 'px'; img2.style.maxWidth = 'none'; img2.style.maxHeight = 'none'; img2.style.visibility = "visible"; } };
         }
-        // 等 img2 就绪后调用和 pointerup 完全相同的动画方法
-        const screenW = window.innerWidth;
-        const goingLeft = dir === -1;
-        const offset = goingLeft ? screenW : -screenW;
-        await this._animateSwipe(newIdx, goingLeft, screenW, offset, img, img2);
+        // 模拟 pointerdown
+        const startX = img.getBoundingClientRect().left + img.getBoundingClientRect().width / 2;
+        img.onpointerdown({ clientX: startX, button: 0, pointerType: 'mouse', pointerId: 0, preventDefault: ()=>{}, target: img });
+        // 模拟 pointermove：逐步移动让图片到达临界位置
+        for (let i = 1; i <= 8; i++) {
+            const x = startX + dir * i * 20;
+            await new Promise(r => setTimeout(r, 20));
+            img.onpointermove({ clientX: x, clientY: 0 });
+        }
+        // 模拟 pointerup 触发翻页
+        const endX = startX + dir * 160;
+        img.onpointerup({ clientX: endX, button: 0, pointerType: 'mouse' });
     },
 
     rotateImage(event) {
