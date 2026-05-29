@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.17
+ * Version: 20260527.18
  * Lines: ~7000
  */
 
@@ -6731,6 +6731,58 @@ const ChatApp = {
     zoomOut(event) { if (event) event.stopPropagation(); this._applyZoom(this.imageViewer.zoom - 0.2, null, document.getElementById("image-viewer-img")); },
     prevImage(event) { if(event)event.stopPropagation(); this._stepImage(-1); },
     nextImage(event) { if(event)event.stopPropagation(); this._stepImage(1); },
+
+    async _animateSwipe(newIdx, goingLeft, screenW, offset, img, img2) {
+        const iv = this.imageViewer;
+        // Both img and img2 animate together
+        img.style.transition = 'transform 0.3s ease';
+        const saveCur = iv.swipeImages[iv.swipeIndex];
+        const saveRotation = saveCur ? saveCur.rotation : 0;
+        img.style.transform = `translate(${offset}px, 0) rotate(${saveRotation}deg) scale(${iv.zoom})`;
+        if (img2) {
+            const img2Scale = (img2.naturalWidth > 0 && img2.naturalHeight > 0)
+                ? Math.min(screenW / img2.naturalWidth, window.innerHeight / img2.naturalHeight) : 1;
+            img2.style.transition = 'transform 0.3s ease';
+            img2.style.transform = `translate(-50%,-50%) scale(${img2Scale})`;
+        }
+        await new Promise(r => setTimeout(r, 300));
+        // Commit
+        iv.swipeIndex = newIdx;
+        const src = this._getSrcForIndex(newIdx);
+        const item = iv.swipeImages[newIdx];
+        this._currentImageMsgId = item.msgId;
+        iv.url = src; iv.panX = 0; iv.panY = 0;
+        if (img2 && img2.naturalWidth > 0 && img2.naturalHeight > 0) {
+            img.style.width = img2.naturalWidth + 'px';
+            img.style.height = img2.naturalHeight + 'px';
+            img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
+            const rotation = item.rotation || 0;
+            const rotW = (rotation % 180 === 90) ? img2.naturalHeight : img2.naturalWidth;
+            const rotH = (rotation % 180 === 90) ? img2.naturalWidth : img2.naturalHeight;
+            iv.zoom = Math.min(screenW / rotW, window.innerHeight / rotH);
+            iv.minZoom = iv.zoom;
+        }
+        if (img2) { img2.removeAttribute('src'); img2.style.visibility = 'hidden'; img2.style.transition = 'none'; img2.style.zIndex = '-1'; }
+        img.style.transition = 'none'; img.style.zIndex = '1';
+        img.src = src || img.src;
+        img.onload = () => {
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                const rotation = iv.swipeImages[iv.swipeIndex] ? iv.swipeImages[iv.swipeIndex].rotation || 0 : 0;
+                const rotW = (rotation % 180 === 90) ? img.naturalHeight : img.naturalWidth;
+                const rotH = (rotation % 180 === 90) ? img.naturalWidth : img.naturalHeight;
+                const scale = Math.min(screenW / rotW, window.innerHeight / rotH);
+                img.style.width = img.naturalWidth + 'px'; img.style.height = img.naturalHeight + 'px';
+                img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
+                iv.zoom = scale; iv.minZoom = scale;
+                this._updateImageTransform();
+            }
+            const img2b = document.getElementById("image-viewer-img2");
+            if (img2b) { img2b.removeAttribute('src'); img2b.style.visibility = 'hidden'; img2b.style.zIndex = '-1'; }
+        };
+        this._updateImageTransform();
+        this._loadFullImage(newIdx);
+        this._updateImageCounter();
+    },
     async _stepImage(dir) {
         const iv = this.imageViewer;
         const newIdx = iv.swipeIndex + dir;
@@ -6738,7 +6790,7 @@ const ChatApp = {
         const img = document.getElementById("image-viewer-img");
         const img2 = document.getElementById("image-viewer-img2");
         if (!img2) return;
-        // 设置 img2 的邻居 peek（模拟 pointermove）
+        // 设置 img2 的邻居 peek（和 pointermove 一样）
         const src = this._getSrcForIndex(newIdx);
         if (!src) return;
         if (img2.src !== src) {
@@ -6750,10 +6802,11 @@ const ChatApp = {
         } else {
             img2.onload = () => { if (img2.naturalWidth > 0) { img2.style.width = img2.naturalWidth + 'px'; img2.style.height = img2.naturalHeight + 'px'; img2.style.maxWidth = 'none'; img2.style.maxHeight = 'none'; img2.style.visibility = "visible"; } };
         }
-        await new Promise(r => setTimeout(r, 100));
-        // 构造假的 pointerup 触发和拖拽完全一样的 commit
-        dragStartX = dir === -1 ? img.getBoundingClientRect().right : img.getBoundingClientRect().left;
-        img.onpointerup({ clientX: dir === -1 ? dragStartX + 100 : dragStartX - 100 });
+        // 等 img2 就绪后调用和 pointerup 完全相同的动画方法
+        const screenW = window.innerWidth;
+        const goingLeft = dir === -1;
+        const offset = goingLeft ? screenW : -screenW;
+        await this._animateSwipe(newIdx, goingLeft, screenW, offset, img, img2);
     },
 
     rotateImage(event) {
