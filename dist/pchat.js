@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.11
+ * Version: 20260527.12
  * Lines: ~7000
  */
 
@@ -6733,8 +6733,54 @@ const ChatApp = {
         const iv = this.imageViewer;
         const idx = iv.swipeIndex + dir;
         if (idx < 0 || idx >= iv.swipeImages.length) return;
-        const entryX = dir === -1 ? -window.innerWidth : window.innerWidth;
-        this._swipeToImage(iv.swipeImages[idx], entryX);
+        const img = document.getElementById("image-viewer-img");
+        const img2 = document.getElementById("image-viewer-img2");
+        const src = this._getSrcForIndex(idx);
+        if (!src || !img2) return;
+        // 把目标图设到 img2
+        if (img2.src !== src) {
+            img2.src = src;
+            img2.style.visibility = 'hidden';
+            const onReady = () => {
+                if (img2.naturalWidth > 0 && img2.naturalHeight > 0) {
+                    img2.style.width = img2.naturalWidth + 'px';
+                    img2.style.height = img2.naturalHeight + 'px';
+                    img2.style.maxWidth = 'none'; img2.style.maxHeight = 'none';
+                    img2.style.visibility = 'visible';
+                }
+            };
+            if (img2.naturalWidth > 0) onReady();
+            else { img2.onload = onReady; }
+        }
+        // 动画：当前左移/右移，img2 滑入
+        const screenW = window.innerWidth;
+        const img2Scale = (img2.naturalWidth > 0 && img2.naturalHeight > 0)
+            ? Math.min(screenW / img2.naturalWidth, window.innerHeight / img2.naturalHeight) : 1;
+        const offset = dir === -1 ? screenW : -screenW;
+        img.style.transition = 'transform 0.3s ease';
+        const saveRot = iv.swipeImages[iv.swipeIndex] ? iv.swipeImages[iv.swipeIndex].rotation : 0;
+        img.style.transform = `translate(${offset}px, 0) rotate(${saveRot}deg) scale(${iv.zoom})`;
+        img2.style.transition = 'transform 0.3s ease';
+        img2.style.transform = `translate(-50%, -50%) scale(${img2Scale})`;
+        img.style.zIndex = '1'; img2.style.zIndex = '0';
+        setTimeout(async () => {
+            iv.swipeIndex = idx;
+            const item = iv.swipeImages[idx];
+            this._currentImageMsgId = item.msgId;
+            iv.url = src; iv.panX = 0; iv.panY = 0;
+            if (img2.naturalWidth > 0 && img2.naturalHeight > 0) {
+                img.style.width = img2.naturalWidth + 'px';
+                img.style.height = img2.naturalHeight + 'px';
+                img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
+                iv.zoom = img2Scale; iv.minZoom = img2Scale;
+            }
+            img.style.transition = 'none';
+            img.src = src;
+            this._updateImageTransform();
+            img2.style.transition = 'none';
+            img2.style.transform = 'translate(-50%,-50%) scale(1)';
+            img2.style.zIndex = '-1'; img2.style.visibility = 'hidden';
+        }, 300);
     },
 
     rotateImage(event) {
