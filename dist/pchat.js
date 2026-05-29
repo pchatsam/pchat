@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.13
+ * Version: 20260527.14
  * Lines: ~7000
  */
 
@@ -6358,7 +6358,6 @@ const ChatApp = {
             this._resetToolbarTimer();
         };
 
-        img.oncontextmenu = (e) => { e.preventDefault(); };
 
         img.onpointermove = (e) => {
             if (!isDragging) return;
@@ -6441,6 +6440,7 @@ const ChatApp = {
         };
 
         img.onpointerup = async (e) => {
+            if (!isDragging) return;
             isDragging = false;
             img.style.cursor = 'grab';
             this._resetToolbarTimer();
@@ -6823,7 +6823,7 @@ const ChatApp = {
         const img2Close = document.getElementById("image-viewer-img2");
         if (img2Close) { img2Close.removeAttribute("src"); img2Close.style.visibility = "hidden"; }
         const img = document.getElementById("image-viewer-img");
-        img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null; img.oncontextmenu = null;
+        img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null;
         img.onload = null;  // Clear image load event
         img.style.transform = '';  // Reset zoom/pan transform
         const container = document.getElementById("image-viewer-container");
