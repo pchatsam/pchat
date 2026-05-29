@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.27
+ * Version: 20260527.28
  * Lines: ~7000
  */
 
@@ -6358,6 +6358,7 @@ const ChatApp = {
             this._resetToolbarTimer();
         };
 
+        img.ondblclick = (e) => { e.stopPropagation(); this._toggleZoom(); };
 
         img.onpointermove = (e) => {
             if (!isDragging) return;
@@ -6850,6 +6851,19 @@ const ChatApp = {
         this._resetToolbarTimer();
     },
 
+    _toggleZoom() {
+        const iv = this.imageViewer;
+        const img = document.getElementById("image-viewer-img");
+        if (iv.zoom > iv.minZoom + 0.1) {
+            iv.zoom = iv.minZoom; iv.panX = 0; iv.panY = 0;
+        } else {
+            iv.panX = 0; iv.panY = 0; iv.zoom = 1;
+        }
+        this._updateImageTransform();
+        this._updateZoomDisplay();
+        this._resetToolbarTimer();
+    },
+
     closeImageViewer(event) {
         this._popNav();
         if (event) {
@@ -6861,7 +6875,7 @@ const ChatApp = {
         const img2Close = document.getElementById("image-viewer-img2");
         if (img2Close) { img2Close.removeAttribute("src"); img2Close.style.visibility = "hidden"; }
         const img = document.getElementById("image-viewer-img");
-        img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null;
+        img.onpointerdown = null; img.onpointermove = null; img.onpointerup = null; img.ondragstart = null; img.ondblclick = null;
         img.onload = null;  // Clear image load event
         img.style.transform = '';  // Reset zoom/pan transform
         const container = document.getElementById("image-viewer-container");
