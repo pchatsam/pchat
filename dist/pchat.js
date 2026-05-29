@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.19
+ * Version: 20260527.20
  * Lines: ~7000
  */
 
@@ -6804,16 +6804,15 @@ const ChatApp = {
         }
         // 模拟 pointerdown
         const startX = img.getBoundingClientRect().left + img.getBoundingClientRect().width / 2;
-        img.onpointerdown({ clientX: startX, button: 0, pointerType: 'mouse', pointerId: 0, preventDefault: ()=>{}, target: img });
+        img.dispatchEvent(new PointerEvent('pointerdown', { clientX: startX, clientY: 0, button: 0, pointerType: 'mouse', pointerId: 1, bubbles: true }));
         // 模拟 pointermove：逐步移动让图片到达临界位置
         for (let i = 1; i <= 8; i++) {
             const x = startX + dir * i * 20;
             await new Promise(r => setTimeout(r, 20));
-            img.onpointermove({ clientX: x, clientY: 0 });
+            img.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: 0, pointerType: 'mouse', pointerId: 1, bubbles: true }));
         }
         // 模拟 pointerup 触发翻页
-        const endX = startX + dir * 160;
-        img.onpointerup({ clientX: endX, button: 0, pointerType: 'mouse' });
+        img.dispatchEvent(new PointerEvent('pointerup', { clientX: startX + dir * 160, clientY: 0, button: 0, pointerType: 'mouse', pointerId: 1, bubbles: true }));
     },
 
     rotateImage(event) {
