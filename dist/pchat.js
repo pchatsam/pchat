@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.21
+ * Version: 20260527.27
  * Lines: ~7000
  */
 
@@ -6796,12 +6796,20 @@ const ChatApp = {
         if (img2.src !== src) {
             img2.src = src; img2.style.visibility = "hidden"; img2.style.transition = "none";
         }
+        // 等 img2 加载完成后，放到屏幕外初始位置
         if (img2.naturalWidth > 0) {
             img2.style.width = img2.naturalWidth + 'px'; img2.style.height = img2.naturalHeight + 'px';
-            img2.style.maxWidth = 'none'; img2.style.maxHeight = 'none'; img2.style.visibility = "visible";
+            img2.style.maxWidth = 'none'; img2.style.maxHeight = 'none';
         } else {
-            img2.onload = () => { if (img2.naturalWidth > 0) { img2.style.width = img2.naturalWidth + 'px'; img2.style.height = img2.naturalHeight + 'px'; img2.style.maxWidth = 'none'; img2.style.maxHeight = 'none'; img2.style.visibility = "visible"; } };
+            await new Promise(r => { img2.onload = r; });
+            img2.style.width = img2.naturalWidth + 'px'; img2.style.height = img2.naturalHeight + 'px';
+            img2.style.maxWidth = 'none'; img2.style.maxHeight = 'none';
         }
+        const screenW = window.innerWidth;
+        const fitScale = Math.min(screenW / img2.naturalWidth, window.innerHeight / img2.naturalHeight);
+        img2.style.transform = `translate(calc(-50% + ${dir === -1 ? -screenW : screenW}px), -50%) scale(${fitScale})`;
+        img2.style.transition = 'none';
+        img2.style.visibility = "visible";
         // 模拟 pointerdown
         const startX = img.getBoundingClientRect().left + img.getBoundingClientRect().width / 2;
         img.dispatchEvent(new PointerEvent('pointerdown', { clientX: startX, clientY: 0, button: 0, pointerType: 'mouse', pointerId: 1, bubbles: true }));
