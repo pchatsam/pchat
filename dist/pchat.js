@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.32
+ * Version: 20260527.33
  * Lines: ~7000
  */
 
@@ -897,24 +897,13 @@ const DB = {
     },
     // Append verified segment to download file
     // 在单个 .download 文件末尾追加写入 segment
-    async appendSegment(fileId, segmentBuffer, segmentIndex) {
+    async writeSegmentFile(fileId, segmentIndex, buffer) {
         const root = await this._getOprfsRoot();
-        let handle;
-        try { handle = await root.getFileHandle(`${fileId}.download`); } catch(e) {
-            handle = await root.getFileHandle(`${fileId}.download`, { create: true });
-        }
-        // keepExistingData: true 防止截断已有数据
-        const writable = await handle.createWritable({ keepExistingData: true });
-        const file = await handle.getFile();
-        const offset = file.size;
-        const CHUNK = 16 * 1024 * 1024;
-        let pos = 0;
-        const buf = new Uint8Array(segmentBuffer);
-        while (pos < buf.byteLength) {
-            const end = Math.min(pos + CHUNK, buf.byteLength);
-            await writable.write({ type: 'write', data: buf.slice(pos, end), position: offset + pos });
-            pos = end;
-        }
+        const segName = `pchat-${fileId}-seg${segmentIndex}`;
+        try { await root.removeEntry(segName); } catch(e) {}
+        const handle = await root.getFileHandle(segName, { create: true });
+        const writable = await handle.createWritable();
+        await writable.write(buffer);
         await writable.close();
     },
 
@@ -1286,7 +1275,7 @@ const PeerConn = {
                             if (computedHash === segBuf.hash) {
                                 console.log(`[File] Segment ${info.currentSegment} hash OK (${(segBuf.total/1024/1024).toFixed(1)}MB)`);
                                 try {
-                                    await DB.appendSegment(fileId, fullBuf, info.currentSegment);
+                                    await DB.writeSegmentFile(fileId, info.currentSegment, fullBuf);
                                     await TransferDB.recordSegment(fileId, info.currentSegment, segBuf.hash, segBuf.total);
                                 } catch(e) {
                                     console.error(`[File] Segment write failed:`, e);
@@ -1305,7 +1294,7 @@ const PeerConn = {
                                     console.log(`[File] All segments received for ${info.name}`);
                                     const skd = `${fileId}_seg${info?.currentSegment||0}`; delete DB._segmentBuffers[skd]; delete DB._segmentBuffers[fileId];
                                     delete ft.pending[fileId];
-                                    const result = await DB.finalizeSegmentedFile(fileId, info.size);
+                                    const result = await DB.finalizeSegmentedFile(fileId, info.size, info.totalSegments);
                                     if (result) {
                                         const now = Date.now();
                                         const msg = { id: `msg_${info.peerId}_${now}_${Math.random().toString(36).slice(2,6)}`, peerId: info.peerId, ts: now, direction: 'received', fromId: info.peerId, type: 'direct-file', fileName: info.name, mimeType: info.mime, fileSize: info.size, fileId };
