@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.33
+ * Version: 20260527.34
  * Lines: ~7000
  */
 
@@ -907,30 +907,31 @@ const DB = {
         await writable.close();
     },
 
-    async finalizeSegmentedFile(fileId, expectedSize) {
+    async finalizeSegmentedFile(fileId, expectedSize, totalSegments) {
         const root = await this._getOprfsRoot();
         try {
-            const downloadHandle = await root.getFileHandle(`${fileId}.download`);
-            const file = await downloadHandle.getFile();
-            if (file.size !== expectedSize) {
-                console.error(`[OPFS] Finalize size mismatch: expected ${expectedSize}, got ${file.size}`);
-                await root.removeEntry(`${fileId}.download`);
-                return null;
-            }
             try { await root.removeEntry(`pchat-${fileId}`); } catch(e) {}
             const finalHandle = await root.getFileHandle(`pchat-${fileId}`, { create: true });
             const finalWritable = await finalHandle.createWritable();
-            const STREAM = 16 * 1024 * 1024;
-            let offset = 0;
-            while (offset < file.size) {
-                const end = Math.min(offset + STREAM, file.size);
-                const blob = file.slice(offset, end);
-                await finalWritable.write(await blob.arrayBuffer());
-                offset = end;
+            const CHUNK = 16 * 1024 * 1024;
+            let totalWritten = 0, fOffset = 0;
+            for (let seg = 0; seg < totalSegments; seg++) {
+                const segName = `pchat-${fileId}-seg${seg}`;
+                const segHandle = await root.getFileHandle(segName);
+                const segFile = await segHandle.getFile();
+                let pos = 0;
+                while (pos < segFile.size) {
+                    const end = Math.min(pos + CHUNK, segFile.size);
+                    const blob = segFile.slice(pos, end);
+                    const len = end - pos;
+                    await finalWritable.write({ type: 'write', data: await blob.arrayBuffer(), position: fOffset });
+                    pos = end; fOffset += len;
+                }
+                totalWritten += segFile.size;
+                await root.removeEntry(segName);
             }
             await finalWritable.close();
-            await root.removeEntry(`${fileId}.download`);
-            return { fileId, size: file.size };
+            return { fileId, size: totalWritten };
         } catch(e) {
             console.error('[OPFS] Finalize error:', e);
             return null;
