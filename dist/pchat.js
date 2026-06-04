@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.30
+ * Version: 20260527.31
  * Lines: ~7000
  */
 
@@ -1346,7 +1346,7 @@ const PeerConn = {
                         const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / avgSpd) : 0;
                         ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {}; ChatApp._transferAckSpeed[fileId] = speedStr;
                         ChatApp._transferAckEta = ChatApp._transferAckEta || {}; ChatApp._transferAckEta[fileId] = etaSec;
-                        if (info.chunkCount % 10 === 0) {
+                        if (info.chunkCount % 100 === 0) {
                             const ackPeer = PeerConn.peers[info.peerId];
                             if (ackPeer && ackPeer.conn && ackPeer.conn.open) ackPeer.conn.send({ type: 'file-ack', fileId, progress: pct, speed: speedStr, etaSec });
                         }
@@ -4253,7 +4253,7 @@ const ChatApp = {
                 for (let i = 0; i < segBuf.byteLength; i += chunkSize) {
                     const end2 = Math.min(i + chunkSize, segBuf.byteLength);
                     fileConn.send(segBuf.slice(i, end2)); sentChunks++; sentBytes += (end2 - i);
-                    if (sentChunks % 10 === 0) {
+                    if (sentChunks % 100 === 0) {
                         await new Promise(r => {
                             const ah = (d) => { if (d.type === 'file-ack' && d.fileId === fid) { state.conn.off('data', ah); if (d.speed) { ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {}; ChatApp._transferAckSpeed[fid] = d.speed; } if (d.etaSec != null) { ChatApp._transferAckEta = ChatApp._transferAckEta || {}; ChatApp._transferAckEta[fid] = d.etaSec; } r(); } };
                             state.conn.on('data', ah); setTimeout(() => { state.conn.off('data', ah); r(); }, 5000);
@@ -4697,7 +4697,7 @@ const ChatApp = {
                     for (let i = 0; i < segBuf.byteLength; i += chunkSize) {
                         const end2 = Math.min(i + chunkSize, segBuf.byteLength);
                         fileConn.send(segBuf.slice(i, end2)); sentChunks++; sentBytes += (end2 - i);
-                        if (sentChunks % 10 === 0) {
+                        if (sentChunks % 100 === 0) {
                             await new Promise(r => {
                                 const ah = (d) => { if (d.type === 'file-ack' && d.fileId === fileId) { conn.off('data', ah); if (d.speed) { ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {}; ChatApp._transferAckSpeed[fileId] = d.speed; } if (d.etaSec != null) { ChatApp._transferAckEta = ChatApp._transferAckEta || {}; ChatApp._transferAckEta[fileId] = d.etaSec; } r(); } };
                                 conn.on('data', ah); setTimeout(() => { conn.off('data', ah); r(); }, 5000);
