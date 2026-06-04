@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.34
+ * Version: 20260527.35
  * Lines: ~7000
  */
 
@@ -4128,7 +4128,7 @@ const ChatApp = {
             const netReceived = info.totalRawReceived || 0;
             const downloadSize = await DB.getDownloadSize(fid);
             const received = Math.max(netReceived, downloadSize);
-            const nextSeg = Math.floor(received / (100 * 1024 * 1024));
+            const nextSeg = Math.floor(received / (1024 * 1024 * 1024));
             console.log(`[File] Requesting resume for ${info.name}: received=${(received/1024/1024).toFixed(1)}MB, nextSegment=${nextSeg}`);
             state.conn.send({ type: "file-resume", fileId: fid, receivedBytes: received, nextSegment: nextSeg, totalSize: info.size });
         }
@@ -4139,7 +4139,7 @@ const ChatApp = {
             if (ft.pending[fid]) continue;
             // Check TransferDB for completed segments
             const nextSegment = await TransferDB.getNextSegment(fid);
-            const totalSegments = Math.ceil(pr.size / (100 * 1024 * 1024));
+            const totalSegments = Math.ceil(pr.size / (1024 * 1024 * 1024));
             const downloadSize = await DB.getDownloadSize(fid);
             const received = downloadSize;
             console.log(`[File] Resume after refresh: ${pr.name}, segments=${nextSegment}/${totalSegments}, download=${(downloadSize/1024/1024).toFixed(1)}MB`);
@@ -4162,8 +4162,8 @@ const ChatApp = {
         const fid = data.fileId;
         const pending = this._pendingSends[fid];
         if (!pending) { console.warn(`[File] Resume request for unknown file: ${fid}`); return; }
-        const nextSegment = data.nextSegment || Math.floor((data.receivedBytes || 0) / (100 * 1024 * 1024));
-        const SEG_SIZE = 100 * 1024 * 1024;
+        const nextSegment = data.nextSegment || Math.floor((data.receivedBytes || 0) / (1024 * 1024 * 1024));
+        const SEG_SIZE = 1024 * 1024 * 1024;
         const startOffset = nextSegment * SEG_SIZE;
         const startPct = pending.size > 0 ? Math.round(startOffset / pending.size * 100) : 0;
         console.log(`[File] Resume: ${pending.name}, from segment ${nextSegment} (${(startOffset/1024/1024).toFixed(1)}MB, ${startPct}%)`);
@@ -4603,7 +4603,7 @@ const ChatApp = {
         // ======== Main flow ========
         if (file.size >= SHOW_PROGRESS) {
             // ≥10MB: segmented Binary DC with per-segment hash verification
-            const SEG_SIZE = 100 * 1024 * 1024; // 100MB per segment
+            const SEG_SIZE = 1024 * 1024 * 1024; // 100MB per segment
             const totalSegments = Math.ceil(file.size / SEG_SIZE);
             console.log(`[File] Segmented DC (${(file.size/1024/1024).toFixed(1)}MB, ${totalSegments} segments)`);
 
