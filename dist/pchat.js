@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.31
+ * Version: 20260527.32
  * Lines: ~7000
  */
 
@@ -1343,7 +1343,7 @@ const PeerConn = {
                         if (info._speedWindow.length === 0) { for (let i = 0; i < 100; i++) info._speedWindow.push(0); } info._speedWindow.push(currentSpd); info._speedWindow.shift();
                         const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / 100;
                         const speedStr = avgSpd > 1048576 ? `${(avgSpd/1048576).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
-                        const etaSec = info.size > info.totalRawReceived ? Math.round((info.size - info.totalRawReceived) / avgSpd) : 0;
+                        const etaSec = (info.size > info.totalRawReceived && avgSpd > 0) ? Math.round((info.size - info.totalRawReceived) / avgSpd) : 0;
                         ChatApp._transferAckSpeed = ChatApp._transferAckSpeed || {}; ChatApp._transferAckSpeed[fileId] = speedStr;
                         ChatApp._transferAckEta = ChatApp._transferAckEta || {}; ChatApp._transferAckEta[fileId] = etaSec;
                         if (info.chunkCount % 100 === 0) {
@@ -3740,7 +3740,7 @@ const ChatApp = {
                 }
                 const avgSpd = info._speedWindow.reduce((a, b) => a + b, 0) / 100;
                 const speedStr = avgSpd > 1024*1024 ? `${(avgSpd/1024/1024).toFixed(1)} MB/s` : `${(avgSpd/1024).toFixed(0)} KB/s`;
-                const etaSec = info.size > rawReceived ? Math.round((info.size - rawReceived) / avgSpd) : 0;
+                const etaSec = info.size > rawReceived && avgSpd > 0 ? Math.round((info.size - rawReceived) / avgSpd) : 0;
                 info.lastAckBytes = rawReceived;
                 info.lastAckTime = nowMs;
                 // Store for receiver's own display too
