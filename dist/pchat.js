@@ -26,7 +26,7 @@
  *   - PBKDF2 key derivation (100K iterations) — derived from user password
  *   - Random salt per account (stored in IndexedDB user table as "_salt")
  *
- * Version: 20260527.29
+ * Version: 20260527.30
  * Lines: ~7000
  */
 
@@ -1277,8 +1277,10 @@ const PeerConn = {
                         segBuf.total += arr.byteLength || arr.length;
                         info.segmentReceived = (info.segmentReceived || 0) + (arr.byteLength || arr.length);
                         if (segBuf.total >= segBuf.expectedSize) {
-                            const blob = new Blob(segBuf.chunks);
-                            const fullBuf = await blob.arrayBuffer();
+                            const totalSize = segBuf.total;
+                            const fullBuf = new Uint8Array(totalSize);
+                            let off = 0;
+                            for (const chunk of segBuf.chunks) { fullBuf.set(chunk, off); off += chunk.byteLength; }
                             segBuf.chunks = [];
                             const computedHash = await ChatApp._hashBuffer(fullBuf);
                             if (computedHash === segBuf.hash) {
